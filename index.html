@@ -17346,22 +17346,22 @@ window.fabScanPress = function(el){
   const ov = document.getElementById('nx-overlay');
   const isOpen = ov && ov.classList.contains('open');
   if(isOpen){
-    // shutter press → เปิดกล้องเครื่อง native
-    _fabFireShutter(function(){
-      var inp = document.getElementById('nx-captureInput');
-      if(!inp){
-        inp = document.createElement('input');
-        inp.type='file'; inp.accept='image/*'; inp.capture='environment';
-        inp.id='nx-captureInput';
-        inp.style.display='none';
-        inp.addEventListener('change', function(){
-          if(inp.files && inp.files[0]) window.nxOnCapture && window.nxOnCapture(inp);
-          inp.value='';
-        });
-        document.body.appendChild(inp);
-      }
-      inp.click();
-    });
+    // ── เรียก click ทันทีใน user-gesture chain ──
+    // (mobile browser block programmatic .click() ถ้าเรียกผ่าน setTimeout)
+    var inp = document.getElementById('nx-captureInput');
+    if(!inp){
+      inp = document.createElement('input');
+      inp.type='file'; inp.accept='image/*'; inp.capture='environment';
+      inp.id='nx-captureInput';
+      inp.style.display='none';
+      inp.addEventListener('change', function(){
+        if(inp.files && inp.files[0]) window.nxOnCapture && window.nxOnCapture(inp);
+        inp.value='';
+      });
+      document.body.appendChild(inp);
+    }
+    inp.click(); // เรียกทันที — ยังอยู่ใน user gesture
+    _fabFireShutter(null); // animation แยกต่างหาก ไม่ blocking
   } else {
     // open overlay
     xNavRippleAnim(el);
@@ -20310,4 +20310,116 @@ window.nxCloseAllPanels=nxCloseAllPanels;
 function nxOpenPanel(id){nxCloseAllPanels();document.getElementById(id).classList.add('open');document.getElementById('nx-panelBackdrop').classList.add('active');}
 function nxMakeTappable(el,panelId){
   if(!el)return;
-  el.addEventListener('click',e=>{e.stopPropagation();nxOp
+  el.addEventListener('click',e=>{e.stopPropagation();nxOpenPanel(panelId);});
+  el.addEventListener('touchend',e=>{e.preventDefault();e.stopPropagation();nxOpenPanel(panelId);},{passive:false});
+}
+nxMakeTappable(document.getElementById('nx-diso'),'nx-isoPanel');
+nxMakeTappable(document.getElementById('nx-dwb'),'nx-wbPanel');
+
+// ── ISO ───────────────────────────────────────────────
+const nxIsoSlider=document.getElementById('nx-isoSlider');
+function nxSyncISO(idx){
+  nxIsoIdx=idx;
+  const val=nxIsoValues[idx];
+  const sv=document.getElementById('nx-isoSliderVal');if(sv)sv.textContent=val;
+  nxIsoSlider.value=idx;
+  const iv=document.getElementById('nx-isoVal');if(iv)iv.textContent=val;
+  const ri=document.getElementById('nx-ribbonISO');if(ri)ri.textContent=val;
+  document.querySelectorAll('#nx-isoPills .nx-dp-pill').forEach(p=>p.classList.toggle('active',parseInt(p.dataset.iso)===idx));
+  const v=document.getElementById('nx-camFeed');if(v){
+    const base=(v.style.filter||'').replace(/brightness\([^)]+\)/g,'').trim();
+    v.style.filter=`brightness(${(0.6+idx/7*1.4).toFixed(2)}) `+base;
+  }
+}
+nxIsoSlider.addEventListener('input',()=>nxSyncISO(parseInt(nxIsoSlider.value)));
+document.getElementById('nx-isoPills').addEventListener('click',e=>{if(e.target.dataset.iso!=null)nxSyncISO(parseInt(e.target.dataset.iso));});
+
+// ── WB ────────────────────────────────────────────────
+const nxWbSlider=document.getElementById('nx-wbSlider');
+const nxWbDspLabels=['AWB','DAYLIGHT','CLOUDY','TUNGSTEN','CANDLE'];
+function nxSyncWB(idx){
+  nxWbIdx=idx;
+  const sv=document.getElementById('nx-wbSliderVal');if(sv)sv.textContent=nxWbDspLabels[idx];
+  nxWbSlider.value=idx;
+  const wv=document.getElementById('nx-wbVal');if(wv)wv.textContent=nxWbLabels[idx];
+  document.querySelectorAll('#nx-wbPills .nx-dp-pill').forEach(p=>p.classList.toggle('active',parseInt(p.dataset.wb)===idx));
+  const v=document.getElementById('nx-camFeed');if(v){
+    const base=(v.style.filter||'').replace(/hue-rotate\([^)]+\)/g,'').trim();
+    v.style.filter=base+` hue-rotate(${nxWbHues[idx]}deg)`;
+  }
+}
+nxWbSlider.addEventListener('input',()=>nxSyncWB(parseInt(nxWbSlider.value)));
+document.getElementById('nx-wbPills').addEventListener('click',e=>{if(e.target.dataset.wb!=null)nxSyncWB(parseInt(e.target.dataset.wb));});
+
+// ── OPEN / CLOSE overlay ─────────────────────────────
+window.openNexusOverlay=function(){
+  var ov=document.getElementById('nx-overlay');if(!ov)return;
+  var hdr=document.getElementById('hdr');
+  if(hdr) ov.style.top=hdr.getBoundingClientRect().height+'px';
+  ov.classList.add('open');
+  document.body.classList.add('cam-open');
+  if(typeof _setFabActive==='function') _setFabActive(true);
+  // clear search bar
+  var mi=document.getElementById('manualInput');
+  if(mi){mi.value='';mi.style.borderColor='';mi.style.boxShadow='';}
+  hideSuggest('manual');
+  requestAnimationFrame(function(){
+    nxClkIv=setInterval(nxClkTick,1000);nxClkTick();
+    nxNeuralIv=setInterval(nxAnimNeural,1500);
+    nxAfIv=setInterval(nxAfPulse,2200);
+    nxEvIv=setInterval(nxEvTick,2800);nxEvTick();
+    // ไม่เปิดกล้องอัตโนมัติ — รอให้กด shutter
+    document.getElementById('nx-permScreen').style.display='flex';
+  });
+};
+
+window.closeNexusOverlay=function(){
+  const ov=document.getElementById('nx-overlay');if(!ov)return;
+  ov.classList.remove('open');
+  ov.style.top='';
+  document.body.classList.remove('cam-open');
+  if(typeof _setFabActive==='function') _setFabActive(false);
+  // stop camera
+  nxCamActive=false;
+  nxStopBarcodeScanner();
+  if(nxStream){nxStream.getTracks().forEach(t=>t.stop());nxStream=null;}
+  const v=document.getElementById('nx-camFeed');if(v){v.srcObject=null;v.style.opacity=0;}
+  document.getElementById('nx-permScreen').style.display='flex';
+  document.getElementById('nx-live-scan-badge').classList.remove('on');
+  // stop intervals
+  clearInterval(nxClkIv);clearInterval(nxNeuralIv);clearInterval(nxAfIv);clearInterval(nxEvIv);
+  if(nxRecTimer){clearInterval(nxRecTimer);nxRecTimer=null;nxRecStart=null;}
+  // reset result panels
+  const r=document.getElementById('nx-bc-result');if(r)r.classList.remove('show');
+  const pp=document.getElementById('nx-prod-panel');if(pp)pp.classList.remove('show');
+  nxFoundCode='';
+  nxZoomTrack=null;nxZoomLevel=1;
+};
+
+})();
+</script>
+
+<script>
+/* ── PWA Service Worker Registration ── */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { scope: './' })
+      .then(reg => {
+        console.log('[PWA] Service Worker registered ✓', reg.scope);
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener('statechange', () => {
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('[PWA] Update available — refresh to apply');
+            }
+          });
+        });
+      })
+      .catch(err => console.warn('[PWA] SW registration failed:', err));
+  });
+}
+</script>
+
+</body>
+</html>
