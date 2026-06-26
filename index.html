@@ -796,7 +796,10 @@ body.cam-open #page-catalog{
     position:absolute;left:0;right:0;height:1px;
     background:linear-gradient(90deg,transparent,rgba(0,212,170,.8),transparent);
     box-shadow:0 0 8px rgba(0,212,170,.6);
-    animation:htScanLine 2s ease-in-out infinite alternate; opacity:1;
+    /* [PERF FIX] ลด frequency จาก 2s → 8s และใช้ animation-play-state ที่ควบคุมได้ */
+    animation:htScanLine 8s ease-in-out infinite alternate;
+    will-change: top;
+    opacity:1;
     pointer-events:none;z-index:3;
   }
 
@@ -835,7 +838,11 @@ body.cam-open #page-catalog{
     animation:htCardIn .5s cubic-bezier(.34,1.56,.64,1) both;
   }
   .dash-ready .ht-ring-card.ht-card{
-    animation:htCardIn .5s cubic-bezier(.34,1.56,.64,1) both, htGlow 4s ease-in-out 1s infinite;
+    /* [PERF FIX] เปลี่ยนจาก htGlow infinite เป็น box-shadow + transition
+       ลดภาระ compositor — เอฟเฟกต์เหมือนเดิมแต่ไม่ต้องรัน keyframe ทุก frame */
+    animation:htCardIn .5s cubic-bezier(.34,1.56,.64,1) both;
+    box-shadow: 0 0 8px var(--gc,#00d4aa), 0 4px 24px rgba(0,0,0,.4);
+    transition: box-shadow 2s ease-in-out;
   }
   .ht-ring-wrap{position:relative;flex-shrink:0;width:96px;height:96px}
   .ht-ring-outer{
@@ -2991,6 +2998,9 @@ body.cam-open #page-catalog{
   /* remove old dark-mode barcode canvas filter */
   .rec-card-barcode-row canvas {
     max-width:100%;height:auto !important;display:block;
+    /* [PERF FIX] แยก compositor layer — ใช้ layout+style เท่านั้น (strict บังคับ fixed size ทำให้ height:auto พัง) */
+    will-change: transform, opacity, clip-path;
+    contain: layout style;
   }
 
   /* ── GLITCH EFFECT ── */
@@ -6919,6 +6929,10 @@ body.cam-open #page-catalog{
       document.addEventListener('visibilitychange',function(){
         if(!document.hidden&&!_ecgRafId)_ecgRafId=requestAnimationFrame(frame);
       });
+      // [PERF FIX] รับ signal จาก switchTab เมื่อกลับมา dashboard
+      window.addEventListener('resumeEcg', function(){
+        if(!_ecgRafId) _ecgRafId = requestAnimationFrame(frame);
+      });
 
       setTimeout(init, 80); // wait for layout to settle
     })();
@@ -7597,7 +7611,7 @@ body.cam-open #page-catalog{
         <span class="rec-search-icon">◉</span>
         <input class="inp" id="searchInput" placeholder="ค้นชื่อ / บาร์โค้ด..." autocomplete="off"
           style="-webkit-user-select:text!important;user-select:text!important;padding-right:46px!important;"
-          oninput="renderRecords(); document.getElementById('rec-hud-count-display').querySelector('span').textContent=document.querySelectorAll('#recList .rec-card').length; (function(){const btn=document.getElementById('photo-scan-btn');if(!btn)return;const hasVal=document.getElementById('searchInput').value.length>0;btn.querySelector('svg.ic-cam').style.display=hasVal?'none':'block';btn.querySelector('svg.ic-clear').style.display=hasVal?'block':'none';})();"/>
+          oninput="_renderRecDebounced(); document.getElementById('rec-hud-count-display').querySelector('span').textContent=document.querySelectorAll('#recList .rec-card').length; (function(){const btn=document.getElementById('photo-scan-btn');if(!btn)return;const hasVal=document.getElementById('searchInput').value.length>0;btn.querySelector('svg.ic-cam').style.display=hasVal?'none':'block';btn.querySelector('svg.ic-clear').style.display=hasVal?'block':'none';})();"/>
         <!-- ─ INLINE CAMERA / CLEAR BUTTON ─ -->
         <label id="photo-scan-btn" title="ถ่ายรูปสแกนบาร์โค้ด"
           style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:9px;border:none;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2;padding:0"
@@ -9281,6 +9295,21 @@ function switchTab(name) {
   document.body.scrollTop = 0;
   window.scrollTo(0, 0);
 
+  // ── [PERF FIX] หยุด sonar/ECG canvas เมื่อออกจาก dashboard — คืน GPU ──
+  if (name !== 'dashboard') {
+    if (typeof _sonarRafId !== 'undefined' && _sonarRafId) {
+      cancelAnimationFrame(_sonarRafId); _sonarRafId = null;
+    }
+    if (typeof _ecgRafId !== 'undefined' && _ecgRafId) {
+      cancelAnimationFrame(_ecgRafId); _ecgRafId = null;
+    }
+  } else if (prevTab !== 'dashboard') {
+    // กลับมา dashboard → เริ่ม loop ใหม่
+    if (typeof drawSonar === 'function' && !_sonarRafId)
+      _sonarRafId = requestAnimationFrame(drawSonar);
+    window.dispatchEvent(new Event('resumeEcg'));
+  }
+
   // ── 6. defer render หลัง browser วาด frame ── ทำให้ tap response ทันที
   // shelf: แสดง skeleton ก่อน (sync, เร็วมาก) แล้ว render จริงใน rAF
   if (name==="shelf") {
@@ -9633,6 +9662,27 @@ function _drawBarcode(canvas) {
     } catch(e2) {}
   }
 }
+
+// ── [PERF FIX] หยุด glitch animation บน barcode canvas ที่อยู่นอก viewport ──
+// ป้องกันแอปกระตุกเมื่อมีรายการเยอะ (animation infinite ทุกการ์ดรันพร้อมกัน)
+let _glitchVisbObs = null;
+function _initGlitchVisibilityObserver(){
+  if(_glitchVisbObs) return;
+  _glitchVisbObs = new IntersectionObserver(entries=>{
+    entries.forEach(e=>{
+      // หยุด/เล่น animation ตาม visibility — ลดภาระ compositor
+      e.target.style.animationPlayState = e.isIntersecting ? 'running' : 'paused';
+    });
+  }, { rootMargin: '100px' });
+}
+function _observeGlitchCanvas(container){
+  _initGlitchVisibilityObserver();
+  const scope = container || document;
+  scope.querySelectorAll('canvas[data-barcode]').forEach(c=>{
+    if(!c._glitchObserved){ c._glitchObserved=true; _glitchVisbObs.observe(c); }
+  });
+}
+
 let _bcObserver = null;
 function renderBarcodeCanvases(container) {
   if (!_bcObserver) {
@@ -9652,6 +9702,8 @@ function renderBarcodeCanvases(container) {
   scope.querySelectorAll("canvas[data-barcode]").forEach(canvas => {
     if (!canvas._bcDrawn) _bcObserver.observe(canvas);
   });
+  // [PERF FIX] เปิด glitch-pause observer ด้วย
+  _observeGlitchCanvas(scope);
 }
 
 function syncQtyHeight(row) {
@@ -9704,7 +9756,7 @@ function _dbounce(fn, ms) {
 }
 // renderDashboard / renderRecords แบบ debounce — ใช้แทนในจุดที่เรียกถี่
 const _renderDashDebounced = _dbounce(()=>renderDashboard(), 60);
-const _renderRecDebounced  = _dbounce(()=>renderRecords(),   60);
+const _renderRecDebounced  = _dbounce(()=>renderRecords(),   120);
 // @ZONE:RECORDS — record card render / CRUD
 // ── records ───────────────────────────────────────────────
 function setFilter(f) {
@@ -10456,6 +10508,30 @@ function renderRecords() {
     // สร้าง wrapper เพื่อ observe เฉพาะ canvas ใน chunk ใหม่
     requestAnimationFrame(()=>{
       newNodes.forEach(n=>{ if(n.querySelectorAll) renderBarcodeCanvases(n); });
+      // [PERF FIX] หยุด animation บนการ์ดที่ scroll ออกไปนอก viewport
+      // เมื่อมีรายการเยอะ การ์ดด้านล่างที่มองไม่เห็นยังรัน glitch/scanline/blink อยู่
+      if(!window._cardAnimObs){
+        window._cardAnimObs = new IntersectionObserver(entries=>{
+          entries.forEach(e=>{
+            const play = e.isIntersecting ? 'running' : 'paused';
+            // [SAFE] pause เฉพาะ element ที่รู้จักว่า animate แบบ decorative เท่านั้น
+            // ห้ามใช้ [style*="animation"] เพราะจะ match layout/display elements ด้วย
+            e.target.querySelectorAll(
+              '.ht-scan-bar, .ht-ring-outer, .ht-ring-sonar, ' +
+              '.bc-glitch-scanline, .bc-glitch-wrap'
+            ).forEach(el=>{ el.style.animationPlayState = play; });
+            // pause canvas glitch layers (canvas[data-barcode] เท่านั้น ไม่กระทบ layout)
+            e.target.querySelectorAll('canvas[data-barcode]')
+              .forEach(el=>{ el.style.animationPlayState = play; });
+          });
+        }, { rootMargin: '80px' });
+      }
+      newNodes.forEach(n=>{
+        if(n && n.classList && n.classList.contains('rec-card'))
+          window._cardAnimObs.observe(n);
+        else if(n && n.querySelectorAll)
+          n.querySelectorAll('.rec-card').forEach(c=>window._cardAnimObs.observe(c));
+      });
     });
     // add new sentinel if more remain
     if (_recPage * PAGE < shown.length) {
@@ -10477,6 +10553,8 @@ function renderRecords() {
   // render first page immediately in next microtask (after chips paint)
   // reset barcode observer เมื่อ list ถูก clear ใหม่
   if (_bcObserver) { _bcObserver.disconnect(); _bcObserver = null; }
+  // [PERF FIX] reset card animation observer เพื่อไม่ให้ leak บน DOM node เก่า
+  if (window._cardAnimObs) { window._cardAnimObs.disconnect(); window._cardAnimObs = null; }
   rl.innerHTML = '';
   _recPage = 0;
   // guard token: ป้องกัน rAF ซ้อนกัน (กรณี renderRecords ถูกเรียก 2 ครั้งติดกัน)
@@ -14138,7 +14216,23 @@ function getProductPhotoAsync(barcode){
       else resolve(null);
     };
     req.onerror=()=>resolve(null);
-  })).catch(()=>null);
+  })).then(local=>{
+    if(local) return local;
+    // ── [BUG FIX] ถ้า IDB ไม่มี → ดึง thumbUrl จาก catalog (sync มาจากเครื่องอื่น) ──
+    const entry = (typeof catalog !== 'undefined') && catalog.find(p=>p.barcode===barcode);
+    const cloudUrl = entry && (entry.thumbUrl || entry.photoUrl);
+    if(!cloudUrl) return null;
+    return fetch(cloudUrl)
+      .then(r=>r.blob())
+      .then(blob=>new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(blob); }))
+      .then(dataUrl=>{
+        _productPhotoMemCache[barcode]=dataUrl;
+        // cache ลง IDB เพื่อใช้ครั้งถัดไปโดยไม่ต้อง fetch ซ้ำ
+        saveProductPhoto(barcode, null, dataUrl);
+        return dataUrl;
+      })
+      .catch(()=>null);
+  }).catch(()=>null);
 }
 async function uploadProductPhotoToCloud(barcode, photoDataURL, thumbDataURL){
   if(!_cloudStorage) return null;
@@ -14225,7 +14319,18 @@ function onProductPhoto(input){
 
     showToast("บันทึกรูปสินค้าแล้ว — กำลัง sync ขึ้น cloud...");
     uploadProductPhotoToCloud(barcode, photo, thumb).then(res=>{
-      if(res && (res.photoUrl||res.thumbUrl)) showToast("☁️ sync รูปสินค้าขึ้น cloud สำเร็จ");
+      if(res && (res.photoUrl||res.thumbUrl)){
+        showToast("☁️ sync รูปสินค้าขึ้น cloud สำเร็จ");
+        // ── [BUG FIX] บันทึก photoUrl/thumbUrl กลับเข้า catalog entry ──
+        // เครื่องอื่นที่ sync catalogDelta มาจะได้โหลดรูปจาก Firebase Storage ได้
+        const entry = catalog.find(p=>p.barcode===barcode);
+        if(entry){
+          if(res.photoUrl)  entry.photoUrl  = res.photoUrl;
+          if(res.thumbUrl)  entry.thumbUrl  = res.thumbUrl;
+          if(typeof saveCatalogLS==='function')       saveCatalogLS();
+          if(typeof cloudSetCatalogDelta==='function') cloudSetCatalogDelta();
+        }
+      }
     });
 
     // refresh any visible record-list thumbnails for this barcode
