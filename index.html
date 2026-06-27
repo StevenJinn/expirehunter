@@ -7651,7 +7651,7 @@ body.cam-open #page-catalog{
           // toggle icon: กล้อง → ✕
           const btn=document.getElementById('photo-scan-btn');
           if(btn){ btn.querySelector('svg.ic-cam').style.display='none'; btn.querySelector('svg.ic-clear').style.display='block'; }
-          showToast('ค้นหา: '+code+' ✓');
+          showToast('ค้นหา: '+code+'');
         } else {
           showToast("ไม่พบบาร์โค้ด — ถ่ายใกล้ขึ้น","err");
         }
@@ -13900,7 +13900,7 @@ function pickRecordToShelf(recordId, btn){
     if(existingItem) existingItem.qty = r.qty; // sync เสมอ
     saveShelves();
     if(btn){ btn.textContent='✓ sync แล้ว'; btn.style.background='linear-gradient(135deg,#26de81,#20c97e)'; btn.disabled=true; }
-    showToast('sync qty → '+existingShelf.name+' แล้ว ✓','ok');
+    showToast('sync qty → '+existingShelf.name+' แล้ว','ok');
     return;
   }
 
@@ -14041,7 +14041,7 @@ function pickRecordToShelfConfirm(shelfId){
     const ei=existingShelf.items.find(i=>i.key===itemKey);
     if(ei) ei.qty=r.qty;
     saveShelves(); renderStockSummaryAll();
-    showToast('sync qty → '+existingShelf.name+' ✓','ok');
+    showToast('sync qty → '+existingShelf.name+'','ok');
     return;
   }
   if(!s.items.find(i=>i.key===itemKey))
@@ -15145,16 +15145,24 @@ function _renderShelfProductList(filterVal){
   // เรียงจากนำเข้าล่าสุด (latestAt desc)
   groups.sort((a,b)=> (b.latestAt||0) - (a.latestAt||0));
 
-  if(countEl) countEl.textContent = groups.length + ' รายการ';
+  // นับเฉพาะ group ที่มี lot ที่ยังไม่วาง
+  const availableCount = groups.filter(g=>g.lots.some(r=>!shelves.some(sh=>sh.items.some(i=>i.key==='rec__'+r.id)))).length;
+  if(countEl) countEl.textContent = availableCount + ' รายการ';
 
-  if(!groups.length){
-    list.innerHTML=`<div style="padding:18px 16px;text-align:center;font-size:13px;color:#555e7a">ไม่มีสินค้าในระบบ</div>`;
+  if(!groups.length || !availableCount){
+    list.innerHTML=`<div style="padding:18px 16px;text-align:center;font-size:13px;color:#555e7a">${!groups.length?'ไม่มีสินค้าในระบบ':'สินค้าทั้งหมดวางเชลฟ์แล้ว'}</div>`;
     return;
   }
 
   list.innerHTML = groups.map((g,gi)=>{
     g.lots.sort((a,b)=>new Date(a.expDate)-new Date(b.expDate));
-    const multiLot = g.lots.length > 1;
+
+    // กรองเฉพาะ lot ที่ยังไม่วาง
+    const availableLots = g.lots.filter(r=>!shelves.some(sh=>sh.items.some(i=>i.key==='rec__'+r.id)));
+    // ถ้าทุก lot วางแล้ว → ซ่อนทั้ง group
+    if(!availableLots.length) return '';
+
+    const multiLot = availableLots.length > 1;
 
     // วันที่นำเข้าล่าสุด (latestAt)
     let importStr = '';
@@ -15177,21 +15185,17 @@ function _renderShelfProductList(filterVal){
           <div style="font-size:11px;color:rgba(0,212,170,.7);font-weight:700;font-family:'IBM Plex Mono',monospace">${importStr}</div>
         </div>`:''}
       </div>
-      ${g.lots.map((r,idx)=>{
+      ${availableLots.map((r,idx)=>{
         const d=r.expDate?diffDays(r.expDate):null;
         const col=d===null?'#8a91b0':d<=0?'#ff4d4d':d<=7?'#ff6b6b':d<=30?'#ff9f43':d<=90?'#ffd32a':'#00d4aa';
         const dateStr=r.expDate?(()=>{const[yy,mm,dd3]=r.expDate.split('-');return `${dd3}/${mm}/${yy.slice(-2)}`;})():'ไม่ระบุ';
-        const alreadyOn = shelves.some(sh=>sh.items.some(i=>i.key==='rec__'+r.id));
-        const btnHtml = alreadyOn
-          ? `<span style="font-size:11px;color:#555e7a;font-weight:700;white-space:nowrap">วางแล้ว</span>`
-          : `<button ontouchstart="this.style.opacity='.7'" ontouchend="this.style.opacity='1'" onclick="_shelfDropdownAdd('${r.id}')" style="background:linear-gradient(135deg,#00d4aa,#00b891);border:none;border-radius:8px;padding:6px 14px;color:#0f1117;font-weight:800;font-size:12px;cursor:pointer;white-space:nowrap;transition:.15s">+ เพิ่ม</button>`;
         return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0${idx>0?';border-top:1px solid rgba(255,255,255,.04)':''}">
           <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
             ${multiLot?`<span style="font-size:9px;font-weight:700;color:#00d4aa;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.25);border-radius:10px;padding:2px 7px;flex-shrink:0">L${idx+1}</span>`:''}
             <span style="font-weight:800;color:${col};font-size:13px;flex-shrink:0">${dateStr}</span>
             <span style="font-size:11px;color:#ff9f43;font-weight:700;flex-shrink:0">${r.qty} ${r.unit||'ชิ้น'}</span>
           </div>
-          <div style="flex-shrink:0">${btnHtml}</div>
+          <div style="flex-shrink:0"><button ontouchstart="this.style.opacity='.7'" ontouchend="this.style.opacity='1'" onclick="event.stopPropagation();_shelfDropdownAdd('${r.id}')" style="background:linear-gradient(135deg,#00d4aa,#00b891);border:none;border-radius:8px;padding:6px 14px;color:#0f1117;font-weight:800;font-size:12px;cursor:pointer;white-space:nowrap;transition:.15s">+ เพิ่ม</button></div>
         </div>`;
       }).join('')}
     </div>`;
@@ -15204,23 +15208,20 @@ function _shelfDropdownAdd(recordId){
   const s = shelves.find(x=>x.id===currentShelfId);
   if(!s){ showToast('ไม่พบเชลฟ์ปัจจุบัน','err'); return; }
   const itemKey = 'rec__'+r.id;
-  // ถ้าอยู่แล้ว → sync qty
-  const existingShelf = shelves.find(sh=>sh.items.find(i=>i.key===itemKey));
-  if(existingShelf){
-    const ei = existingShelf.items.find(i=>i.key===itemKey);
-    if(ei) ei.qty = r.qty;
-    saveShelves(); renderStockSummaryAll();
-    showToast('sync qty แล้ว ✓','ok');
-    shelfSearchClear();
-    return;
-  }
+  // ถ้าวางแล้ว → ไม่ทำอะไร (ป้องกันบัคจำนวน)
+  const alreadyOn = shelves.some(sh=>sh.items.some(i=>i.key===itemKey));
+  if(alreadyOn) return;
   s.items.push({key:itemKey, barcode:r.barcode, name:r.name, expDate:r.expDate, qty:r.qty, unit:r.unit||'', lotNum:r.lotNum||null});
   saveShelves(); renderStockSummaryAll();
   _renderShelfItemsDebounced(s); _renderPlanogramDebounced(s);
   setTimeout(_upAutoOpen, 120);
-  showToast('เพิ่ม '+r.name+' → '+s.name+' ✓','ok');
-  shelfSearchClear();
-  // re-render dropdown เพื่ออัปเดตปุ่ม "วางแล้ว"
+  // ส่งของเข้า Staging Bay ทันที (ของยังไม่ถูกวางลง grid) — ไม่ปิดช่องค้นหา
+  if(typeof _facUpdate==='function'){
+    const _allP = s.grid.flat().flat();
+    _facUpdate(s.items.filter(i=>!_allP.includes(i.key||i.barcode)&&(i.qty||0)>0));
+  }
+  showToast('เพิ่ม '+r.name+' → STAGING BAY','ok');
+  // re-render dropdown เพื่ออัปเดตปุ่ม "วางแล้ว" — ไม่ปิด dropdown
   const si = document.getElementById('shelfDDSearchInput');
   _renderShelfProductList(si ? si.value.trim() : '');
 }
@@ -15250,7 +15251,7 @@ async function decodeShelfSearchPhoto(input){
     URL.revokeObjectURL(url);
     if(code){
       shelfSearchOninput(code);
-      showToast('ค้นหา: '+code+' ✓');
+      showToast('ค้นหา: '+code+'');
     } else {
       showToast('ไม่พบบาร์โค้ด — ถ่ายใกล้ขึ้น','err');
     }
@@ -16885,7 +16886,7 @@ function refillConfirm(){
   item.qty = rec ? rec.qty : (item.qty||0) + refillQty;
   _pendingOOSIdx = null;
   saveShelves(); _renderShelfItemsDebounced(s); _renderPlanogramDebounced(s); renderStockSummaryAll(); _renderShelfListDebounced(); if(typeof renderDashboard==='function') renderDashboard();
-  showToast('เพิ่มสต็อก +' + refillQty + ' แล้ว ✓', 'ok');
+  showToast('เพิ่มสต็อก +' + refillQty + ' แล้ว', 'ok');
 }
 
 // tap ที่ปุ่ม "เพิ่มสต็อก" บน row โดยตรง → เปิด modal รับสต็อกเข้า
@@ -18607,11 +18608,11 @@ function confirmSplitLot(){
   // ถ้ากำลังเปิด shelf อยู่ → refresh planogram (lot B จะขึ้น FAC staging)
   const curShelf = shelves.find(x => x.id === currentShelfId);
   if(curShelf) renderPlanogram(curShelf);
-  showToast(`แยกล็อตแล้ว · A:${qA} / B:${qB} ${r.unit||''} ✓`, 'ok');
+  showToast(`แยกล็อตแล้ว · A:${qA} / B:${qB} ${r.unit||''}`, 'ok');
 }
 
 function _recActionCopy(barcode){
-  navigator.clipboard&&navigator.clipboard.writeText(barcode).then(()=>showToast('คัดลอกบาร์โค้ดแล้ว ✓')).catch(()=>showToast('คัดลอกไม่สำเร็จ','err'));
+  navigator.clipboard&&navigator.clipboard.writeText(barcode).then(()=>showToast('คัดลอกบาร์โค้ดแล้ว')).catch(()=>showToast('คัดลอกไม่สำเร็จ','err'));
   closeRecAction();
 }
 
@@ -18646,8 +18647,8 @@ function _recActionSearch(barcode){
 
   /* ── FAC right-rail tab (replaces old FAB) ── */
   @keyframes facTabIn{from{opacity:0;transform:translateX(60px)}to{opacity:1;transform:translateX(0)}}
-  @keyframes facRailSlideIn{from{opacity:0;transform:translateX(calc(100% + 14px))}to{opacity:1;transform:translateX(0)}}
-  @keyframes facRailSlideOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(calc(100% + 14px))}}
+  @keyframes facRailSlideIn{from{opacity:0;transform:translateY(-50%) translateX(calc(100% + 14px))}to{opacity:1;transform:translateY(-50%) translateX(0)}}
+  @keyframes facRailSlideOut{from{opacity:1;transform:translateY(-50%) translateX(0)}to{opacity:0;transform:translateY(-50%) translateX(calc(100% + 14px))}}
   @keyframes facTabScan{0%{top:-20px}100%{top:110%}}
   @keyframes facTabCountPulse{0%,100%{text-shadow:0 0 8px rgba(255,159,67,.6)}50%{text-shadow:0 0 18px rgba(255,159,67,1),0 0 32px rgba(255,159,67,.5)}}
   @keyframes facTabEdge{0%,100%{opacity:.3}50%{opacity:1}}
@@ -18743,8 +18744,8 @@ function _recActionSearch(barcode){
     display:none;
     flex-direction:column;
     width:240px;
-    max-height:80vh;
-    height:auto;
+    max-height:min(80vh,520px);
+    height:min(80vh,520px);
     will-change:transform;
     backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);
     transition:height .25s cubic-bezier(.4,0,.2,1),max-height .25s cubic-bezier(.4,0,.2,1);
@@ -18848,17 +18849,19 @@ function _recActionSearch(barcode){
     display:flex;flex-direction:column;gap:5px;
     position:relative;z-index:2;
     min-height:0;
+    overscroll-behavior:contain;
+    touch-action:pan-y;
   }
   .fac-item.fac-no-anim{animation:none!important;}
   /* ── item card ── */
   .fac-item{
-    display:flex;align-items:stretch;gap:0;
+    display:flex;align-items:stretch;gap:0;flex-shrink:0;
     background:linear-gradient(135deg,rgba(10,14,28,.9) 0%,rgba(8,12,24,.85) 100%);
     border:1px solid rgba(255,255,255,.07);
     border-radius:11px;overflow:hidden;cursor:pointer;
     transition:border-color .15s,background .15s,transform .12s,box-shadow .15s;
     animation:facItemIn .22s cubic-bezier(.34,1.56,.64,1) both;
-    -webkit-user-select:none;user-select:none;touch-action:pan-x pan-y;
+    -webkit-user-select:none;user-select:none;touch-action:pan-y;
     box-shadow:0 2px 12px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.04);
   }
   .fac-item:active{transform:scale(.97);background:rgba(20,26,46,.9);box-shadow:0 1px 6px rgba(0,0,0,.3)}
@@ -20231,7 +20234,7 @@ function nxShowProductPanel(code){
   }
 
   document.getElementById('nx-prod-panel').classList.add('show');
-  if(typeof showToast==='function')showToast('พบบาร์โค้ด: '+code+' ✓','ok');
+  if(typeof showToast==='function')showToast('พบบาร์โค้ด: '+code+'','ok');
 }
 
 // ── Helper: find record ─────────────────────────────
