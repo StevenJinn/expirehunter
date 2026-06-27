@@ -8798,6 +8798,7 @@ function _extractPayload(val){
   return val && val.payload !== undefined ? val.payload : null;
 }
 let _cloudListenersAttached = false;
+let _shelvesListenerFirstFire = true; // [FIX] fire แรกของ .on('value') ซ้ำกับข้อมูลที่ syncFromCloud() เพิ่ง render ไปแล้ว — ข้าม renderShelfList รอบนี้
 function _attachCloudListeners(){
   if (_cloudListenersAttached || !_cloudReady) return;
   _cloudListenersAttached = true;
@@ -8821,8 +8822,12 @@ function _attachCloudListeners(){
     loadShelfPhotosFromIDB();
     renderStockSummaryAll();
     if (typeof renderDashboard === 'function') renderDashboard();
-    if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
-    else if (typeof renderShelfList === 'function') renderShelfList();
+    if (_shelvesListenerFirstFire) {
+      _shelvesListenerFirstFire = false; // [FIX] ข้าม render รอบแรก เพราะ syncFromCloud() render ข้อมูลเดียวกันนี้ไปแล้ว
+    } else {
+      if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
+      else if (typeof renderShelfList === 'function') renderShelfList();
+    }
     if (typeof currentShelfId !== 'undefined' && currentShelfId) {
       const s = shelves.find(x=>x.id===currentShelfId);
       if (s) {
