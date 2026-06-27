@@ -14161,6 +14161,23 @@ async function loadShelfPhotosFromIDB(){
     }
   }catch(e){}
   renderShelfList(); // refresh thumbnails after photos loaded
+  // ── [FIX] ถ้า shelf-detail-view เปิดอยู่ตรงเชลฟ์ที่รูปเพิ่งโหลดมาจาก IDB ให้ sync รูปกลับเข้าจอด้วย
+  // (กันเคส openShelfDetail() เคยรันไปแล้วตอน s.photo ยังเป็น null ทำให้ค้างเป็นกริดเปล่าไม่มีรูป) ──
+  if (typeof currentShelfId !== 'undefined' && currentShelfId) {
+    const _dv = document.getElementById("shelf-detail-view");
+    if (_dv && _dv.style.display !== "none") {
+      const _s = shelves.find(x=>x.id===currentShelfId);
+      if (_s && _s.photo) {
+        const _img = document.getElementById("shelf-photo-img");
+        if (_img) _img.src = _s.photo;
+        const _prev = document.getElementById("shelf-photo-preview");
+        if (_prev) _prev.style.display = "block";
+        const _empty = document.getElementById("shelf-photo-empty");
+        if (_empty) _empty.style.display = "none";
+        if (typeof _shelfPhotoMode === 'function') _shelfPhotoMode(true);
+      }
+    }
+  }
   // ── re-render picker ถ้าเปิดอยู่ (thumb โหลดหลัง picker render) ──
   const _pickerModal = document.getElementById('dash-shelf-picker');
   if(_pickerModal && _pickerModal.style.display !== 'none'){
