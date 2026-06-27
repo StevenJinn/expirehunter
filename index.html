@@ -8766,7 +8766,12 @@ async function syncFromCloud(){
     else if (_lastCatalogDelta.length) cloudSet('catalogDelta', _lastCatalogDelta);
 
     if (cShelves && cShelves.length) {
-      shelves = cShelves.map(s=>{ const photo=loadShelfPhoto(s.id)||s.photo||s.photoUrl||null; const thumb=loadShelfThumb(s.id)||s.thumb||s.thumbUrl||null; return {...s, photo, thumb}; });
+      shelves = cShelves.map(s=>{
+        const _ex = shelves.find(x=>x.id===s.id); // [FIX] เก็บรูป/thumb ที่มีอยู่แล้วในเครื่อง ไม่ให้หายไปก่อนตอน rebuild array
+        const photo=(_ex&&_ex.photo)||loadShelfPhoto(s.id)||s.photo||s.photoUrl||null;
+        const thumb=(_ex&&_ex.thumb)||loadShelfThumb(s.id)||s.thumb||s.thumbUrl||null;
+        return {...s, photo, thumb};
+      });
       localStorage.setItem("expiry-shelves-v1", JSON.stringify(cShelves));
       loadShelfPhotosFromIDB(); // ── ดึงรูปจาก IndexedDB กลับมา merge เข้า shelves ที่ rebuild ใหม่ (กันรูปหายตอน sync) ──
       changed = true;
@@ -8817,7 +8822,12 @@ function _attachCloudListeners(){
       _markCloudSyncError('shelves: ignored empty remote (data protection)');
       return;
     }
-    shelves = cShelves.map(s=>{ const photo=loadShelfPhoto(s.id)||s.photo||s.photoUrl||null; const thumb=loadShelfThumb(s.id)||s.thumb||s.thumbUrl||null; return {...s, photo, thumb}; });
+    shelves = cShelves.map(s=>{
+      const _ex = shelves.find(x=>x.id===s.id); // [FIX] เก็บรูป/thumb ที่มีอยู่แล้วในเครื่อง ไม่ให้หายไปก่อนตอน rebuild array
+      const photo=(_ex&&_ex.photo)||loadShelfPhoto(s.id)||s.photo||s.photoUrl||null;
+      const thumb=(_ex&&_ex.thumb)||loadShelfThumb(s.id)||s.thumb||s.thumbUrl||null;
+      return {...s, photo, thumb};
+    });
     localStorage.setItem("expiry-shelves-v1", JSON.stringify(cShelves));
     loadShelfPhotosFromIDB();
     renderStockSummaryAll();
@@ -14145,6 +14155,7 @@ function deleteShelfPhotoFromCloud(shelfId){
 }
 // Load photos from IDB into shelves array (async, call after loadShelves)
 async function loadShelfPhotosFromIDB(){
+  let _anyPatched = false; // [FIX] track ว่ามีรูป/thumb ใหม่ที่ต้องเติมจริงไหม
   try{
     const db=await _openIDB();
     // ใช้ transaction แยกต่อ shelf เพื่อป้องกัน tx timeout กรณี shelf เยอะ
@@ -14156,15 +14167,16 @@ async function loadShelfPhotosFromIDB(){
           let done=0;
           const check=()=>{ if(++done===2) res(); };
           const rp=st.get(_photoKey(s.id));
-          rp.onsuccess=()=>{ if(rp.result&&!s.photo) s.photo=rp.result; check(); };
+          rp.onsuccess=()=>{ if(rp.result&&!s.photo){ s.photo=rp.result; _anyPatched=true; } check(); };
           rp.onerror=()=>check();
           const rt=st.get(_thumbKey(s.id));
-          rt.onsuccess=()=>{ if(rt.result&&!s.thumb) s.thumb=rt.result; check(); };
+          rt.onsuccess=()=>{ if(rt.result&&!s.thumb){ s.thumb=rt.result; _anyPatched=true; } check(); };
           rt.onerror=()=>check();
         });
       }catch(e){}
     }
   }catch(e){}
+  if (!_anyPatched) return; // [FIX] ไม่มีรูปใหม่ต้องเติม — ไม่ต้อง render ซ้ำ แค่ไม่ทำอะไรเลย
   renderShelfList(); // refresh thumbnails after photos loaded
   // ── [FIX] ถ้า shelf-detail-view เปิดอยู่ตรงเชลฟ์ที่รูปเพิ่งโหลดมาจาก IDB ให้ sync รูปกลับเข้าจอด้วย
   // (กันเคส openShelfDetail() เคยรันไปแล้วตอน s.photo ยังเป็น null ทำให้ค้างเป็นกริดเปล่าไม่มีรูป) ──
