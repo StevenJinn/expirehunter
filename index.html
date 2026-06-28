@@ -8921,8 +8921,9 @@ function saveCatalogLS() {
   const delta = catalog.filter(p=>{
     const orig = embeddedMap.get(p.barcode);
     if (!orig) return true; // รายการใหม่ที่ไม่มีใน embedded
-    // มีใน embedded แต่ค่าเปลี่ยน (name/unit/category อัพเดท)
-    return orig.name !== p.name || orig.unit !== p.unit || orig.category !== p.category;
+    // มีใน embedded แต่ค่าเปลี่ยน (name/unit/category หรือรูปสินค้าที่ sync ขึ้น cloud)
+    return orig.name !== p.name || orig.unit !== p.unit || orig.category !== p.category
+        || p.photoUrl || p.thumbUrl;
   });
   try {
     localStorage.setItem("expiry-catalog-delta", JSON.stringify(delta));
