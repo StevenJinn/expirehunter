@@ -10346,7 +10346,11 @@ function renderRecords() {
     const addedTs = r.addedAt ? new Date(r.addedAt).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
 
     // product photo thumbnail (shared per barcode, optional)
-    const _prodThumb = r.barcode ? loadProductPhoto(r.barcode) : null;
+    // fallback: ถ้า local ไม่มี → ใช้ thumbUrl/photoUrl จาก catalog ที่ sync มาจาก cloud โดยตรง
+    // (<img src> โหลด Firebase Storage URL ได้เลย ไม่ต้องผ่าน fetch/CORS)
+    const _prodThumbLocal = r.barcode ? loadProductPhoto(r.barcode) : null;
+    const _prodCatalogEntry = r.barcode && (typeof catalog !== 'undefined') && catalog.find(p=>p.barcode===r.barcode);
+    const _prodThumb = _prodThumbLocal || (_prodCatalogEntry && (_prodCatalogEntry.thumbUrl || _prodCatalogEntry.photoUrl)) || null;
 
     return `<div class="rec-card${isOOS?' oos-card':''} fade" data-record-id="${r.id}"
       style="
