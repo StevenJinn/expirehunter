@@ -8878,6 +8878,8 @@ async function syncFromCloud(){
       if (typeof _attachShelfPhotoListeners === 'function') _attachShelfPhotoListeners();
     }
     _attachCloudListeners();
+    // ── safety: หลัง listeners ติดแล้ว → ดึงรูปอีกครั้ง กัน timing miss ──
+    setTimeout(()=>{ if(typeof loadProductPhotosFromIDB==='function') loadProductPhotosFromIDB(); }, 1500);
   } catch(e) { console.warn("[cloud] syncFromCloud failed", e); _markCloudSyncError('syncFromCloud: '+(e&&e.code||e&&e.message||e)); }
 }
 
@@ -8932,6 +8934,8 @@ function _attachCloudListeners(){
       }
     }
     _markCloudSynced();
+    // ── ผูก listener รูปเชลฟ์สำหรับเชลฟ์ใหม่ที่ sync มาจากเครื่องอื่น ──
+    _attachShelfPhotoListeners();
   }, e=>{ console.warn("[cloud] shelves listener fail", e); _markCloudSyncError('shelves-listen: '+(e&&e.code||e)); });
 
   // records — sync สด
@@ -8950,13 +8954,16 @@ function _attachCloudListeners(){
     localStorage.setItem("expiry-records-v2", JSON.stringify(records));
     renderDashboard(); renderRecords(); renderStockSummaryAll();
     _markCloudSynced();
+    // ── ผูก listener รูปสินค้าสำหรับ barcode ใหม่ที่ sync มาจากเครื่องอื่น ──
+    _attachProductPhotoListeners();
+    if (typeof loadProductPhotosFromIDB === 'function') loadProductPhotosFromIDB();
   }, e=>{ console.warn("[cloud] records listener fail", e); _markCloudSyncError('records-listen: '+(e&&e.code||e)); });
 
   // catalogDelta — sync สด
   _cloudRef('catalogDelta').on('value', snap=>{
     if (!snap.exists()) return;
     const d = snap.val();
-    if (d && d.updatedAt && _lastWriteAt['catalogDelta'] && d.updatedAt <= _lastWriteAt['catalogDelta']) return;
+
     const cDelta = _extractPayload(d);
     if (!cDelta) return;
     localStorage.setItem("expiry-catalog-delta", JSON.stringify(cDelta));
@@ -9098,7 +9105,20 @@ window.cdbBulkUploadPhotos = async function(){
       if(!thumb && !photo){ skipped++; done++; _upd(); continue; } // ไม่มีรูปในเครื่องนี้เลย
       // ตรวจว่า cloud มีแล้วไหม
       const existing = await cloudGet('productPhoto_'+bc);
-      if(existing && (existing.thumb||existing.photo)){ skipped++; done++; _upd(); continue; }
+      if(existing && (existing.thumb||existing.photo)){
+        // mark hasPhoto ใน catalog แม้จะ skip upload
+        const _si = (typeof catalog!=='undefined') && catalog.findIndex(p=>p.barcode===bc);
+        if(typeof _si==='number' && _si>=0 && !catalog[_si].hasPhoto){
+          catalog[_si]={...catalog[_si],hasPhoto:true};
+        }
+        // cache รูปลง memory ด้วยถ้ายังไม่มี
+        if(!_productPhotoMemCache[bc]){
+          const dataUrl = existing.thumb||existing.photo;
+          _productPhotoMemCache[bc]=dataUrl;
+          saveProductPhoto(bc, existing.photo||null, existing.thumb||null);
+        }
+        skipped++; done++; _upd(); continue;
+      }
       // upload
       const ok = await cloudSet('productPhoto_'+bc, {photo: photo||null, thumb: thumb||null}, true);
       if(ok){
@@ -9139,7 +9159,12 @@ window.cdbBulkUploadPhotos = async function(){
       if(!thumb && !photo && s.thumb) thumb = s.thumb;
       if(!thumb && !photo){ skipped++; done++; _upd(); continue; }
       const existing = await cloudGet('shelfPhoto_'+s.id);
-      if(existing && (existing.thumb||existing.photo)){ skipped++; done++; _upd(); continue; }
+      if(existing && (existing.thumb||existing.photo)){
+        s.hasPhoto=true;
+        if(!s.photo && existing.photo) s.photo=existing.photo;
+        if(!s.thumb && existing.thumb) s.thumb=existing.thumb;
+        skipped++; done++; _upd(); continue;
+      }
       const ok = await cloudSet('shelfPhoto_'+s.id, {photo: photo||null, thumb: thumb||null}, true);
       if(ok){ uploaded++; s.hasPhoto=true; } else { failed++; }
     }catch(e){ failed++; }
