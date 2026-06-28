@@ -8876,6 +8876,8 @@ async function syncFromCloud(){
       if (typeof loadProductPhotosFromIDB === 'function') loadProductPhotosFromIDB();
       // ── ผูก realtime listener รูปเชลฟ์ทันทีหลัง sync ครั้งแรก ──
       if (typeof _attachShelfPhotoListeners === 'function') _attachShelfPhotoListeners();
+      // ── ผูก realtime listener รูปสินค้า (ทุก barcode ใน records) ──
+      if (typeof _attachProductPhotoListeners === 'function') _attachProductPhotoListeners();
     }
     _attachCloudListeners();
     // ── drain รูปสินค้าที่รอ upload อยู่ (กรณี cloud offline ตอนที่เซฟรูป) ──
@@ -9032,12 +9034,18 @@ function _attachShelfPhotoListeners(){
       if (!v || (!v.thumb && !v.photo)) return;
       const shelf = shelves.find(x=>x.id===s.id);
       if (!shelf) return;
-      // ไม่ overwrite รูปที่เครื่องนี้มีอยู่แล้ว (เครื่องอื่นอาจมีรูปเก่ากว่า)
-      if (shelf.photo && shelf.thumb) return;
-      if (v.photo && !shelf.photo) shelf.photo = v.photo;
-      if (v.thumb && !shelf.thumb) shelf.thumb = v.thumb;
+      // [FIX] ลบ guard เดิม "if (shelf.photo && shelf.thumb) return" ออก —
+      // guard นั้นทำให้เครื่อง B ที่มีรูปเก่าอยู่ไม่เคยรับรูปใหม่จากเครื่อง A เลย
+      // updatedAt guard ด้านบน (d.updatedAt <= _lastWriteAt[key]) รับหน้าที่ป้องกัน
+      // echo loop แทนแล้ว — ไม่จำเป็นต้องบล็อกการ update จาก cloud อีกต่อไป
+      const _prevPhoto = shelf.photo, _prevThumb = shelf.thumb;
+      if (v.photo) shelf.photo = v.photo;
+      if (v.thumb) shelf.thumb = v.thumb;
       shelf.hasPhoto = true;
-      saveShelfPhoto(s.id, shelf.photo||null, shelf.thumb||null);
+      // บันทึกลง IDB เฉพาะเมื่อรูปเปลี่ยนจริง (ประหยัด write)
+      if (shelf.photo !== _prevPhoto || shelf.thumb !== _prevThumb) {
+        saveShelfPhoto(s.id, shelf.photo||null, shelf.thumb||null);
+      }
       // refresh shelf list thumbnail
       if (typeof renderShelfList === 'function') renderShelfList();
       // ── ถ้า shelf-detail เปิดอยู่ตรงเชลฟ์นี้ → อัพเดทรูปในหน้า detail ทันที ──
