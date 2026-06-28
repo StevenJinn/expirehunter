@@ -8878,6 +8878,8 @@ async function syncFromCloud(){
       if (typeof _attachShelfPhotoListeners === 'function') _attachShelfPhotoListeners();
     }
     _attachCloudListeners();
+    // ── drain รูปสินค้าที่รอ upload อยู่ (กรณี cloud offline ตอนที่เซฟรูป) ──
+    if(typeof _drainPendingPhotoUploads==='function') _drainPendingPhotoUploads();
     // ── safety: หลัง listeners ติดแล้ว → ดึงรูปอีกครั้ง กัน timing miss ──
     setTimeout(()=>{ if(typeof loadProductPhotosFromIDB==='function') loadProductPhotosFromIDB(); }, 1500);
   } catch(e) { console.warn("[cloud] syncFromCloud failed", e); _markCloudSyncError('syncFromCloud: '+(e&&e.code||e&&e.message||e)); }
@@ -14386,6 +14388,28 @@ function pickRecordToShelfConfirm(shelfId){
 }
 
 // @ZONE:PHOTO-STORAGE — IndexedDB + Firebase Storage for shelf photos
+// ── Pending photo upload queue — ถ้า cloud offline ตอนเซฟรูป จะ retry เมื่อ sync สำเร็จ ──
+let _pendingPhotoUploads = []; // [{barcode, photo, thumb}]
+async function _drainPendingPhotoUploads(){
+  if(!_cloudReady || !_pendingPhotoUploads.length) return;
+  const queue = _pendingPhotoUploads.splice(0); // drain ทั้งหมด (splice แทน clear เพื่อกัน race)
+  for(const {barcode, photo, thumb} of queue){
+    try{
+      const res = await uploadProductPhotoToCloud(barcode, photo, thumb);
+      if(res && (res.photoUrl||res.thumbUrl)){
+        showToast('☁️ sync รูปสินค้าขึ้น cloud สำเร็จ (retry)');
+        const _idx = catalog.findIndex(p=>p.barcode===barcode);
+        if(_idx===-1){ const e={barcode,hasPhoto:true}; catalog.push(e); }
+        else{ catalog[_idx]={...catalog[_idx],hasPhoto:true}; }
+        if(typeof saveCatalogLS==='function') saveCatalogLS();
+        if(typeof cloudSetCatalogDelta==='function') cloudSetCatalogDelta();
+        if(typeof _attachProductPhotoListeners==='function') _attachProductPhotoListeners();
+      } else {
+        _pendingPhotoUploads.push({barcode, photo, thumb}); // ยังไม่สำเร็จ ใส่กลับคืน
+      }
+    }catch(e){ _pendingPhotoUploads.push({barcode, photo, thumb}); }
+  }
+}
 // ── Photo storage: แยก key ต่างหาก ไม่ยุ่งกับ shelf JSON ──
 function _photoKey(id){ return "shelf-photo-v1-"+id; }
 function _thumbKey(id){ return "shelf-thumb-v1-"+id; }
@@ -14674,7 +14698,7 @@ function onProductPhoto(input){
     if(imgEl){ imgEl.src=thumb; imgEl.style.display="block"; }
     if(iconEl){ iconEl.style.display="none"; }
 
-    showToast("บันทึกรูปสินค้าแล้ว — กำลัง sync ขึ้น cloud...");
+    showToast("📸 บันทึกรูปแล้ว — กำลัง sync ขึ้น cloud...");
     uploadProductPhotoToCloud(barcode, photo, thumb).then(res=>{
       if(res && (res.photoUrl||res.thumbUrl)){
         showToast("☁️ sync รูปสินค้าขึ้น cloud สำเร็จ");
@@ -14696,6 +14720,12 @@ function onProductPhoto(input){
         entry.hasPhoto = true;
         if(typeof saveCatalogLS==='function')       saveCatalogLS();
         if(typeof cloudSetCatalogDelta==='function') cloudSetCatalogDelta();
+        // ── ผูก listener ทันทีหลังอัพโหลดสำเร็จ เพื่อให้เครื่องอื่น sync มาได้ ──
+        if(typeof _attachProductPhotoListeners==='function') _attachProductPhotoListeners();
+      } else {
+        // ── cloud offline หรืออัพโหลดไม่สำเร็จ → ใส่คิว retry เมื่อ cloud กลับมา ──
+        _pendingPhotoUploads.push({barcode, photo, thumb});
+        showToast("📱 บันทึกในเครื่องแล้ว — จะ sync cloud เมื่อเชื่อมต่อได้");
       }
     });
 
