@@ -14178,10 +14178,10 @@ async function loadShelfPhotosFromIDB(){
           let done=0;
           const check=()=>{ if(++done===2) res(); };
           const rp=st.get(_photoKey(s.id));
-          rp.onsuccess=()=>{ if(rp.result&&!s.photo){ s.photo=rp.result; _anyPatched=true; } check(); };
+          rp.onsuccess=()=>{ if(rp.result){ s.photo=rp.result; _anyPatched=true; } check(); };
           rp.onerror=()=>check();
           const rt=st.get(_thumbKey(s.id));
-          rt.onsuccess=()=>{ if(rt.result&&!s.thumb){ s.thumb=rt.result; _anyPatched=true; } check(); };
+          rt.onsuccess=()=>{ if(rt.result){ s.thumb=rt.result; _anyPatched=true; } check(); };
           rt.onerror=()=>check();
         });
       }catch(e){}
