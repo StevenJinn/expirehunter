@@ -8325,10 +8325,11 @@ body.cam-open #page-catalog{
               photoStream.style.cssText='background:rgba(0,0,0,.35);border-radius:8px;padding:6px 8px;margin:6px 0;max-height:140px;overflow-y:auto';
               shownKeys.forEach(k=>{
                 const label=k.replace('productPhoto_','PROD·').replace('shelfPhoto_','SHELF·');
-                const kb=Math.round((pcd[k].bytes||0)/1024);
+                // [PERF-FIX] bytes=0 หมายถึง lightweight check (ไม่ดาวน์โหลดรูปจริง)
+                const sizeLabel = pcd[k].bytes > 0 ? Math.round(pcd[k].bytes/1024)+'KB' : (pcd[k].local?'LOCAL':'CLOUD');
                 const line=document.createElement('div');
                 line.style.cssText='font-family:"IBM Plex Mono",monospace;font-size:9px;color:rgba(0,212,170,.7);padding:2px 0;display:flex;justify-content:space-between';
-                line.innerHTML=`<span>✓ ${label}</span><span style="color:rgba(255,255,255,.3)">${kb}KB</span>`;
+                line.innerHTML=`<span>✓ ${label}</span><span style="color:rgba(255,255,255,.3)">${sizeLabel}</span>`;
                 photoStream.appendChild(line);
               });
               c.appendChild(photoStream);
@@ -8400,37 +8401,40 @@ body.cam-open #page-catalog{
           let cloudShelves=null, cloudRecords=null, syncStatus={};
 
           if(cloudReady){
+            // [PERF-FIX] cloudGet('shelves') & cloudGet('records') ส่วนใหญ่คืนจาก
+            // Firebase client-cache ทันที (เพราะมี .on() listener active อยู่แล้ว)
             [cloudShelves,cloudRecords] = await Promise.all([cloudGet('shelves'),cloudGet('records')]);
             syncStatus = (typeof _lastSyncStatus!=='undefined') ? {..._lastSyncStatus} : {};
           }
 
+          // [PERF-FIX] Push-test เริ่มพร้อมกัน (non-blocking) — ไม่ await ก่อนสร้าง panel
           const testPromise = cloudReady ? cloudSet('records', records, true) : Promise.resolve(false);
 
-          // ── query รูปจาก RTDB จริงๆ (ไม่ใช้แค่ session log) ──
-          let photoCloudData = {}; // key -> {exists, bytes}
-          if(cloudReady){
-            const barcodes = [...new Set((typeof records!=='undefined'?records:[]).map(r=>r.barcode).filter(Boolean))];
-            const shelfIds = (typeof shelves!=='undefined'?shelves:[]).map(s=>s.id).filter(Boolean);
-            const photoChecks = [
-              ...barcodes.map(bc=>({ key:'productPhoto_'+bc, label:'PROD·'+bc })),
-              ...shelfIds.map(id=>({ key:'shelfPhoto_'+id,   label:'SHELF·'+id })),
-            ];
-            await Promise.all(photoChecks.map(async ({key})=>{
-              try{
-                const v = await cloudGet(key);
-                if(v && (v.thumb||v.photo)){
-                  const bytes = (v.thumb||'').length + (v.photo||'').length;
-                  photoCloudData[key] = {exists:true, bytes};
-                } else {
-                  photoCloudData[key] = {exists:false, bytes:0};
-                }
-              }catch(e){ photoCloudData[key]={exists:false,bytes:0}; }
-            }));
-          }
+          // [PERF-FIX] ไม่อ่าน base64 รูปจาก RTDB (เดิมดาวน์โหลดรูปทุกรูปก่อนแสดง panel
+          //   ทำให้ช้ามากเมื่อมีหลาย barcode/shelf — ใช้ local state แทน: ดู catalog.hasPhoto
+          //   และ _productPhotoMemCache/s.photo/s.hasPhoto ซึ่งอัพเดทตามจริงจาก listener)
+          let photoCloudData = {};
+          const _recs  = (typeof records!=='undefined') ? records : [];
+          const _shelfs = (typeof shelves!=='undefined') ? shelves : [];
+          const _cat   = (typeof catalog!=='undefined') ? catalog : [];
+          const barcodes = [...new Set(_recs.map(r=>r.barcode).filter(Boolean))];
+          barcodes.forEach(bc=>{
+            const key = 'productPhoto_'+bc;
+            const inMem   = !!( (typeof _productPhotoMemCache!=='undefined') && _productPhotoMemCache[bc] );
+            const catEntry = _cat.find(p=>p.barcode===bc);
+            const onCloud  = !!(catEntry && catEntry.hasPhoto);
+            photoCloudData[key] = { exists: inMem || onCloud, bytes: 0, local: inMem, cloud: onCloud };
+          });
+          _shelfs.forEach(s=>{
+            const key = 'shelfPhoto_'+s.id;
+            const hasLocal = !!(s.photo || s.thumb);
+            const onCloud  = !!(s.hasPhoto);
+            photoCloudData[key] = { exists: hasLocal || onCloud, bytes: 0, local: hasLocal, cloud: onCloud };
+          });
 
           const data = {
-            localShelves: typeof shelves!=='undefined' ? shelves.length : 0,
-            localRecords: typeof records!=='undefined' ? records.length : 0,
+            localShelves: _shelfs.length,
+            localRecords: _recs.length,
             cloudReady,
             cloudShelves: cloudShelves ? cloudShelves.length : null,
             cloudRecords: cloudRecords ? cloudRecords.length : null,
