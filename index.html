@@ -10238,7 +10238,7 @@ function renderRecords() {
     });
     shown = Object.values(latestPerGroup);
     // เรียงตาม addedAt ล่าสุด (desc = ล่าสุดขึ้นก่อน)
-    shown.sort((a,b) => sd * ((b.addedAt||0) - (a.addedAt||0)));
+    shown.sort((a,b) => sd * ((a.addedAt||0) - (b.addedAt||0)));
   } else if (currentSort === 'expiry') {
     const expSd = currentFilter==='warn' ? 1 : sd;
     shown.sort((a,b)=> expSd * (new Date(a.expDate||'9999') - new Date(b.expDate||'9999')));
