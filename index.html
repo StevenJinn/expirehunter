@@ -8925,7 +8925,7 @@ function saveCatalogLS() {
     if (!orig) return true; // รายการใหม่ที่ไม่มีใน embedded
     // มีใน embedded แต่ค่าเปลี่ยน (name/unit/category หรือรูปสินค้าที่ sync ขึ้น cloud)
     return orig.name !== p.name || orig.unit !== p.unit || orig.category !== p.category
-        || p.photoUrl || p.thumbUrl;
+        || p.hasPhoto || p.photoUrl || p.thumbUrl;
   });
   try {
     localStorage.setItem("expiry-catalog-delta", JSON.stringify(delta));
@@ -14129,30 +14129,16 @@ function deleteShelfPhoto(id){
   try{ localStorage.removeItem(_thumbKey(id)); }catch(e){}
   deleteShelfPhotoFromCloud(id);
 }
-// ── Firebase Storage: เก็บรูปเชลฟ์ถาวร ใช้ได้ทุกเครื่อง ──────────
-function _dataURLtoBlob(dataURL){
-  const [head, b64] = dataURL.split(',');
-  const mime = (head.match(/data:(.*?);base64/)||[])[1] || 'image/jpeg';
-  const bin = atob(b64);
-  const arr = new Uint8Array(bin.length);
-  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
-  return new Blob([arr], {type:mime});
-}
+// ── Firebase Realtime Database: เก็บรูปเชลฟ์ถาวร ใช้ได้ทุกเครื่อง ──────────
+// [เปลี่ยนจาก Firebase Storage → RTDB เพราะ Storage ต้องอัพเกรดเป็นแผน Blaze ก่อนถึงใช้ได้
+//  ส่วน RTDB ใช้ฟรีบนแผน Spark ได้เลย — เก็บรูปเป็น base64 string ไว้ใต้ key แยกต่อเชลฟ์
+//  เพื่อไม่ให้ blob ของ shelves array หลักบวมจนโหลดช้า]
 async function uploadShelfPhotoToCloud(shelfId, photoDataURL, thumbDataURL){
-  if(!_cloudStorage) return null;
+  if(!_cloudReady) return null;
   try{
-    const tasks = [];
-    let photoUrl=null, thumbUrl=null;
-    if(photoDataURL){
-      const ref = _cloudStorage.ref(`shelf-photos/${shelfId}/photo.jpg`);
-      tasks.push(ref.put(_dataURLtoBlob(photoDataURL)).then(()=>ref.getDownloadURL()).then(u=>photoUrl=u));
-    }
-    if(thumbDataURL){
-      const refT = _cloudStorage.ref(`shelf-photos/${shelfId}/thumb.jpg`);
-      tasks.push(refT.put(_dataURLtoBlob(thumbDataURL)).then(()=>refT.getDownloadURL()).then(u=>thumbUrl=u));
-    }
-    await Promise.all(tasks);
-    return {photoUrl, thumbUrl};
+    const ok = await cloudSet('shelfPhoto_'+shelfId, {photo: photoDataURL||null, thumb: thumbDataURL||null}, true);
+    if(!ok) throw new Error('cloudSet failed');
+    return {photoUrl: photoDataURL||null, thumbUrl: thumbDataURL||null};
   }catch(e){
     console.warn("[cloud] upload shelf photo fail", shelfId, e);
     showToast("⚠️ อัพโหลดรูปขึ้น cloud ไม่สำเร็จ — รูปจะอยู่แค่ในเครื่องนี้","err");
@@ -14160,9 +14146,17 @@ async function uploadShelfPhotoToCloud(shelfId, photoDataURL, thumbDataURL){
   }
 }
 function deleteShelfPhotoFromCloud(shelfId){
-  if(!_cloudStorage) return;
-  _cloudStorage.ref(`shelf-photos/${shelfId}/photo.jpg`).delete().catch(()=>{});
-  _cloudStorage.ref(`shelf-photos/${shelfId}/thumb.jpg`).delete().catch(()=>{});
+  if(!_cloudReady) return;
+  _cloudRef('shelfPhoto_'+shelfId).remove().catch(()=>{});
+}
+// ดึงรูปเชลฟ์จาก RTDB (เรียกเมื่อ IDB ในเครื่องไม่มีรูป แต่เชลฟ์นี้เคย sync ขึ้น cloud ไว้)
+async function fetchShelfPhotoFromCloud(shelfId){
+  if(!_cloudReady) return null;
+  try{
+    const v = await cloudGet('shelfPhoto_'+shelfId);
+    if(v && (v.photo || v.thumb)) return v;
+    return null;
+  }catch(e){ return null; }
 }
 // Load photos from IDB into shelves array (async, call after loadShelves)
 async function loadShelfPhotosFromIDB(){
@@ -14187,6 +14181,24 @@ async function loadShelfPhotosFromIDB(){
       }catch(e){}
     }
   }catch(e){}
+  // ── [FIX] fallback: ถ้า IDB ไม่มีรูป (เครื่องใหม่/ล้าง cache) → ดึงจาก RTDB
+  //    (เชลฟ์ที่เคยอัพโหลดรูปไว้จะมี s.hasPhoto = true ติดมาจาก metadata ที่ sync แล้ว) ──
+  const _cloudFetches = [];
+  for(const s of shelves){
+    if(s.photo && s.thumb) continue; // มีรูปแล้วจาก IDB/localStorage
+    if(!s.hasPhoto) continue; // เชลฟ์นี้ไม่เคยมีรูปเลย ไม่ต้องเสีย read quota ไปถาม cloud
+    _cloudFetches.push(
+      fetchShelfPhotoFromCloud(s.id).then(v=>{
+        if(!v) return false;
+        if(!s.thumb && v.thumb) s.thumb=v.thumb;
+        if(!s.photo && v.photo) s.photo=v.photo;
+        saveShelfPhoto(s.id, s.photo, s.thumb); // cache ลง IDB ครั้งถัดไปไม่ต้องดึงซ้ำ
+        _anyPatched=true;
+        return true;
+      }).catch(()=>false)
+    );
+  }
+  if(_cloudFetches.length) await Promise.all(_cloudFetches);
   if (!_anyPatched) return; // [FIX] ไม่มีรูปใหม่ต้องเติม — ไม่ต้อง render ซ้ำ แค่ไม่ทำอะไรเลย
   renderShelfList(); // refresh thumbnails after photos loaded
   // ── [FIX] ถ้า shelf-detail-view เปิดอยู่ตรงเชลฟ์ที่รูปเพิ่งโหลดมาจาก IDB ให้ sync รูปกลับเข้าจอด้วย
@@ -14257,41 +14269,43 @@ function getProductPhotoAsync(barcode){
     req.onerror=()=>resolve(null);
   })).then(local=>{
     if(local) return local;
-    // ── [BUG FIX] ถ้า IDB ไม่มี → ดึง thumbUrl จาก catalog (sync มาจากเครื่องอื่น) ──
+    // ── [FIX] ถ้า IDB ไม่มี → ดึงจาก RTDB (sync มาจากเครื่องอื่น ถ้า catalog entry มี hasPhoto) ──
     const entry = (typeof catalog !== 'undefined') && catalog.find(p=>p.barcode===barcode);
-    const cloudUrl = entry && (entry.thumbUrl || entry.photoUrl);
-    if(!cloudUrl) return null;
-    return fetch(cloudUrl)
-      .then(r=>r.blob())
-      .then(blob=>new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(blob); }))
-      .then(dataUrl=>{
+    if(!entry || !entry.hasPhoto) return null;
+    return fetchProductPhotoFromCloud(barcode)
+      .then(v=>{
+        if(!v) return null;
+        const dataUrl = v.thumb || v.photo || null;
+        if(!dataUrl) return null;
         _productPhotoMemCache[barcode]=dataUrl;
-        // cache ลง IDB เพื่อใช้ครั้งถัดไปโดยไม่ต้อง fetch ซ้ำ
+        // cache ลง IDB เพื่อใช้ครั้งถัดไปโดยไม่ต้องดึงซ้ำ
         saveProductPhoto(barcode, null, dataUrl);
         return dataUrl;
       })
       .catch(()=>null);
   }).catch(()=>null);
 }
+// ── Firebase Realtime Database: เก็บรูปสินค้าถาวร ใช้ได้ทุกเครื่อง ──────────
+// [เปลี่ยนจาก Firebase Storage → RTDB เหมือนรูปเชลฟ์ เพราะ Storage ต้องอัพเกรดแผน Blaze ก่อนถึงใช้ได้]
 async function uploadProductPhotoToCloud(barcode, photoDataURL, thumbDataURL){
-  if(!_cloudStorage) return null;
+  if(!_cloudReady) return null;
   try{
-    const tasks=[]; let photoUrl=null, thumbUrl=null;
-    if(photoDataURL){
-      const ref=_cloudStorage.ref(`product-photos/${barcode}/photo.jpg`);
-      tasks.push(ref.put(_dataURLtoBlob(photoDataURL)).then(()=>ref.getDownloadURL()).then(u=>photoUrl=u));
-    }
-    if(thumbDataURL){
-      const refT=_cloudStorage.ref(`product-photos/${barcode}/thumb.jpg`);
-      tasks.push(refT.put(_dataURLtoBlob(thumbDataURL)).then(()=>refT.getDownloadURL()).then(u=>thumbUrl=u));
-    }
-    await Promise.all(tasks);
-    return {photoUrl, thumbUrl};
+    const ok = await cloudSet('productPhoto_'+barcode, {photo: photoDataURL||null, thumb: thumbDataURL||null}, true);
+    if(!ok) throw new Error('cloudSet failed');
+    return {photoUrl: photoDataURL||null, thumbUrl: thumbDataURL||null};
   }catch(e){
     console.warn("[cloud] upload product photo fail", barcode, e);
     showToast("⚠️ อัพโหลดรูปสินค้าขึ้น cloud ไม่สำเร็จ — รูปจะอยู่แค่ในเครื่องนี้","err");
     return null;
   }
+}
+async function fetchProductPhotoFromCloud(barcode){
+  if(!_cloudReady) return null;
+  try{
+    const v = await cloudGet('productPhoto_'+barcode);
+    if(v && (v.photo || v.thumb)) return v;
+    return null;
+  }catch(e){ return null; }
 }
 
 function openProductPhotoMenu(){
@@ -14360,16 +14374,22 @@ function onProductPhoto(input){
     uploadProductPhotoToCloud(barcode, photo, thumb).then(res=>{
       if(res && (res.photoUrl||res.thumbUrl)){
         showToast("☁️ sync รูปสินค้าขึ้น cloud สำเร็จ");
-        // ── บันทึก photoUrl/thumbUrl กลับเข้า catalog entry (สร้างใหม่ถ้าไม่มี) ──
-        // เครื่องอื่นที่ sync catalogDelta มาจะได้โหลดรูปจาก Firebase Storage ได้
-        let entry = catalog.find(p=>p.barcode===barcode);
-        if(!entry){
-          // barcode ยังไม่มีใน catalog → สร้าง minimal entry เพื่อพา photoUrl ขึ้น cloud
-          entry = { barcode };
+        // ── ติด flag hasPhoto กลับเข้า catalog entry (สร้างใหม่ถ้าไม่มี) ──
+        // เครื่องอื่นที่ sync catalogDelta มาจะรู้ว่ามีรูปบน RTDB ให้ไปดึง (ดูฟังก์ชัน fetchProductPhotoFromCloud)
+        // [FIX] clone ก่อนแก้ไข — catalog.find() อาจคืน reference ตรงเข้าไปใน CATALOG_EMBEDDED
+        // (catalog = [...CATALOG_EMBEDDED] เป็น shallow copy ของ array แต่ object ภายในยังเป็น
+        // reference เดิม) ถ้าไม่ clone จะกลายเป็นการ mutate ค่าคงที่ embedded ทำให้ catalog
+        // กับรูปสินค้าใน record หลุด sync กันไปคนละทาง
+        const _idx = catalog.findIndex(p=>p.barcode===barcode);
+        let entry;
+        if(_idx===-1){
+          entry = { barcode }; // barcode ยังไม่มีใน catalog → สร้าง minimal entry เพื่อพา flag ขึ้น cloud
           catalog.push(entry);
+        } else {
+          entry = {...catalog[_idx]};
+          catalog[_idx] = entry;
         }
-        if(res.photoUrl)  entry.photoUrl  = res.photoUrl;
-        if(res.thumbUrl)  entry.thumbUrl  = res.thumbUrl;
+        entry.hasPhoto = true;
         if(typeof saveCatalogLS==='function')       saveCatalogLS();
         if(typeof cloudSetCatalogDelta==='function') cloudSetCatalogDelta();
       }
@@ -14492,21 +14512,20 @@ async function loadProductPhotosFromIDB(){
       }catch(e){}
     }
     if(foundAny && typeof renderRecords==='function') renderRecords();
-    // ── fallback: ดึงรูปจาก Firebase Storage URL ที่ sync มาใน catalogDelta ──
-    // ครอบคลุมเครื่องอื่นที่รับ catalogDelta แล้วมี entry.thumbUrl แต่ IDB ยังว่างอยู่
+    // ── fallback: ดึงรูปจาก RTDB ที่ sync มาใน catalogDelta ──
+    // ครอบคลุมเครื่องอื่นที่รับ catalogDelta แล้วมี entry.hasPhoto=true แต่ IDB ยังว่างอยู่
     const cloudFetches = [];
     for(const bc of barcodes){
       if(_productPhotoMemCache[bc]) continue;
       const entry = (typeof catalog !== 'undefined') && catalog.find(p=>p.barcode===bc);
-      const cloudUrl = entry && (entry.thumbUrl || entry.photoUrl);
-      if(!cloudUrl) continue;
+      if(!entry || !entry.hasPhoto) continue;
       cloudFetches.push(
-        fetch(cloudUrl)
-          .then(r=>r.blob())
-          .then(blob=>new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(blob); }))
-          .then(dataUrl=>{
+        fetchProductPhotoFromCloud(bc)
+          .then(v=>{
+            const dataUrl = v && (v.thumb || v.photo);
+            if(!dataUrl) return false;
             _productPhotoMemCache[bc]=dataUrl;
-            saveProductPhoto(bc, null, dataUrl); // cache ลง IDB ครั้งถัดไปไม่ต้อง fetch ซ้ำ
+            saveProductPhoto(bc, null, dataUrl); // cache ลง IDB ครั้งถัดไปไม่ต้องดึงซ้ำ
             return true;
           })
           .catch(()=>false)
@@ -14750,8 +14769,8 @@ function renderShelfList() {
       </div>
       <div class="pg-shelf-card-inner">
         <div class="pg-shelf-thumb">
-          ${(s.thumb||s.photo)
-            ?`<img src="${s.thumb||s.photo}" style="width:68px;height:100%;object-fit:cover;object-position:center;image-rendering:-webkit-optimize-contrast;display:block"/>`
+          ${(s.thumb||s.photo||s.thumbUrl||s.photoUrl)
+            ?`<img src="${s.thumb||s.photo||s.thumbUrl||s.photoUrl}" style="width:68px;height:100%;object-fit:cover;object-position:center;image-rendering:-webkit-optimize-contrast;display:block"/>`
             :isEmpty
               ?`<div class="pg-shelf-thumb-mini" style="align-items:center;justify-content:center;width:100%;height:100%"><div style="font-size:22px;opacity:.35">📦</div></div>`
               :`<div class="pg-shelf-thumb-mini">${thumbHtml}</div>`}
@@ -14807,8 +14826,11 @@ function openShelfDetail(id, keepScrollY, filter){
   dv.style.animation="none";
   document.getElementById("shelf-detail-name").textContent=s.name;
   // photo — set BEFORE animation to prevent flash
-  if(s.photo){
-    document.getElementById("shelf-photo-img").src=s.photo;
+  // [FIX] ถ้ายังไม่มีรูป local (s.photo) แต่มี photoUrl จาก cloud → แสดงจาก URL ไปก่อน
+  //       ระหว่างที่ loadShelfPhotosFromIDB() กำลัง fetch มาเก็บ local แบบ async
+  const _shelfPhotoSrc = s.photo || s.photoUrl || null;
+  if(_shelfPhotoSrc){
+    document.getElementById("shelf-photo-img").src=_shelfPhotoSrc;
     document.getElementById("shelf-photo-preview").style.display="block";
     document.getElementById("shelf-photo-empty").style.display="none";
     _shelfPhotoMode(true);
@@ -14984,12 +15006,11 @@ function onShelfPhoto(input){
     document.getElementById("shelf-photo-empty").style.display="none";
     renderShelfList();
     if(!dupShelf) showToast("บันทึกรูปเชลฟ์แล้ว — กำลัง sync ขึ้น cloud...");
-    // ── อัพโหลดขึ้น Firebase Storage ให้ใช้ได้ทุกเครื่อง (async, ไม่บล็อก UI) ──
+    // ── sync รูปขึ้น Realtime Database ให้ใช้ได้ทุกเครื่อง (async, ไม่บล็อก UI) ──
     uploadShelfPhotoToCloud(shelfId, photo, thumb).then(res=>{
       if(res && (res.photoUrl || res.thumbUrl)){
         const s2=shelves.find(x=>x.id===shelfId); if(!s2) return;
-        if(res.photoUrl) s2.photoUrl=res.photoUrl;
-        if(res.thumbUrl) s2.thumbUrl=res.thumbUrl;
+        s2.hasPhoto=true; // flag เบาๆ ใน metadata ให้เครื่องอื่นรู้ว่าเชลฟ์นี้มีรูปบน cloud (ไม่ต้องเก็บ dataURL เต็มในนี้)
         saveShelves();
         showToast("☁️ sync รูปขึ้น cloud สำเร็จ");
       }
