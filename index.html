@@ -10228,13 +10228,17 @@ function renderRecords() {
   // Apply sort with direction
   const sd = (currentSortDir === 'asc') ? 1 : -1;
   if (currentSort === 'recent') {
-    // เรียงตาม addedAt ล่าสุดของกลุ่ม (barcode) ก่อน แล้วค่อยเรียง lot ภายในกลุ่มตาม addedAt
-    shown.sort((a,b)=>{
-      const ga = groupLatestAt[_barcodeGroupKey(a.barcode)]||0;
-      const gb = groupLatestAt[_barcodeGroupKey(b.barcode)]||0;
-      if (ga !== gb) return sd * (ga - gb);
-      return sd * ((a.addedAt||0)-(b.addedAt||0));
+    // แสดงเฉพาะ lot ล่าสุด (addedAt สูงสุด) ของแต่ละ barcode — ไม่ซ้ำกลุ่ม
+    const latestPerGroup = {};
+    shown.forEach(r => {
+      const k = _barcodeGroupKey(r.barcode);
+      if (!latestPerGroup[k] || (r.addedAt||0) > (latestPerGroup[k].addedAt||0)) {
+        latestPerGroup[k] = r;
+      }
     });
+    shown = Object.values(latestPerGroup);
+    // เรียงตาม addedAt ล่าสุด (desc = ล่าสุดขึ้นก่อน)
+    shown.sort((a,b) => sd * ((b.addedAt||0) - (a.addedAt||0)));
   } else if (currentSort === 'expiry') {
     const expSd = currentFilter==='warn' ? 1 : sd;
     shown.sort((a,b)=> expSd * (new Date(a.expDate||'9999') - new Date(b.expDate||'9999')));
