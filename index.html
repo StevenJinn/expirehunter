@@ -8300,37 +8300,51 @@ body.cam-open #page-catalog{
             if(lastLine) lastLine.insertAdjacentHTML('beforeend','<span class="cdb-stream-cursor"></span>');
           }, delay+sd+200);
 
-          // ── PHOTO SYNC LOG ──
-          const photoKeys = [
-            ...Object.keys(data.syncStatus).filter(k=>k.startsWith('productPhoto_')),
-            ...Object.keys(data.syncStatus).filter(k=>k.startsWith('shelfPhoto_')),
-          ];
-          if(photoKeys.length){
+          // ── PHOTO · CLOUD · STATUS (query RTDB จริง) ──
+          const pcd = data.photoCloudData || {};
+          const allPhotoKeys   = Object.keys(pcd);
+          const prodCloudKeys  = allPhotoKeys.filter(k=>k.startsWith('productPhoto_'));
+          const shelfCloudKeys = allPhotoKeys.filter(k=>k.startsWith('shelfPhoto_'));
+          if(allPhotoKeys.length){
             const sep2b=document.createElement('div');sep2b.className='cdb-sep';c.appendChild(sep2b);
-            c.appendChild(_cdbSectionHdr('PHOTO · SYNC · LOG'));
+            c.appendChild(_cdbSectionHdr('PHOTO · CLOUD · STATUS'));
 
-            // summary row
-            const photoOk   = photoKeys.filter(k=>data.syncStatus[k]&&data.syncStatus[k].ok).length;
-            const photoFail = photoKeys.filter(k=>data.syncStatus[k]&&!data.syncStatus[k].ok).length;
-            const prodKeys  = photoKeys.filter(k=>k.startsWith('productPhoto_'));
-            const shelfKeys = photoKeys.filter(k=>k.startsWith('shelfPhoto_'));
-            c.appendChild(_cdbRow('cloud','PRODUCT PHOTOS',`${prodKeys.filter(k=>data.syncStatus[k]&&data.syncStatus[k].ok).length} / ${prodKeys.length} SYNCED`, prodKeys.every(k=>data.syncStatus[k]&&data.syncStatus[k].ok)?'ok':'warn', delay+=40));
-            c.appendChild(_cdbRow('disk', 'SHELF PHOTOS',  `${shelfKeys.filter(k=>data.syncStatus[k]&&data.syncStatus[k].ok).length} / ${shelfKeys.length} SYNCED`, shelfKeys.every(k=>data.syncStatus[k]&&data.syncStatus[k].ok)?'ok':'warn', delay+=40));
+            const prodOk  = prodCloudKeys.filter(k=>pcd[k]&&pcd[k].exists).length;
+            const shelfOk = shelfCloudKeys.filter(k=>pcd[k]&&pcd[k].exists).length;
+            c.appendChild(_cdbRow('cloud','PRODUCT PHOTOS',
+              `${prodOk} / ${prodCloudKeys.length} ON CLOUD`,
+              prodOk===prodCloudKeys.length&&prodCloudKeys.length>0?'ok':'warn', delay+=40));
+            c.appendChild(_cdbRow('disk','SHELF PHOTOS',
+              `${shelfOk} / ${shelfCloudKeys.length} ON CLOUD`,
+              shelfOk===shelfCloudKeys.length&&shelfCloudKeys.length>0?'ok':'warn', delay+=40));
 
-            // per-key detail rows
-            photoKeys.forEach(k=>{
-              const s=data.syncStatus[k];
-              const label=k.replace('productPhoto_','PROD·').replace('shelfPhoto_','SHELF·');
-              const ts=s?new Date(s.time).toLocaleTimeString('th-TH',{hour12:false}):'--:--';
-              if(!s){
-                stream.appendChild(_cdbStreamLine(ts,label.padEnd(20),'NO SYNC','warn',delay+sd));
-              } else if(s.ok){
-                stream.appendChild(_cdbStreamLine(ts,label.padEnd(20),`OK · ${_cdbBytes(s.bytes)}·WRITTEN`,'ok',delay+sd));
-              } else {
-                stream.appendChild(_cdbStreamLine(ts,label.padEnd(20),'FAIL · '+s.msg,'fail',delay+sd));
-              }
-              sd+=60;
-            });
+            // per-key rows (แสดงเฉพาะสินค้าที่ local มีรูป หรือ cloud มีรูป)
+            const shownKeys = allPhotoKeys.filter(k=>pcd[k]&&pcd[k].exists);
+            if(shownKeys.length){
+              const photoStream=document.createElement('div');
+              photoStream.style.cssText='background:rgba(0,0,0,.35);border-radius:8px;padding:6px 8px;margin:6px 0;max-height:140px;overflow-y:auto';
+              shownKeys.forEach(k=>{
+                const label=k.replace('productPhoto_','PROD·').replace('shelfPhoto_','SHELF·');
+                const kb=Math.round((pcd[k].bytes||0)/1024);
+                const line=document.createElement('div');
+                line.style.cssText='font-family:"IBM Plex Mono",monospace;font-size:9px;color:rgba(0,212,170,.7);padding:2px 0;display:flex;justify-content:space-between';
+                line.innerHTML=`<span>✓ ${label}</span><span style="color:rgba(255,255,255,.3)">${kb}KB</span>`;
+                photoStream.appendChild(line);
+              });
+              c.appendChild(photoStream);
+            }
+            // แสดงรายการที่ยังไม่มีบน cloud
+            const missingKeys = allPhotoKeys.filter(k=>!pcd[k]||!pcd[k].exists);
+            if(missingKeys.length){
+              const missingLabel = missingKeys.length === allPhotoKeys.length ? 'ยังไม่มีรูปบน cloud เลย' : `ยังไม่มีรูป ${missingKeys.length} รายการ`;
+              c.appendChild(_cdbRow('bolt','NOT ON CLOUD', missingLabel, 'fail', delay+=40));
+            }
+          } else {
+            // ไม่มี records/shelves เลย
+            const sep2b=document.createElement('div');sep2b.className='cdb-sep';c.appendChild(sep2b);
+            c.appendChild(_cdbSectionHdr('PHOTO · CLOUD · STATUS'));
+            c.appendChild(_cdbRow('cloud','PRODUCT PHOTOS','NO RECORDS TO CHECK','warn',delay+=40));
+            c.appendChild(_cdbRow('disk','SHELF PHOTOS','NO SHELVES TO CHECK','warn',delay+=40));
           }
 
           const sep3=document.createElement('div');sep3.className='cdb-sep';c.appendChild(sep3);
@@ -8381,6 +8395,28 @@ body.cam-open #page-catalog{
 
           const testPromise = cloudReady ? cloudSet('records', records, true) : Promise.resolve(false);
 
+          // ── query รูปจาก RTDB จริงๆ (ไม่ใช้แค่ session log) ──
+          let photoCloudData = {}; // key -> {exists, bytes}
+          if(cloudReady){
+            const barcodes = [...new Set((typeof records!=='undefined'?records:[]).map(r=>r.barcode).filter(Boolean))];
+            const shelfIds = (typeof shelves!=='undefined'?shelves:[]).map(s=>s.id).filter(Boolean);
+            const photoChecks = [
+              ...barcodes.map(bc=>({ key:'productPhoto_'+bc, label:'PROD·'+bc })),
+              ...shelfIds.map(id=>({ key:'shelfPhoto_'+id,   label:'SHELF·'+id })),
+            ];
+            await Promise.all(photoChecks.map(async ({key})=>{
+              try{
+                const v = await cloudGet(key);
+                if(v && (v.thumb||v.photo)){
+                  const bytes = (v.thumb||'').length + (v.photo||'').length;
+                  photoCloudData[key] = {exists:true, bytes};
+                } else {
+                  photoCloudData[key] = {exists:false, bytes:0};
+                }
+              }catch(e){ photoCloudData[key]={exists:false,bytes:0}; }
+            }));
+          }
+
           const data = {
             localShelves: typeof shelves!=='undefined' ? shelves.length : 0,
             localRecords: typeof records!=='undefined' ? records.length : 0,
@@ -8389,6 +8425,7 @@ body.cam-open #page-catalog{
             cloudRecords: cloudRecords ? cloudRecords.length : null,
             syncStatus,
             testPromise,
+            photoCloudData,
           };
 
           document.getElementById('cdb-loading').style.display='none';
