@@ -8790,6 +8790,11 @@ async function syncFromCloud(){
       if (typeof renderCatalog === 'function') renderCatalog();
       if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
       else if (typeof renderShelfList === 'function') renderShelfList();
+      // ── ดึงรูปสินค้าจาก IDB/RTDB หลัง sync records+catalogDelta มาแล้ว ──
+      // ครอบคลุมเครื่องใหม่/ล้าง cache ที่ IDB ว่าง แต่ catalog entry มี hasPhoto=true
+      if (typeof loadProductPhotosFromIDB === 'function') loadProductPhotosFromIDB();
+      // ── ผูก realtime listener รูปเชลฟ์ทันทีหลัง sync ครั้งแรก ──
+      if (typeof _attachShelfPhotoListeners === 'function') _attachShelfPhotoListeners();
     }
     _attachCloudListeners();
   } catch(e) { console.warn("[cloud] syncFromCloud failed", e); _markCloudSyncError('syncFromCloud: '+(e&&e.code||e&&e.message||e)); }
@@ -8876,13 +8881,90 @@ function _attachCloudListeners(){
     localStorage.setItem("expiry-catalog-delta", JSON.stringify(cDelta));
     _applyCatalogDelta(cDelta);
     if (typeof renderCatalog === 'function') renderCatalog();
-    // ── หลัง apply delta → ดึงรูปสินค้าจาก Firebase Storage URL ที่ sync มา ──
+    // ── หลัง apply delta → ดึงรูปสินค้าจาก IDB/RTDB ──
     if (typeof loadProductPhotosFromIDB === 'function') loadProductPhotosFromIDB();
     _markCloudSynced();
+    // ── ต่อ realtime listener สำหรับ barcode ที่เพิ่งได้ hasPhoto=true ใหม่ ──
+    _attachProductPhotoListeners();
   }, e=>{ console.warn("[cloud] catalogDelta listener fail", e); _markCloudSyncError('catalogDelta-listen: '+(e&&e.code||e)); });
+
+  // productPhoto_* — รับรูปสินค้าแบบ realtime จากเครื่องอื่น
+  _attachProductPhotoListeners();
+  // shelfPhoto_* — รับรูปเชลฟ์แบบ realtime จากเครื่องอื่น
+  _attachShelfPhotoListeners();
 }
 
-// @ZONE:LOCAL-STATE — localStorage helpers, date/lot parsing, toast
+// ── ต่อ listener ราย barcode สำหรับ productPhoto — เรียกได้ซ้ำ (จะ skip barcode ที่ผูกแล้ว) ──
+const _prodPhotoListenedBarcodes = new Set();
+function _attachProductPhotoListeners(){
+  if (!_cloudReady) return;
+  const barcodes = [...new Set(records.map(r=>r.barcode).filter(Boolean))];
+  barcodes.forEach(bc=>{
+    if (_prodPhotoListenedBarcodes.has(bc)) return; // ผูก listener แล้ว ข้าม
+    _prodPhotoListenedBarcodes.add(bc);
+    const key = 'productPhoto_' + bc;
+    _cloudRef(key).on('value', snap=>{
+      if (!snap.exists()) return;
+      const d = snap.val();
+      // ข้าม snapshot ที่เกิดจาก write ของตัวเอง
+      if (d && d.updatedAt && _lastWriteAt[key] && d.updatedAt <= _lastWriteAt[key]) return;
+      const v = _extractPayload(d);
+      if (!v || (!v.thumb && !v.photo)) return;
+      const dataUrl = v.thumb || v.photo;
+      if (_productPhotoMemCache[bc] === dataUrl) return; // ไม่มีอะไรเปลี่ยน
+      _productPhotoMemCache[bc] = dataUrl;
+      saveProductPhoto(bc, v.photo||null, v.thumb||null);
+      // ── mark hasPhoto ใน catalog entry ──
+      const _idx = (typeof catalog !== 'undefined') && catalog.findIndex(p=>p.barcode===bc);
+      if (typeof _idx === 'number' && _idx !== -1 && _idx !== false) {
+        const entry = {...catalog[_idx], hasPhoto: true};
+        catalog[_idx] = entry;
+      }
+      // ── refresh record cards ที่แสดง barcode นี้อยู่ ──
+      if (typeof renderRecords === 'function') renderRecords();
+    }, ()=>{ /* ignore listener errors for individual barcodes */ });
+  });
+}
+
+// ── ต่อ listener ราย shelfId สำหรับ shelfPhoto — เรียกได้ซ้ำ (จะ skip shelfId ที่ผูกแล้ว) ──
+const _shelfPhotoListenedIds = new Set();
+function _attachShelfPhotoListeners(){
+  if (!_cloudReady) return;
+  shelves.forEach(s=>{
+    if (_shelfPhotoListenedIds.has(s.id)) return;
+    _shelfPhotoListenedIds.add(s.id);
+    const key = 'shelfPhoto_' + s.id;
+    _cloudRef(key).on('value', snap=>{
+      if (!snap.exists()) return;
+      const d = snap.val();
+      if (d && d.updatedAt && _lastWriteAt[key] && d.updatedAt <= _lastWriteAt[key]) return;
+      const v = _extractPayload(d);
+      if (!v || (!v.thumb && !v.photo)) return;
+      const shelf = shelves.find(x=>x.id===s.id);
+      if (!shelf) return;
+      // ไม่ overwrite รูปที่เครื่องนี้มีอยู่แล้ว (เครื่องอื่นอาจมีรูปเก่ากว่า)
+      if (shelf.photo && shelf.thumb) return;
+      if (v.photo && !shelf.photo) shelf.photo = v.photo;
+      if (v.thumb && !shelf.thumb) shelf.thumb = v.thumb;
+      shelf.hasPhoto = true;
+      saveShelfPhoto(s.id, shelf.photo||null, shelf.thumb||null);
+      // refresh shelf list thumbnail
+      if (typeof renderShelfList === 'function') renderShelfList();
+      // ── ถ้า shelf-detail เปิดอยู่ตรงเชลฟ์นี้ → อัพเดทรูปในหน้า detail ทันที ──
+      if (typeof currentShelfId !== 'undefined' && currentShelfId === s.id) {
+        const img = document.getElementById('shelf-photo-img');
+        if (img && (shelf.photo || shelf.thumb)) {
+          img.src = shelf.thumb || shelf.photo;
+          const prev = document.getElementById('shelf-photo-preview');
+          const empty = document.getElementById('shelf-photo-empty');
+          if (prev) prev.style.display = 'block';
+          if (empty) empty.style.display = 'none';
+          if (typeof _shelfPhotoMode === 'function') _shelfPhotoMode(true);
+        }
+      }
+    }, ()=>{});
+  });
+}
 // ── localStorage helpers ──────────────────────────────────
 function _applyCatalogDelta(delta){
   catalog = [...CATALOG_EMBEDDED];
@@ -8916,6 +8998,8 @@ function saveRecordsLS() {
     if (typeof showToast === 'function') showToast("พื้นที่จัดเก็บในเครื่องเต็ม/ถูกบล็อก — ข้อมูลอาจไม่ถูกบันทึกในเครื่อง","err");
   }
   cloudSetRecords();
+  // ── ผูก realtime listener สำหรับ barcode ใหม่ที่อาจเพิ่งถูก add ──
+  if (typeof _attachProductPhotoListeners === 'function') _attachProductPhotoListeners();
 }
 function saveCatalogLS() {
   // บันทึก delta = รายการใหม่ + รายการที่แตกต่างจาก CATALOG_EMBEDDED (name/unit/category เปลี่ยน)
@@ -14646,6 +14730,8 @@ function saveShelves(){
   }
   _lastShelvesMeta = meta;
   cloudSetShelves();
+  // ── ผูก realtime listener สำหรับเชลฟ์ใหม่ที่อาจเพิ่งถูก add ──
+  if (typeof _attachShelfPhotoListeners === 'function') _attachShelfPhotoListeners();
 }
 
 // ── force save on exit (records + shelves) ────────────────
