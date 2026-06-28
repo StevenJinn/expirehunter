@@ -8876,6 +8876,8 @@ function _attachCloudListeners(){
     localStorage.setItem("expiry-catalog-delta", JSON.stringify(cDelta));
     _applyCatalogDelta(cDelta);
     if (typeof renderCatalog === 'function') renderCatalog();
+    // ── หลัง apply delta → ดึงรูปสินค้าจาก Firebase Storage URL ที่ sync มา ──
+    if (typeof loadProductPhotosFromIDB === 'function') loadProductPhotosFromIDB();
     _markCloudSynced();
   }, e=>{ console.warn("[cloud] catalogDelta listener fail", e); _markCloudSyncError('catalogDelta-listen: '+(e&&e.code||e)); });
 }
@@ -14354,15 +14356,18 @@ function onProductPhoto(input){
     uploadProductPhotoToCloud(barcode, photo, thumb).then(res=>{
       if(res && (res.photoUrl||res.thumbUrl)){
         showToast("☁️ sync รูปสินค้าขึ้น cloud สำเร็จ");
-        // ── [BUG FIX] บันทึก photoUrl/thumbUrl กลับเข้า catalog entry ──
+        // ── บันทึก photoUrl/thumbUrl กลับเข้า catalog entry (สร้างใหม่ถ้าไม่มี) ──
         // เครื่องอื่นที่ sync catalogDelta มาจะได้โหลดรูปจาก Firebase Storage ได้
-        const entry = catalog.find(p=>p.barcode===barcode);
-        if(entry){
-          if(res.photoUrl)  entry.photoUrl  = res.photoUrl;
-          if(res.thumbUrl)  entry.thumbUrl  = res.thumbUrl;
-          if(typeof saveCatalogLS==='function')       saveCatalogLS();
-          if(typeof cloudSetCatalogDelta==='function') cloudSetCatalogDelta();
+        let entry = catalog.find(p=>p.barcode===barcode);
+        if(!entry){
+          // barcode ยังไม่มีใน catalog → สร้าง minimal entry เพื่อพา photoUrl ขึ้น cloud
+          entry = { barcode };
+          catalog.push(entry);
         }
+        if(res.photoUrl)  entry.photoUrl  = res.photoUrl;
+        if(res.thumbUrl)  entry.thumbUrl  = res.thumbUrl;
+        if(typeof saveCatalogLS==='function')       saveCatalogLS();
+        if(typeof cloudSetCatalogDelta==='function') cloudSetCatalogDelta();
       }
     });
 
@@ -14483,6 +14488,30 @@ async function loadProductPhotosFromIDB(){
       }catch(e){}
     }
     if(foundAny && typeof renderRecords==='function') renderRecords();
+    // ── fallback: ดึงรูปจาก Firebase Storage URL ที่ sync มาใน catalogDelta ──
+    // ครอบคลุมเครื่องอื่นที่รับ catalogDelta แล้วมี entry.thumbUrl แต่ IDB ยังว่างอยู่
+    const cloudFetches = [];
+    for(const bc of barcodes){
+      if(_productPhotoMemCache[bc]) continue;
+      const entry = (typeof catalog !== 'undefined') && catalog.find(p=>p.barcode===bc);
+      const cloudUrl = entry && (entry.thumbUrl || entry.photoUrl);
+      if(!cloudUrl) continue;
+      cloudFetches.push(
+        fetch(cloudUrl)
+          .then(r=>r.blob())
+          .then(blob=>new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(blob); }))
+          .then(dataUrl=>{
+            _productPhotoMemCache[bc]=dataUrl;
+            saveProductPhoto(bc, null, dataUrl); // cache ลง IDB ครั้งถัดไปไม่ต้อง fetch ซ้ำ
+            return true;
+          })
+          .catch(()=>false)
+      );
+    }
+    if(cloudFetches.length){
+      const results = await Promise.all(cloudFetches);
+      if(results.some(Boolean) && typeof renderRecords==='function') renderRecords();
+    }
   }catch(e){}
 }
 
