@@ -8300,6 +8300,39 @@ body.cam-open #page-catalog{
             if(lastLine) lastLine.insertAdjacentHTML('beforeend','<span class="cdb-stream-cursor"></span>');
           }, delay+sd+200);
 
+          // ── PHOTO SYNC LOG ──
+          const photoKeys = [
+            ...Object.keys(data.syncStatus).filter(k=>k.startsWith('productPhoto_')),
+            ...Object.keys(data.syncStatus).filter(k=>k.startsWith('shelfPhoto_')),
+          ];
+          if(photoKeys.length){
+            const sep2b=document.createElement('div');sep2b.className='cdb-sep';c.appendChild(sep2b);
+            c.appendChild(_cdbSectionHdr('PHOTO · SYNC · LOG'));
+
+            // summary row
+            const photoOk   = photoKeys.filter(k=>data.syncStatus[k]&&data.syncStatus[k].ok).length;
+            const photoFail = photoKeys.filter(k=>data.syncStatus[k]&&!data.syncStatus[k].ok).length;
+            const prodKeys  = photoKeys.filter(k=>k.startsWith('productPhoto_'));
+            const shelfKeys = photoKeys.filter(k=>k.startsWith('shelfPhoto_'));
+            c.appendChild(_cdbRow('cloud','PRODUCT PHOTOS',`${prodKeys.filter(k=>data.syncStatus[k]&&data.syncStatus[k].ok).length} / ${prodKeys.length} SYNCED`, prodKeys.every(k=>data.syncStatus[k]&&data.syncStatus[k].ok)?'ok':'warn', delay+=40));
+            c.appendChild(_cdbRow('disk', 'SHELF PHOTOS',  `${shelfKeys.filter(k=>data.syncStatus[k]&&data.syncStatus[k].ok).length} / ${shelfKeys.length} SYNCED`, shelfKeys.every(k=>data.syncStatus[k]&&data.syncStatus[k].ok)?'ok':'warn', delay+=40));
+
+            // per-key detail rows
+            photoKeys.forEach(k=>{
+              const s=data.syncStatus[k];
+              const label=k.replace('productPhoto_','PROD·').replace('shelfPhoto_','SHELF·');
+              const ts=s?new Date(s.time).toLocaleTimeString('th-TH',{hour12:false}):'--:--';
+              if(!s){
+                stream.appendChild(_cdbStreamLine(ts,label.padEnd(20),'NO SYNC','warn',delay+sd));
+              } else if(s.ok){
+                stream.appendChild(_cdbStreamLine(ts,label.padEnd(20),`OK · ${_cdbBytes(s.bytes)}·WRITTEN`,'ok',delay+sd));
+              } else {
+                stream.appendChild(_cdbStreamLine(ts,label.padEnd(20),'FAIL · '+s.msg,'fail',delay+sd));
+              }
+              sd+=60;
+            });
+          }
+
           const sep3=document.createElement('div');sep3.className='cdb-sep';c.appendChild(sep3);
 
           // ── PUSH TEST ──
