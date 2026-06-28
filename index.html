@@ -8338,6 +8338,17 @@ body.cam-open #page-catalog{
             if(missingKeys.length){
               const missingLabel = missingKeys.length === allPhotoKeys.length ? 'ยังไม่มีรูปบน cloud เลย' : `ยังไม่มีรูป ${missingKeys.length} รายการ`;
               c.appendChild(_cdbRow('bolt','NOT ON CLOUD', missingLabel, 'fail', delay+=40));
+
+              // ── UPLOAD ALL button ──
+              const upBtnRow=document.createElement('div');
+              upBtnRow.style.cssText='display:flex;gap:8px;margin:8px 0 4px';
+              upBtnRow.innerHTML=`<button id="cdb-upload-all-btn" onclick="cdbBulkUploadPhotos()" style="flex:1;background:rgba(255,159,67,.12);border:1px solid rgba(255,159,67,.45);border-radius:7px;color:#ff9f43;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;padding:7px 10px;cursor:pointer;font-weight:700;transition:all .15s" onmouseenter="this.style.background='rgba(255,159,67,.22)'" onmouseleave="this.style.background='rgba(255,159,67,.12)'">⬆ UPLOAD · ALL · PHOTOS</button>`;
+              c.appendChild(upBtnRow);
+              // progress row (hidden until upload starts)
+              const upProg=document.createElement('div');
+              upProg.id='cdb-upload-progress';
+              upProg.style.cssText='display:none;font-family:"IBM Plex Mono",monospace;font-size:9px;color:rgba(255,159,67,.8);padding:4px 0;letter-spacing:1px';
+              c.appendChild(upProg);
             }
           } else {
             // ไม่มี records/shelves เลย
@@ -9035,6 +9046,120 @@ function _attachShelfPhotoListeners(){
     }, ()=>{});
   });
 }
+// ── Bulk upload รูปทั้งหมดจาก IDB → RTDB (เรียกจากปุ่มใน Cloud Debug panel) ──
+window.cdbBulkUploadPhotos = async function(){
+  const btn = document.getElementById('cdb-upload-all-btn');
+  const prog = document.getElementById('cdb-upload-progress');
+  if(!btn || !prog) return;
+  if(!_cloudReady){ showToast('ยังไม่ได้เชื่อมต่อ cloud','err'); return; }
+
+  btn.disabled = true;
+  btn.style.opacity = '.5';
+  btn.style.cursor = 'not-allowed';
+  prog.style.display = 'block';
+
+  // รวบรวม barcodes + shelfIds ทั้งหมด
+  const barcodes = [...new Set((typeof records!=='undefined'?records:[]).map(r=>r.barcode).filter(Boolean))];
+  const shelfList = (typeof shelves!=='undefined'?shelves:[]);
+  const total = barcodes.length + shelfList.length;
+  let done = 0, uploaded = 0, skipped = 0, failed = 0;
+
+  const _upd = ()=>{
+    prog.textContent = `⬆ ${done}/${total} · ✓${uploaded} skip${skipped} ✗${failed}`;
+  };
+  _upd();
+
+  // ── Product photos ──
+  let db;
+  try{ db = await _openIDB(); }catch(e){ db = null; }
+
+  for(const bc of barcodes){
+    try{
+      // ดึง thumb + photo จาก IDB
+      let thumb=null, photo=null;
+      if(db){
+        thumb = await new Promise(res=>{
+          try{
+            const tx=db.transaction(_IDB_STORE,'readonly');
+            const r=tx.objectStore(_IDB_STORE).get(_productThumbKey(bc));
+            r.onsuccess=()=>res(r.result||null); r.onerror=()=>res(null);
+          }catch(e){res(null);}
+        });
+        photo = await new Promise(res=>{
+          try{
+            const tx=db.transaction(_IDB_STORE,'readonly');
+            const r=tx.objectStore(_IDB_STORE).get(_productPhotoKey(bc));
+            r.onsuccess=()=>res(r.result||null); r.onerror=()=>res(null);
+          }catch(e){res(null);}
+        });
+      }
+      // fallback: memory cache
+      if(!thumb && !photo) thumb = _productPhotoMemCache[bc] || null;
+      if(!thumb && !photo){ skipped++; done++; _upd(); continue; } // ไม่มีรูปในเครื่องนี้เลย
+      // ตรวจว่า cloud มีแล้วไหม
+      const existing = await cloudGet('productPhoto_'+bc);
+      if(existing && (existing.thumb||existing.photo)){ skipped++; done++; _upd(); continue; }
+      // upload
+      const ok = await cloudSet('productPhoto_'+bc, {photo: photo||null, thumb: thumb||null}, true);
+      if(ok){
+        uploaded++;
+        // mark hasPhoto ใน catalog
+        const _idx = (typeof catalog!=='undefined') && catalog.findIndex(p=>p.barcode===bc);
+        if(typeof _idx==='number' && _idx>=0){
+          const entry={...catalog[_idx],hasPhoto:true}; catalog[_idx]=entry;
+        }
+      } else { failed++; }
+    }catch(e){ failed++; }
+    done++; _upd();
+    // throttle: หน่วง 80ms ต่อรายการ กัน RTDB rate limit
+    await new Promise(r=>setTimeout(r,80));
+  }
+
+  // ── Shelf photos ──
+  for(const s of shelfList){
+    try{
+      let thumb=null, photo=null;
+      if(db){
+        photo = await new Promise(res=>{
+          try{
+            const tx=db.transaction(_IDB_STORE,'readonly');
+            const r=tx.objectStore(_IDB_STORE).get(_photoKey(s.id));
+            r.onsuccess=()=>res(r.result||null); r.onerror=()=>res(null);
+          }catch(e){res(null);}
+        });
+        thumb = await new Promise(res=>{
+          try{
+            const tx=db.transaction(_IDB_STORE,'readonly');
+            const r=tx.objectStore(_IDB_STORE).get(_thumbKey(s.id));
+            r.onsuccess=()=>res(r.result||null); r.onerror=()=>res(null);
+          }catch(e){res(null);}
+        });
+      }
+      if(!thumb && !photo && s.photo) photo = s.photo;
+      if(!thumb && !photo && s.thumb) thumb = s.thumb;
+      if(!thumb && !photo){ skipped++; done++; _upd(); continue; }
+      const existing = await cloudGet('shelfPhoto_'+s.id);
+      if(existing && (existing.thumb||existing.photo)){ skipped++; done++; _upd(); continue; }
+      const ok = await cloudSet('shelfPhoto_'+s.id, {photo: photo||null, thumb: thumb||null}, true);
+      if(ok){ uploaded++; s.hasPhoto=true; } else { failed++; }
+    }catch(e){ failed++; }
+    done++; _upd();
+    await new Promise(r=>setTimeout(r,80));
+  }
+
+  // done
+  if(uploaded>0){
+    saveCatalogLS(); // sync hasPhoto flags ขึ้น cloud
+    saveShelves();
+  }
+  prog.textContent = `✅ เสร็จ · upload ${uploaded} · skip ${skipped} · fail ${failed}`;
+  prog.style.color = failed>0 ? '#ff9f43' : '#00d4aa';
+  btn.disabled = false;
+  btn.style.opacity = '1';
+  btn.style.cursor = 'pointer';
+  btn.textContent = '↺ UPLOAD · AGAIN';
+  showToast(`☁️ bulk upload เสร็จ: ${uploaded} รูป`, failed>0?'warn':'ok');
+};
 // ── localStorage helpers ──────────────────────────────────
 function _applyCatalogDelta(delta){
   catalog = [...CATALOG_EMBEDDED];
