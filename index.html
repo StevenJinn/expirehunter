@@ -14816,28 +14816,36 @@ async function loadProductPhotosFromIDB(){
       }catch(e){}
     }
     if(foundAny && typeof renderRecords==='function') renderRecords();
-    // ── fallback: ดึงรูปจาก RTDB ที่ sync มาใน catalogDelta ──
-    // ครอบคลุมเครื่องอื่นที่รับ catalogDelta แล้วมี entry.hasPhoto=true แต่ IDB ยังว่างอยู่
+    // ── fallback: ดึงรูปจาก RTDB โดยตรงสำหรับ barcode ที่ยังไม่มีรูปในเครื่อง ──
+    // ไม่พึ่ง hasPhoto flag เพราะ flag อาจหายระหว่าง catalogDelta merge
+    if(!_cloudReady) return;
     const cloudFetches = [];
     for(const bc of barcodes){
-      if(_productPhotoMemCache[bc]) continue;
-      const entry = (typeof catalog !== 'undefined') && catalog.find(p=>p.barcode===bc);
-      if(!entry || !entry.hasPhoto) continue;
+      if(_productPhotoMemCache[bc]) continue; // มีแล้ว ข้าม
       cloudFetches.push(
         fetchProductPhotoFromCloud(bc)
           .then(v=>{
             const dataUrl = v && (v.thumb || v.photo);
             if(!dataUrl) return false;
             _productPhotoMemCache[bc]=dataUrl;
-            saveProductPhoto(bc, null, dataUrl); // cache ลง IDB ครั้งถัดไปไม่ต้องดึงซ้ำ
+            saveProductPhoto(bc, v.photo||null, v.thumb||dataUrl);
+            // mark hasPhoto ใน catalog
+            const _i = (typeof catalog!=='undefined') && catalog.findIndex(p=>p.barcode===bc);
+            if(typeof _i==='number' && _i>=0) catalog[_i]={...catalog[_i],hasPhoto:true};
             return true;
           })
           .catch(()=>false)
       );
     }
     if(cloudFetches.length){
-      const results = await Promise.all(cloudFetches);
-      if(results.some(Boolean) && typeof renderRecords==='function') renderRecords();
+      // fetch แบบ batch 10 พร้อมกัน กัน RTDB rate limit
+      let anyFetched = false;
+      for(let i=0;i<cloudFetches.length;i+=10){
+        const batch = cloudFetches.slice(i,i+10);
+        const results = await Promise.all(batch);
+        if(results.some(Boolean)){ anyFetched=true; if(typeof renderRecords==='function') renderRecords(); }
+        if(i+10<cloudFetches.length) await new Promise(r=>setTimeout(r,200));
+      }
     }
   }catch(e){}
 }
