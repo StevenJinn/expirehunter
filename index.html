@@ -4193,7 +4193,7 @@ body.cam-open #page-catalog{
 
 /* loading state — DATA-CORE echoed here instead of generic spinner */
 #cdb-loading{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  display:none;flex-direction:column;align-items:center;justify-content:center;
   gap:9px;padding:32px 0;
 }
 #cdb-loading-ring{
@@ -8361,99 +8361,85 @@ body.cam-open #page-catalog{
 
           const sep3=document.createElement('div');sep3.className='cdb-sep';c.appendChild(sep3);
 
-          // ── PUSH TEST ──
+          // ── PUSH TEST (กดเองเมื่อต้องการ — ไม่ auto-run เพื่อไม่ให้ block panel) ──
           c.appendChild(_cdbSectionHdr('PUSH · TEST · LIVE'));
-          const testRow=document.createElement('div');
-          testRow.className='cdb-row';
-          testRow.innerHTML=`<span class="cdb-pulse-ring"><span class="cdb-row-icon" style="color:#ffd200">${CDB_ICONS.bolt}</span></span><span class="cdb-row-key">PUSH NOW</span><span class="cdb-row-val warn" id="cdb-test-val">RUNNING···</span>`;
-          c.appendChild(testRow);
-          // animate test val
-          let dots=0;
-          const dotIv=setInterval(()=>{
-            const el=document.getElementById('cdb-test-val');
-            if(el&&el.textContent.startsWith('RUNNING')) el.textContent='RUNNING'+'·'.repeat((++dots%3)+1);
-          },250);
-          data.testPromise.then(ok=>{
-            clearInterval(dotIv);
-            const el=document.getElementById('cdb-test-val');
-            if(el){
-              el.textContent=ok?'PUSH · SUCCESS · ✓':'PUSH · FAILED · ✗';
-              el.className='cdb-row-val '+(ok?'ok':'fail');
+          const ptBtnRow=document.createElement('div');
+          ptBtnRow.style.cssText='display:flex;gap:8px;margin:6px 0 4px';
+          ptBtnRow.innerHTML=`<button id="cdb-push-test-btn" onclick="(async()=>{
+            const btn=document.getElementById('cdb-push-test-btn');
+            const res=document.getElementById('cdb-push-test-res');
+            if(!btn||!res) return;
+            btn.disabled=true; btn.textContent='PUSHING···';
+            res.textContent='RUNNING···'; res.className='cdb-row-val warn';
+            try{
+              const ok=await cloudSet('records',(typeof records!=='undefined'?records:[]),true);
+              res.textContent=ok?'PUSH · SUCCESS · ✓':'PUSH · FAILED · ✗';
+              res.className='cdb-row-val '+(ok?'ok':'fail');
+            }catch(e){
+              res.textContent='ERROR · '+(e&&e.message||e);
+              res.className='cdb-row-val fail';
             }
-          });
+            btn.disabled=false; btn.textContent='⚡ RUN · PUSH · TEST';
+          })()" style="flex:1;background:rgba(255,210,0,.1);border:1px solid rgba(255,210,0,.35);border-radius:7px;color:#ffd200;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;padding:7px 10px;cursor:pointer;font-weight:700;transition:all .15s" onmouseenter="this.style.background='rgba(255,210,0,.2)'" onmouseleave="this.style.background='rgba(255,210,0,.1)'">⚡ RUN · PUSH · TEST</button>`;
+          c.appendChild(ptBtnRow);
+          const ptRes=document.createElement('div');
+          ptRes.id='cdb-push-test-res';
+          ptRes.style.cssText='font-family:"IBM Plex Mono",monospace;font-size:9px;color:rgba(255,210,0,.5);padding:3px 0;letter-spacing:1px;min-height:16px';
+          ptRes.textContent='กดเพื่อทดสอบ push ไปยัง cloud';
+          c.appendChild(ptRes);
         }
         return c;
       }
 
-      async function showCloudDebug(){
+      // [PERF] showCloudDebug — เปิดทันที 0ms ไม่มี network read เลย
+      // cloud counts ได้จาก _lastCloudRecordCount/_lastCloudShelfCount ที่ listener เก็บไว้ตลอด
+      function showCloudDebug(){
         const modal = document.getElementById('nx-cloud-debug-modal');
         modal.style.display = 'flex';
         document.documentElement.style.overflow='hidden';
         document.body.style.overflow='hidden';
         document.addEventListener('touchmove', _cdbBlockBgScroll, {passive:false});
-        document.getElementById('cdb-loading').style.display='flex';
-        document.getElementById('cdb-content').style.display='none';
         document.getElementById('cdb-timestamp').textContent=_cdbNow();
         _startMatrixRain();
 
-        try {
-          const cloudReady = typeof _cloudReady!=='undefined' && _cloudReady;
-          let cloudShelves=null, cloudRecords=null, syncStatus={};
+        const cloudReady = typeof _cloudReady!=='undefined' && _cloudReady;
+        const syncStatus = (typeof _lastSyncStatus!=='undefined') ? {..._lastSyncStatus} : {};
 
-          if(cloudReady){
-            // [PERF-FIX] cloudGet('shelves') & cloudGet('records') ส่วนใหญ่คืนจาก
-            // Firebase client-cache ทันที (เพราะมี .on() listener active อยู่แล้ว)
-            [cloudShelves,cloudRecords] = await Promise.all([cloudGet('shelves'),cloudGet('records')]);
-            syncStatus = (typeof _lastSyncStatus!=='undefined') ? {..._lastSyncStatus} : {};
-          }
+        // รูปสินค้า/เชลฟ์ — ใช้ local state ที่ listener อัพเดทให้ตลอด (0ms)
+        let photoCloudData = {};
+        const _recs   = (typeof records!=='undefined') ? records : [];
+        const _shelfs  = (typeof shelves!=='undefined') ? shelves : [];
+        const _cat    = (typeof catalog!=='undefined') ? catalog : [];
+        [...new Set(_recs.map(r=>r.barcode).filter(Boolean))].forEach(bc=>{
+          const key = 'productPhoto_'+bc;
+          const inMem  = !!((typeof _productPhotoMemCache!=='undefined') && _productPhotoMemCache[bc]);
+          const entry  = _cat.find(p=>p.barcode===bc);
+          const onCloud = !!(entry && entry.hasPhoto);
+          photoCloudData[key] = { exists: inMem||onCloud, bytes:0, local:inMem, cloud:onCloud };
+        });
+        _shelfs.forEach(s=>{
+          const key = 'shelfPhoto_'+s.id;
+          const hasLocal = !!(s.photo||s.thumb);
+          const onCloud  = !!s.hasPhoto;
+          photoCloudData[key] = { exists: hasLocal||onCloud, bytes:0, local:hasLocal, cloud:onCloud };
+        });
 
-          // [PERF-FIX] Push-test เริ่มพร้อมกัน (non-blocking) — ไม่ await ก่อนสร้าง panel
-          const testPromise = cloudReady ? cloudSet('records', records, true) : Promise.resolve(false);
+        const data = {
+          localShelves : _shelfs.length,
+          localRecords : _recs.length,
+          cloudReady,
+          cloudShelves : (typeof _lastCloudShelfCount!=='undefined')  ? _lastCloudShelfCount  : null,
+          cloudRecords : (typeof _lastCloudRecordCount!=='undefined') ? _lastCloudRecordCount : null,
+          syncStatus,
+          testPromise  : null, // PUSH TEST ทำเมื่อกดปุ่มเท่านั้น ไม่ auto-run
+          photoCloudData,
+        };
 
-          // [PERF-FIX] ไม่อ่าน base64 รูปจาก RTDB (เดิมดาวน์โหลดรูปทุกรูปก่อนแสดง panel
-          //   ทำให้ช้ามากเมื่อมีหลาย barcode/shelf — ใช้ local state แทน: ดู catalog.hasPhoto
-          //   และ _productPhotoMemCache/s.photo/s.hasPhoto ซึ่งอัพเดทตามจริงจาก listener)
-          let photoCloudData = {};
-          const _recs  = (typeof records!=='undefined') ? records : [];
-          const _shelfs = (typeof shelves!=='undefined') ? shelves : [];
-          const _cat   = (typeof catalog!=='undefined') ? catalog : [];
-          const barcodes = [...new Set(_recs.map(r=>r.barcode).filter(Boolean))];
-          barcodes.forEach(bc=>{
-            const key = 'productPhoto_'+bc;
-            const inMem   = !!( (typeof _productPhotoMemCache!=='undefined') && _productPhotoMemCache[bc] );
-            const catEntry = _cat.find(p=>p.barcode===bc);
-            const onCloud  = !!(catEntry && catEntry.hasPhoto);
-            photoCloudData[key] = { exists: inMem || onCloud, bytes: 0, local: inMem, cloud: onCloud };
-          });
-          _shelfs.forEach(s=>{
-            const key = 'shelfPhoto_'+s.id;
-            const hasLocal = !!(s.photo || s.thumb);
-            const onCloud  = !!(s.hasPhoto);
-            photoCloudData[key] = { exists: hasLocal || onCloud, bytes: 0, local: hasLocal, cloud: onCloud };
-          });
-
-          const data = {
-            localShelves: _shelfs.length,
-            localRecords: _recs.length,
-            cloudReady,
-            cloudShelves: cloudShelves ? cloudShelves.length : null,
-            cloudRecords: cloudRecords ? cloudRecords.length : null,
-            syncStatus,
-            testPromise,
-            photoCloudData,
-          };
-
-          document.getElementById('cdb-loading').style.display='none';
-          const c=document.getElementById('cdb-content');
-          _buildCdbContent(data);
-          c.style.display='block';
-
-        } catch(e) {
-          document.getElementById('cdb-loading').style.display='none';
-          const c=document.getElementById('cdb-content');
-          c.style.display='block';
-          c.innerHTML=`<div class="cdb-stream-line" style="opacity:1"><span class="cdb-stream-val fail">ERROR · ${e&&e.message||e}</span></div>`;
-        }
+        // แสดงทันที — ไม่มี loading state / spinner เลย
+        document.getElementById('cdb-loading').style.display='none';
+        const c=document.getElementById('cdb-content');
+        _buildCdbContent(data);
+        c.style.display='block';
       }
 
       function closeCloudDebug(){
@@ -8844,13 +8830,13 @@ async function syncFromCloud(){
       cloudGet('records'), cloudGet('catalogDelta'), cloudGet('shelves')
     ]);
     let changed = false;
-    if (cRecords && cRecords.length) { records = cRecords; localStorage.setItem("expiry-records-v2", JSON.stringify(records)); changed = true; }
+    if (cRecords && cRecords.length) { records = cRecords; _lastCloudRecordCount = cRecords.length; localStorage.setItem("expiry-records-v2", JSON.stringify(records)); changed = true; }
     else if (records.length) cloudSet('records', records);
 
     if (cDelta && cDelta.length) { localStorage.setItem("expiry-catalog-delta", JSON.stringify(cDelta)); _applyCatalogDelta(cDelta); changed = true; }
     else if (_lastCatalogDelta.length) cloudSet('catalogDelta', _lastCatalogDelta);
 
-    if (cShelves && cShelves.length) {
+    if (cShelves && cShelves.length) { _lastCloudShelfCount = cShelves.length;
       shelves = cShelves.map(s=>{
         const _ex = shelves.find(x=>x.id===s.id); // [FIX] เก็บรูป/thumb ที่มีอยู่แล้วในเครื่อง ไม่ให้หายไปก่อนตอน rebuild array
         const photo=(_ex&&_ex.photo)||loadShelfPhoto(s.id)||s.photo||s.photoUrl||null;
@@ -8900,6 +8886,8 @@ function _extractPayload(val){
 }
 let _cloudListenersAttached = false;
 let _shelvesListenerFirstFire = true; // [FIX] fire แรกของ .on('value') ซ้ำกับข้อมูลที่ syncFromCloud() เพิ่ง render ไปแล้ว — ข้าม renderShelfList รอบนี้
+let _lastCloudRecordCount = null; // เก็บจาก listener — ใช้ใน showCloudDebug โดยไม่ต้อง re-fetch
+let _lastCloudShelfCount  = null; // เก็บจาก listener — ใช้ใน showCloudDebug โดยไม่ต้อง re-fetch
 function _attachCloudListeners(){
   if (_cloudListenersAttached || !_cloudReady) return;
   _cloudListenersAttached = true;
@@ -8941,6 +8929,7 @@ function _attachCloudListeners(){
         if (typeof _renderShelfItemsDebounced === 'function') _renderShelfItemsDebounced(s);
       }
     }
+    _lastCloudShelfCount = cShelves.length; // cache สำหรับ showCloudDebug
     _markCloudSynced();
     // ── ผูก listener รูปเชลฟ์สำหรับเชลฟ์ใหม่ที่ sync มาจากเครื่องอื่น ──
     _attachShelfPhotoListeners();
@@ -8959,6 +8948,7 @@ function _attachCloudListeners(){
       return;
     }
     records = cRecords;
+    _lastCloudRecordCount = cRecords.length; // cache สำหรับ showCloudDebug
     localStorage.setItem("expiry-records-v2", JSON.stringify(records));
     renderDashboard(); renderRecords(); renderStockSummaryAll();
     _markCloudSynced();
