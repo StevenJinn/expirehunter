@@ -8840,8 +8840,17 @@ const cloudSetCatalogDelta = _dbounce(()=>cloudSet('catalogDelta', _lastCatalogD
 const cloudSetShelves      = _dbounce(()=>cloudSet('shelves', _lastShelvesMeta), 280);
 
 // ดึงข้อมูลจาก cloud ตอนเปิดแอป (เรียกหลัง anon auth สำเร็จ) — ถ้า cloud ว่าง ให้ดันข้อมูล local ขึ้นไปครั้งแรก
+// [FIX] reentrancy guard — syncFromCloud() ถูกเรียกจากหลายจุด (auth success, online event,
+// FORCE·SYNC ปุ่ม debug, _pendingCloudSync) ถ้าเรียกซ้อนกันระหว่างที่รอบก่อนยังไม่จบ จะเกิด race:
+// สอง Promise.all คุยกับ cloud พร้อมกัน แล้ว response ที่ "ช้ากว่า" มาทับ records/shelves ที่รอบ
+// ที่ "เร็วกว่า" เพิ่งอัปเดตไปแล้ว ทำให้ข้อมูลล่าสุดหายหรือกระพริบ — แก้โดยกันไม่ให้รันซ้อน
+// แต่ก็ไม่ทิ้งคำขอที่มาตอนกำลังรัน (เก็บไว้รันอีกรอบเดียวหลังรอบปัจจุบันจบ)
+let _syncInProgress = false;
+let _syncQueued = false;
 async function syncFromCloud(){
   if (!_cloudReady) return;
+  if (_syncInProgress) { _syncQueued = true; return; }
+  _syncInProgress = true;
   try {
     const [cRecords, cDelta, cShelves] = await Promise.all([
       cloudGet('records'), cloudGet('catalogDelta'), cloudGet('shelves')
@@ -8885,6 +8894,10 @@ async function syncFromCloud(){
     // safety: หลัง listeners ติดแล้ว → ดึงรูปอีกครั้ง กัน timing miss
     setTimeout(()=>{ if(typeof loadProductPhotosFromIDB==='function') loadProductPhotosFromIDB(); }, 1500);
   } catch(e) { console.warn("[cloud] syncFromCloud failed", e); _markCloudSyncError('syncFromCloud: '+(e&&e.code||e&&e.message||e)); }
+  finally {
+    _syncInProgress = false;
+    if (_syncQueued) { _syncQueued = false; syncFromCloud(); } // มีคำขอ sync เข้ามาตอนกำลังรัน — รันให้อีกรอบเดียว
+  }
 }
 
 // ── Realtime listeners: รับการเปลี่ยนแปลงจากอุปกรณ์/แท็บอื่นแบบสด ──
