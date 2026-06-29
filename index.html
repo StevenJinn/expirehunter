@@ -8300,63 +8300,14 @@ body.cam-open #page-catalog{
             if(lastLine) lastLine.insertAdjacentHTML('beforeend','<span class="cdb-stream-cursor"></span>');
           }, delay+sd+200);
 
-          // ── PHOTO · CLOUD · STATUS (query RTDB จริง) ──
-          const pcd = data.photoCloudData || {};
-          const allPhotoKeys   = Object.keys(pcd);
-          const prodCloudKeys  = allPhotoKeys.filter(k=>k.startsWith('productPhoto_'));
-          const shelfCloudKeys = allPhotoKeys.filter(k=>k.startsWith('shelfPhoto_'));
-          if(allPhotoKeys.length){
-            const sep2b=document.createElement('div');sep2b.className='cdb-sep';c.appendChild(sep2b);
-            c.appendChild(_cdbSectionHdr('PHOTO · CLOUD · STATUS'));
-
-            const prodOk  = prodCloudKeys.filter(k=>pcd[k]&&pcd[k].exists).length;
-            const shelfOk = shelfCloudKeys.filter(k=>pcd[k]&&pcd[k].exists).length;
-            c.appendChild(_cdbRow('cloud','PRODUCT PHOTOS',
-              `${prodOk} / ${prodCloudKeys.length} ON CLOUD`,
-              prodOk===prodCloudKeys.length&&prodCloudKeys.length>0?'ok':'warn', delay+=40));
-            c.appendChild(_cdbRow('disk','SHELF PHOTOS',
-              `${shelfOk} / ${shelfCloudKeys.length} ON CLOUD`,
-              shelfOk===shelfCloudKeys.length&&shelfCloudKeys.length>0?'ok':'warn', delay+=40));
-
-            // per-key rows (แสดงเฉพาะสินค้าที่ local มีรูป หรือ cloud มีรูป)
-            const shownKeys = allPhotoKeys.filter(k=>pcd[k]&&pcd[k].exists);
-            if(shownKeys.length){
-              const photoStream=document.createElement('div');
-              photoStream.style.cssText='background:rgba(0,0,0,.35);border-radius:8px;padding:6px 8px;margin:6px 0;max-height:140px;overflow-y:auto';
-              shownKeys.forEach(k=>{
-                const label=k.replace('productPhoto_','PROD·').replace('shelfPhoto_','SHELF·');
-                const kb=Math.round((pcd[k].bytes||0)/1024);
-                const line=document.createElement('div');
-                line.style.cssText='font-family:"IBM Plex Mono",monospace;font-size:9px;color:rgba(0,212,170,.7);padding:2px 0;display:flex;justify-content:space-between';
-                line.innerHTML=`<span>✓ ${label}</span><span style="color:rgba(255,255,255,.3)">${kb}KB</span>`;
-                photoStream.appendChild(line);
-              });
-              c.appendChild(photoStream);
-            }
-            // แสดงรายการที่ยังไม่มีบน cloud
-            const missingKeys = allPhotoKeys.filter(k=>!pcd[k]||!pcd[k].exists);
-            if(missingKeys.length){
-              const missingLabel = missingKeys.length === allPhotoKeys.length ? 'ยังไม่มีรูปบน cloud เลย' : `ยังไม่มีรูป ${missingKeys.length} รายการ`;
-              c.appendChild(_cdbRow('bolt','NOT ON CLOUD', missingLabel, 'fail', delay+=40));
-
-              // ── UPLOAD ALL button ──
-              const upBtnRow=document.createElement('div');
-              upBtnRow.style.cssText='display:flex;gap:8px;margin:8px 0 4px';
-              upBtnRow.innerHTML=`<button id="cdb-upload-all-btn" onclick="cdbBulkUploadPhotos()" style="flex:1;background:rgba(255,159,67,.12);border:1px solid rgba(255,159,67,.45);border-radius:7px;color:#ff9f43;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;padding:7px 10px;cursor:pointer;font-weight:700;transition:all .15s" onmouseenter="this.style.background='rgba(255,159,67,.22)'" onmouseleave="this.style.background='rgba(255,159,67,.12)'">⬆ UPLOAD · ALL · PHOTOS</button>`;
-              c.appendChild(upBtnRow);
-              // progress row (hidden until upload starts)
-              const upProg=document.createElement('div');
-              upProg.id='cdb-upload-progress';
-              upProg.style.cssText='display:none;font-family:"IBM Plex Mono",monospace;font-size:9px;color:rgba(255,159,67,.8);padding:4px 0;letter-spacing:1px';
-              c.appendChild(upProg);
-            }
-          } else {
-            // ไม่มี records/shelves เลย
-            const sep2b=document.createElement('div');sep2b.className='cdb-sep';c.appendChild(sep2b);
-            c.appendChild(_cdbSectionHdr('PHOTO · CLOUD · STATUS'));
-            c.appendChild(_cdbRow('cloud','PRODUCT PHOTOS','NO RECORDS TO CHECK','warn',delay+=40));
-            c.appendChild(_cdbRow('disk','SHELF PHOTOS','NO SHELVES TO CHECK','warn',delay+=40));
-          }
+          // ── PHOTO · CLOUD · STATUS placeholder (จะถูก populate async) ──
+          const sep2b=document.createElement('div');sep2b.className='cdb-sep';c.appendChild(sep2b);
+          c.appendChild(_cdbSectionHdr('PHOTO · CLOUD · STATUS'));
+          const photoPlaceholder=document.createElement('div');
+          photoPlaceholder.id='cdb-photo-status-section';
+          photoPlaceholder.style.cssText='font-family:"IBM Plex Mono",monospace;font-size:9px;color:rgba(0,212,170,.4);letter-spacing:2px;padding:6px 0';
+          photoPlaceholder.textContent='⟳ LOADING…';
+          c.appendChild(photoPlaceholder);
 
           const sep3=document.createElement('div');sep3.className='cdb-sep';c.appendChild(sep3);
 
@@ -8406,28 +8357,6 @@ body.cam-open #page-catalog{
 
           const testPromise = cloudReady ? cloudSet('records', records, true) : Promise.resolve(false);
 
-          // ── query รูปจาก RTDB จริงๆ (ไม่ใช้แค่ session log) ──
-          let photoCloudData = {}; // key -> {exists, bytes}
-          if(cloudReady){
-            const barcodes = [...new Set((typeof records!=='undefined'?records:[]).map(r=>r.barcode).filter(Boolean))];
-            const shelfIds = (typeof shelves!=='undefined'?shelves:[]).map(s=>s.id).filter(Boolean);
-            const photoChecks = [
-              ...barcodes.map(bc=>({ key:'productPhoto_'+bc, label:'PROD·'+bc })),
-              ...shelfIds.map(id=>({ key:'shelfPhoto_'+id,   label:'SHELF·'+id })),
-            ];
-            await Promise.all(photoChecks.map(async ({key})=>{
-              try{
-                const v = await cloudGet(key);
-                if(v && (v.thumb||v.photo)){
-                  const bytes = (v.thumb||'').length + (v.photo||'').length;
-                  photoCloudData[key] = {exists:true, bytes};
-                } else {
-                  photoCloudData[key] = {exists:false, bytes:0};
-                }
-              }catch(e){ photoCloudData[key]={exists:false,bytes:0}; }
-            }));
-          }
-
           const data = {
             localShelves: typeof shelves!=='undefined' ? shelves.length : 0,
             localRecords: typeof records!=='undefined' ? records.length : 0,
@@ -8436,13 +8365,29 @@ body.cam-open #page-catalog{
             cloudRecords: cloudRecords ? cloudRecords.length : null,
             syncStatus,
             testPromise,
-            photoCloudData,
+            photoCloudData: {}, // เริ่มว่าง → fetch async ทีหลัง
           };
 
           document.getElementById('cdb-loading').style.display='none';
           const c=document.getElementById('cdb-content');
           _buildCdbContent(data);
           c.style.display='block';
+
+          // ── fetch photoIndex — 1 request รู้ทุก key ทันที ──
+          if(cloudReady){
+            try{
+              const idx = await cloudGet('photoIndex') || {};
+              const barcodes=[...new Set((typeof records!=='undefined'?records:[]).map(r=>r.barcode).filter(Boolean))];
+              const shelfIds=(typeof shelves!=='undefined'?shelves:[]).map(s=>s.id).filter(Boolean);
+              const pcd={};
+              barcodes.forEach(bc=>{ pcd['productPhoto_'+bc]={exists:!!idx[bc], bytes:idx[bc]||0}; });
+              shelfIds.forEach(id=>{ pcd['shelfPhoto_'+id]={exists:!!idx['shelf_'+id], bytes:idx['shelf_'+id]||0}; });
+              _buildCdbPhotoSection(pcd, barcodes.length+shelfIds.length, barcodes.length+shelfIds.length);
+            }catch(e){
+              const el=document.getElementById('cdb-photo-status-section');
+              if(el) el.textContent='ERROR: '+e.message;
+            }
+          }
 
         } catch(e) {
           document.getElementById('cdb-loading').style.display='none';
@@ -8452,6 +8397,53 @@ body.cam-open #page-catalog{
         }
       }
 
+      function _buildCdbPhotoSection(pcd, total, done){
+        const el=document.getElementById('cdb-photo-status-section');
+        if(!el) return;
+        el.innerHTML='';
+        const allKeys=Object.keys(pcd);
+        const prodKeys=allKeys.filter(k=>k.startsWith('productPhoto_'));
+        const shelfKeys=allKeys.filter(k=>k.startsWith('shelfPhoto_'));
+        const prodOk=prodKeys.filter(k=>pcd[k]&&pcd[k].exists).length;
+        const shelfOk=shelfKeys.filter(k=>pcd[k]&&pcd[k].exists).length;
+        const pending=total-done;
+
+        // summary rows
+        const mkRow=(icon,label,val,cls)=>{
+          const d=document.createElement('div');
+          d.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 0';
+          d.innerHTML=`<span style="font-size:14px;opacity:.7">${icon}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:rgba(255,255,255,.45);letter-spacing:1px;flex:1">${label}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1px;color:${cls==='ok'?'#00d4aa':cls==='fail'?'#ff6b6b':'#ff9f43'}">${val}</span>`;
+          return d;
+        };
+        el.appendChild(mkRow('☁️','PRODUCT PHOTOS',`${prodOk} / ${prodKeys.length+(pending>0?'+':'')  } ON CLOUD`, prodOk>0&&prodOk===prodKeys.length?'ok':'warn'));
+        el.appendChild(mkRow('🗂','SHELF PHOTOS',`${shelfOk} / ${shelfKeys.length+(pending>0?'+':'')  } ON CLOUD`, shelfOk>0&&shelfOk===shelfKeys.length?'ok':'warn'));
+
+        if(pending>0){
+          const prog=document.createElement('div');
+          prog.style.cssText='font-family:"IBM Plex Mono",monospace;font-size:9px;color:rgba(0,212,170,.5);letter-spacing:1px;padding:3px 0';
+          prog.textContent=`⟳ QUERYING ${done}/${total}…`;
+          el.appendChild(prog);
+        }
+
+        // missing → show upload button
+        const missingKeys=allKeys.filter(k=>!pcd[k]||!pcd[k].exists);
+        if(missingKeys.length&&pending===0){
+          const missingLabel=missingKeys.length===allKeys.length?'ยังไม่มีรูปบน cloud เลย':`ยังไม่มีรูป ${missingKeys.length} รายการ`;
+          el.appendChild(mkRow('⚡','NOT ON CLOUD',missingLabel,'fail'));
+          if(!document.getElementById('cdb-upload-all-btn')){
+            const upBtnRow=document.createElement('div');
+            upBtnRow.style.cssText='display:flex;gap:8px;margin:8px 0 4px';
+            upBtnRow.innerHTML=`<button id="cdb-upload-all-btn" onclick="cdbBulkUploadPhotos()" style="flex:1;background:rgba(255,159,67,.12);border:1px solid rgba(255,159,67,.45);border-radius:7px;color:#ff9f43;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;padding:7px 10px;cursor:pointer;font-weight:700" >⬆ UPLOAD · ALL · PHOTOS</button>`;
+            el.appendChild(upBtnRow);
+            const upProg=document.createElement('div');
+            upProg.id='cdb-upload-progress';
+            upProg.style.cssText='display:none;font-family:"IBM Plex Mono",monospace;font-size:9px;color:rgba(255,159,67,.8);padding:4px 0;letter-spacing:1px';
+            el.appendChild(upProg);
+          }
+        } else if(pending===0&&missingKeys.length===0&&allKeys.length>0){
+          el.appendChild(mkRow('✅','ALL PHOTOS ON CLOUD',`${allKeys.length} ITEMS`,'ok'));
+        }
+      }
       function closeCloudDebug(){
         document.getElementById('nx-cloud-debug-modal').style.display='none';
         document.documentElement.style.overflow='';
@@ -8976,10 +8968,62 @@ function _attachCloudListeners(){
     _attachProductPhotoListeners();
   }, e=>{ console.warn("[cloud] catalogDelta listener fail", e); _markCloudSyncError('catalogDelta-listen: '+(e&&e.code||e)); });
 
-  // productPhoto_* — รับรูปสินค้าแบบ realtime จากเครื่องอื่น
-  _attachProductPhotoListeners();
-  // shelfPhoto_* — รับรูปเชลฟ์แบบ realtime จากเครื่องอื่น
-  _attachShelfPhotoListeners();
+  // ── photoIndex listener เดียว แทน per-barcode/shelf listeners ──
+  _attachPhotoIndexListener();
+}
+
+// photoIndex snapshot มี {barcode: bytes, shelf_shelfId: bytes}
+// เมื่อ key ใหม่เข้ามา → fetch รูปจริงมาเก็บ IDB + render
+let _photoIndexKnown = {}; // key -> bytes ที่รู้อยู่แล้ว
+function _attachPhotoIndexListener(){
+  if(!_cloudReady) return;
+  _cloudRef('photoIndex').on('value', async snap=>{
+    if(!snap.exists()) return;
+    const idx = snap.val() || {};
+    const newKeys = Object.keys(idx).filter(k=> !_photoIndexKnown[k]);
+    // อัพเดท known map
+    Object.assign(_photoIndexKnown, idx);
+    if(!newKeys.length) return;
+    // แยก product vs shelf
+    const prodKeys  = newKeys.filter(k=>!k.startsWith('shelf_'));
+    const shelfKeys = newKeys.filter(k=>k.startsWith('shelf_'));
+    let anyNew = false;
+    // fetch product photos ที่ยังไม่มีใน memcache
+    for(const bc of prodKeys){
+      if(_productPhotoMemCache[bc]) continue;
+      try{
+        const v = await fetchProductPhotoFromCloud(bc);
+        if(!v) continue;
+        const dataUrl = v.thumb||v.photo;
+        _productPhotoMemCache[bc] = dataUrl;
+        saveProductPhoto(bc, v.photo||null, v.thumb||null);
+        const _i=(typeof catalog!=='undefined')&&catalog.findIndex(p=>p.barcode===bc);
+        if(typeof _i==='number'&&_i>=0) catalog[_i]={...catalog[_i],hasPhoto:true};
+        anyNew = true;
+      }catch(e){}
+    }
+    // fetch shelf photos ที่ยังไม่มี
+    for(const k of shelfKeys){
+      const shelfId = k.replace(/^shelf_/,'');
+      const s = (typeof shelves!=='undefined')&&shelves.find(x=>x.id===shelfId);
+      if(s&&s.photo&&s.thumb) continue;
+      try{
+        const v = await fetchShelfPhotoFromCloud(shelfId);
+        if(!v) continue;
+        if(s){
+          if(!s.photo&&v.photo) s.photo=v.photo;
+          if(!s.thumb&&v.thumb) s.thumb=v.thumb;
+          s.hasPhoto=true;
+          saveShelfPhoto(shelfId, s.photo||null, s.thumb||null);
+        }
+        anyNew = true;
+      }catch(e){}
+    }
+    if(anyNew){
+      if(typeof renderRecords==='function') renderRecords();
+      if(typeof renderShelfList==='function') renderShelfList();
+    }
+  }, e=>{ console.warn('[cloud] photoIndex listener fail', e); });
 }
 
 // ── ต่อ listener ราย barcode สำหรับ productPhoto — เรียกได้ซ้ำ (จะ skip barcode ที่ผูกแล้ว) ──
@@ -9123,6 +9167,8 @@ window.cdbBulkUploadPhotos = async function(){
       const ok = await cloudSet('productPhoto_'+bc, {photo: photo||null, thumb: thumb||null}, true);
       if(ok){
         uploaded++;
+        const bytes=(photo||'').length+(thumb||'').length;
+        _cloudRef('photoIndex/'+bc).set(bytes||1).catch(()=>{});
         // mark hasPhoto ใน catalog
         const _idx = (typeof catalog!=='undefined') && catalog.findIndex(p=>p.barcode===bc);
         if(typeof _idx==='number' && _idx>=0){
@@ -9166,7 +9212,11 @@ window.cdbBulkUploadPhotos = async function(){
         skipped++; done++; _upd(); continue;
       }
       const ok = await cloudSet('shelfPhoto_'+s.id, {photo: photo||null, thumb: thumb||null}, true);
-      if(ok){ uploaded++; s.hasPhoto=true; } else { failed++; }
+      if(ok){
+        uploaded++; s.hasPhoto=true;
+        const bytes=(photo||'').length+(thumb||'').length;
+        _cloudRef('photoIndex/shelf_'+s.id).set(bytes||1).catch(()=>{});
+      } else { failed++; }
     }catch(e){ failed++; }
     done++; _upd();
     await new Promise(r=>setTimeout(r,80));
@@ -14442,6 +14492,9 @@ async function uploadShelfPhotoToCloud(shelfId, photoDataURL, thumbDataURL){
   try{
     const ok = await cloudSet('shelfPhoto_'+shelfId, {photo: photoDataURL||null, thumb: thumbDataURL||null}, true);
     if(!ok) throw new Error('cloudSet failed');
+    // ── อัพเดท photoIndex node ──
+    const bytes = (photoDataURL||'').length + (thumbDataURL||'').length;
+    _cloudRef('photoIndex/shelf_'+shelfId).set(bytes||1).catch(()=>{});
     return {photoUrl: photoDataURL||null, thumbUrl: thumbDataURL||null};
   }catch(e){
     console.warn("[cloud] upload shelf photo fail", shelfId, e);
@@ -14596,6 +14649,9 @@ async function uploadProductPhotoToCloud(barcode, photoDataURL, thumbDataURL){
   try{
     const ok = await cloudSet('productPhoto_'+barcode, {photo: photoDataURL||null, thumb: thumbDataURL||null}, true);
     if(!ok) throw new Error('cloudSet failed');
+    // ── อัพเดท photoIndex node ──
+    const bytes = (photoDataURL||'').length + (thumbDataURL||'').length;
+    _cloudRef('photoIndex/'+barcode).set(bytes||1).catch(()=>{});
     return {photoUrl: photoDataURL||null, thumbUrl: thumbDataURL||null};
   }catch(e){
     console.warn("[cloud] upload product photo fail", barcode, e);
