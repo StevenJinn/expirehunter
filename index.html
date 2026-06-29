@@ -9251,7 +9251,18 @@ function saveCatalogLS() {
   try {
     localStorage.setItem("expiry-catalog-delta", JSON.stringify(delta));
   } catch(e) {
-    _freeQuota();
+    // [FIX] _freeQuota ไม่ได้ define — inline fallback: ลบ legacy photo keys คืน quota
+    try {
+      const _toRm = [];
+      for (let _i = 0; _i < localStorage.length; _i++) {
+        const _k = localStorage.key(_i);
+        if (_k && (_k.startsWith('product-photo-v1-') || _k.startsWith('product-thumb-v1-') ||
+                   _k.startsWith('shelf-photo-v1-')   || _k.startsWith('shelf-thumb-v1-'))) {
+          _toRm.push(_k);
+        }
+      }
+      _toRm.forEach(_k => { try { localStorage.removeItem(_k); } catch(e3) {} });
+    } catch(e3) {}
     try { localStorage.setItem("expiry-catalog-delta", JSON.stringify(delta)); } catch(e2) {}
   }
   _lastCatalogDelta = delta;
@@ -10552,16 +10563,19 @@ function renderRecords() {
   // Apply sort with direction
   const sd = (currentSortDir === 'asc') ? 1 : -1;
   if (currentSort === 'recent') {
-    // แสดงเฉพาะ lot ล่าสุด (addedAt สูงสุด) ของแต่ละ barcode — ไม่ซ้ำกลุ่ม
-    const latestPerGroup = {};
+    // [FIX] เลือก representative lot ตาม direction:
+    //   desc (ล่าสุดก่อน) → เลือก lot ที่ addedAt สูงสุดของแต่ละ group
+    //   asc  (เก่าสุดก่อน) → เลือก lot ที่ addedAt ต่ำสุดของแต่ละ group
+    const repPerGroup = {};
     shown.forEach(r => {
       const k = _barcodeGroupKey(r.barcode);
-      if (!latestPerGroup[k] || (r.addedAt||0) > (latestPerGroup[k].addedAt||0)) {
-        latestPerGroup[k] = r;
-      }
+      const cur = repPerGroup[k];
+      const pick = !cur
+        || (currentSortDir === 'desc' ? (r.addedAt||0) > (cur.addedAt||0)
+                                      : (r.addedAt||0) < (cur.addedAt||0));
+      if (pick) repPerGroup[k] = r;
     });
-    shown = Object.values(latestPerGroup);
-    // เรียงตาม addedAt ล่าสุด (desc = ล่าสุดขึ้นก่อน)
+    shown = Object.values(repPerGroup);
     shown.sort((a,b) => sd * ((a.addedAt||0) - (b.addedAt||0)));
   } else if (currentSort === 'expiry') {
     const expSd = currentFilter==='warn' ? 1 : sd;
