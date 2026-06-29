@@ -1520,10 +1520,6 @@ body.cam-open #page-catalog{
     margin-bottom:10px;overflow:hidden;
     opacity:0;
     position:relative;
-  }
-  .dash-ready .ht-action-panel{
-    animation:htCardIn .5s cubic-bezier(.34,1.56,.64,1) .3s both, alertPulseGlow 3s ease-in-out 1s infinite;
-  }
     /* Animated border via gradient */
     border:1.5px solid transparent;
     background-clip:padding-box;
@@ -1531,6 +1527,9 @@ body.cam-open #page-catalog{
       0 0 0 1.5px rgba(255,60,60,.25),
       0 0 30px rgba(255,40,40,.12),
       0 8px 32px rgba(0,0,0,.6);
+  }
+  .dash-ready .ht-action-panel{
+    animation:htCardIn .5s cubic-bezier(.34,1.56,.64,1) .3s both, alertPulseGlow 3s ease-in-out 1s infinite;
   }
   /* Animated gradient border top */
   .ht-action-panel::before{
@@ -15392,10 +15391,16 @@ async function toggleShelfCam(){
   const idleDiv=document.getElementById("shelf-cam-idle");
   const activeDiv=document.getElementById("shelf-cam-active");
   const wrapper=document.getElementById("shelf-cam-wrapper");
+  const vid=document.getElementById("shelfCamVideo");
+  if(!vid||!wrapper){
+    // shelf-cam-* / shelfCamVideo markup doesn't exist in this build yet — bail out
+    // safely instead of crashing mid-stream after requesting camera permission.
+    showToast("ฟีเจอร์กล้องเชลฟ์ยังไม่พร้อมใช้งาน","err");
+    return;
+  }
   if(idleDiv) idleDiv.style.display="none";
   if(activeDiv) activeDiv.style.display="none";
   try{
-    const vid=document.getElementById("shelfCamVideo");
     if("BarcodeDetector" in window){
       shelfCamStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}}});
       vid.srcObject=shelfCamStream; vid.muted=true; await vid.play();
