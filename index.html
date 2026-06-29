@@ -15002,14 +15002,28 @@ function saveShelves(){
 }
 
 // ── force save on exit (records + shelves) ────────────────
+// [FIX] เดิมเซฟแค่ localStorage ฝั่ง records ไม่ได้ push cloud เลย — ถ้าผู้ใช้แก้ของแล้ว
+// สลับแอป/ปิดแท็บเร็วๆ การแก้ไขรอบล่าสุดจะไม่ขึ้น cloud จนกว่าจะเปิดแอปใหม่อีกรอบ (เครื่องอื่นไม่เห็น)
+// เรียก cloudSet ตรงๆ ไม่ผ่าน debounce (cloudSetRecords/cloudSetShelves) เพราะ beforeunload/visibilitychange
+// อาจถูกเบราว์เซอร์/OS ตัดตอนก่อน setTimeout ของ debounce จะ fire ทัน
 window.addEventListener("beforeunload",()=>{
   try{ localStorage.setItem("expiry-records-v2",JSON.stringify(records)); }catch(e){}
+  if (typeof _cloudReady !== 'undefined' && _cloudReady && typeof cloudSet === 'function') cloudSet('records', records);
   saveShelves();
+  if (typeof _cloudReady !== 'undefined' && _cloudReady && typeof cloudSet === 'function') {
+    const meta = shelves.map(s=>{ const {photo,thumb,_photoInline,...rest}=s; return rest; });
+    cloudSet('shelves', meta);
+  }
 });
 document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="hidden"){
     try{ localStorage.setItem("expiry-records-v2",JSON.stringify(records)); }catch(e){}
+    if (typeof _cloudReady !== 'undefined' && _cloudReady && typeof cloudSet === 'function') cloudSet('records', records);
     saveShelves();
+    if (typeof _cloudReady !== 'undefined' && _cloudReady && typeof cloudSet === 'function') {
+      const meta = shelves.map(s=>{ const {photo,thumb,_photoInline,...rest}=s; return rest; });
+      cloudSet('shelves', meta);
+    }
   }
 });
 
@@ -20962,7 +20976,12 @@ window.closeNexusOverlay=function(){
 
 <script>
 /* ── PWA Service Worker Registration ── */
+// [FIX] เดิมตรวจเจอเวอร์ชันใหม่แล้วแค่ log ลง console เงียบๆ ไม่ทำอะไรต่อ — ผู้ใช้ต้อง
+// refresh เองถึงจะได้โค้ดที่แก้ไปจริง ตอนนี้: ติดตั้งเสร็จแล้ว reload อัตโนมัติครั้งเดียว
+// (รอจนกว่าแท็บไม่ active อยู่ก่อน กันไม่ให้ reload ขัดจังหวะตอนกำลังกรอกข้อมูล)
 if ('serviceWorker' in navigator) {
+  let _swReloadPending = false;
+  let _swReloading = false;
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js', { scope: './' })
       .then(reg => {
@@ -20972,13 +20991,26 @@ if ('serviceWorker' in navigator) {
           if (!nw) return;
           nw.addEventListener('statechange', () => {
             if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-              console.log('[PWA] Update available — refresh to apply');
+              console.log('[PWA] Update installed — will activate on next safe moment');
+              _swReloadPending = true;
+              _maybeApplySwUpdate();
             }
           });
         });
       })
       .catch(err => console.warn('[PWA] SW registration failed:', err));
   });
+  function _maybeApplySwUpdate(){
+    if (!_swReloadPending || _swReloading) return;
+    // หน้าไม่ได้กำลังถูกมองอยู่ (สลับแอป/ปิดจอ) → ปลอดภัยที่จะ reload
+    if (document.visibilityState === 'hidden') {
+      _swReloading = true;
+      location.reload();
+    }
+  }
+  document.addEventListener('visibilitychange', _maybeApplySwUpdate);
+  // เผื่อกรณีแอปเปิดอยู่หน้าเดียวยาวๆ ไม่เคย hidden เลย — เช็คซ้ำเป็นระยะ
+  setInterval(_maybeApplySwUpdate, 60000);
 }
 </script>
 
