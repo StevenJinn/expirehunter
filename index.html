@@ -8260,8 +8260,17 @@ body.cam-open #page-catalog{
         c.appendChild(_cdbRow('cloud','STATUS', cloudReady?'CONNECTED':'OFFLINE', cloudReady?'ok':'fail', delay+=40));
 
         if(cloudReady){
-          c.appendChild(_cdbRow('disk','SHELVES',String(data.cloudShelves??'—'),'num',delay+=40));
-          c.appendChild(_cdbRow('list','RECORDS',String(data.cloudRecords??'—'),'num',delay+=40));
+          const rShelf=_cdbRow('disk','SHELVES','⟳','num',delay+=40);
+          rShelf.querySelector('.cdb-row-val, [class*="val"], span:last-child') && (rShelf.id='');
+          // หา value span แล้วใส่ id
+          const shelfValSpan=rShelf.querySelector('span:last-child')||rShelf.lastElementChild;
+          if(shelfValSpan) shelfValSpan.id='cdb-cloud-shelves';
+          c.appendChild(rShelf);
+
+          const rRec=_cdbRow('list','RECORDS','⟳','num',delay+=40);
+          const recValSpan=rRec.querySelector('span:last-child')||rRec.lastElementChild;
+          if(recValSpan) recValSpan.id='cdb-cloud-records';
+          c.appendChild(rRec);
 
           const sep2=document.createElement('div');sep2.className='cdb-sep';c.appendChild(sep2);
 
@@ -8348,24 +8357,18 @@ body.cam-open #page-catalog{
 
         try {
           const cloudReady = typeof _cloudReady!=='undefined' && _cloudReady;
-          let cloudShelves=null, cloudRecords=null, syncStatus={};
+          const syncStatus = (typeof _lastSyncStatus!=='undefined') ? {..._lastSyncStatus} : {};
 
-          if(cloudReady){
-            [cloudShelves,cloudRecords] = await Promise.all([cloudGet('shelves'),cloudGet('records')]);
-            syncStatus = (typeof _lastSyncStatus!=='undefined') ? {..._lastSyncStatus} : {};
-          }
-
-          const testPromise = cloudReady ? cloudSet('records', records, true) : Promise.resolve(false);
-
+          // ── render panel ทันที ไม่รอ cloud fetch ──
           const data = {
             localShelves: typeof shelves!=='undefined' ? shelves.length : 0,
             localRecords: typeof records!=='undefined' ? records.length : 0,
             cloudReady,
-            cloudShelves: cloudShelves ? cloudShelves.length : null,
-            cloudRecords: cloudRecords ? cloudRecords.length : null,
+            cloudShelves: null, // จะอัพเดททีหลัง
+            cloudRecords: null,
             syncStatus,
-            testPromise,
-            photoCloudData: {}, // เริ่มว่าง → fetch async ทีหลัง
+            testPromise: Promise.resolve(false),
+            photoCloudData: {},
           };
 
           document.getElementById('cdb-loading').style.display='none';
@@ -8373,20 +8376,32 @@ body.cam-open #page-catalog{
           _buildCdbContent(data);
           c.style.display='block';
 
-          // ── fetch photoIndex — 1 request รู้ทุก key ทันที ──
+          // ── fetch cloud data ใน background ──
           if(cloudReady){
-            try{
-              const idx = await cloudGet('photoIndex') || {};
+            // 1) shelves + records count (ไม่ block render)
+            Promise.all([
+              cloudGet('shelves').catch(()=>null),
+              cloudGet('records').catch(()=>null),
+            ]).then(([cs,cr])=>{
+              const csEl=document.getElementById('cdb-cloud-shelves');
+              const crEl=document.getElementById('cdb-cloud-records');
+              if(csEl) csEl.textContent=cs?cs.length:'—';
+              if(crEl) crEl.textContent=cr?cr.length:'—';
+            });
+
+            // 2) photoIndex — 1 request
+            cloudGet('photoIndex').catch(()=>null).then(idx=>{
+              idx = idx || {};
               const barcodes=[...new Set((typeof records!=='undefined'?records:[]).map(r=>r.barcode).filter(Boolean))];
               const shelfIds=(typeof shelves!=='undefined'?shelves:[]).map(s=>s.id).filter(Boolean);
               const pcd={};
               barcodes.forEach(bc=>{ pcd['productPhoto_'+bc]={exists:!!idx[bc], bytes:idx[bc]||0}; });
               shelfIds.forEach(id=>{ pcd['shelfPhoto_'+id]={exists:!!idx['shelf_'+id], bytes:idx['shelf_'+id]||0}; });
               _buildCdbPhotoSection(pcd, barcodes.length+shelfIds.length, barcodes.length+shelfIds.length);
-            }catch(e){
-              const el=document.getElementById('cdb-photo-status-section');
-              if(el) el.textContent='ERROR: '+e.message;
-            }
+            });
+
+            // 3) push test (ไม่รอ)
+            cloudSet('records', records, true).catch(()=>{});
           }
 
         } catch(e) {
@@ -14538,18 +14553,19 @@ async function loadShelfPhotosFromIDB(){
       }catch(e){}
     }
   }catch(e){}
-  // ── [FIX] fallback: ถ้า IDB ไม่มีรูป (เครื่องใหม่/ล้าง cache) → ดึงจาก RTDB
-  //    (เชลฟ์ที่เคยอัพโหลดรูปไว้จะมี s.hasPhoto = true ติดมาจาก metadata ที่ sync แล้ว) ──
+  // ── fallback: ใช้ photoIndex กรองเฉพาะเชลฟ์ที่มีรูปบน cloud และยังไม่มีในเครื่อง ──
+  if(!_cloudReady){ if(_anyPatched) renderShelfList(); return; }
+  const idx = await cloudGet('photoIndex').catch(()=>null) || {};
   const _cloudFetches = [];
   for(const s of shelves){
-    if(s.photo && s.thumb) continue; // มีรูปแล้วจาก IDB/localStorage
-    if(!s.hasPhoto) continue; // เชลฟ์นี้ไม่เคยมีรูปเลย ไม่ต้องเสีย read quota ไปถาม cloud
+    if(s.photo && s.thumb) continue;
+    if(!idx['shelf_'+s.id]) continue; // photoIndex บอกว่าไม่มีรูปบน cloud → ข้าม
     _cloudFetches.push(
       fetchShelfPhotoFromCloud(s.id).then(v=>{
         if(!v) return false;
         if(!s.thumb && v.thumb) s.thumb=v.thumb;
         if(!s.photo && v.photo) s.photo=v.photo;
-        saveShelfPhoto(s.id, s.photo, s.thumb); // cache ลง IDB ครั้งถัดไปไม่ต้องดึงซ้ำ
+        saveShelfPhoto(s.id, s.photo, s.thumb);
         _anyPatched=true;
         return true;
       }).catch(()=>false)
@@ -14853,55 +14869,50 @@ function _trimWhitespace(img){
   }
 }
 
-// ── Bulk-load product photo thumbnails from IDB for every distinct barcode in records ──
+// ── Bulk-load product photo thumbnails — ใช้ photoIndex เป็น smart filter ──
 async function loadProductPhotosFromIDB(){
   try{
     const db=await _openIDB();
     const barcodes=[...new Set(records.map(r=>r.barcode).filter(Boolean))];
+
+    // 1) โหลดจาก IDB local ก่อน (เร็ว, ไม่ใช้ network)
     let foundAny=false;
-    for(const bc of barcodes){
-      if(_productPhotoMemCache[bc]) continue; // already resolved (memory or earlier localStorage check)
-      try{
-        await new Promise(res=>{
+    await Promise.all(barcodes.map(bc=>{
+      if(_productPhotoMemCache[bc]) return Promise.resolve();
+      return new Promise(res=>{
+        try{
           const tx=db.transaction(_IDB_STORE,'readonly');
-          const st=tx.objectStore(_IDB_STORE);
-          const rt=st.get(_productThumbKey(bc));
-          rt.onsuccess=()=>{ if(rt.result){ _productPhotoMemCache[bc]=rt.result; foundAny=true; } res(); };
+          const rt=tx.objectStore(_IDB_STORE).get(_productThumbKey(bc));
+          rt.onsuccess=()=>{ if(rt.result){_productPhotoMemCache[bc]=rt.result;foundAny=true;} res(); };
           rt.onerror=()=>res();
-        });
-      }catch(e){}
-    }
+        }catch(e){res();}
+      });
+    }));
     if(foundAny && typeof renderRecords==='function') renderRecords();
-    // ── fallback: ดึงรูปจาก RTDB โดยตรงสำหรับ barcode ที่ยังไม่มีรูปในเครื่อง ──
-    // ไม่พึ่ง hasPhoto flag เพราะ flag อาจหายระหว่าง catalogDelta merge
+
+    // 2) ดู photoIndex — 1 request รู้ทันทีว่า barcode ไหนมีรูปบน cloud
     if(!_cloudReady) return;
-    const cloudFetches = [];
-    for(const bc of barcodes){
-      if(_productPhotoMemCache[bc]) continue; // มีแล้ว ข้าม
-      cloudFetches.push(
-        fetchProductPhotoFromCloud(bc)
-          .then(v=>{
-            const dataUrl = v && (v.thumb || v.photo);
-            if(!dataUrl) return false;
-            _productPhotoMemCache[bc]=dataUrl;
-            saveProductPhoto(bc, v.photo||null, v.thumb||dataUrl);
-            // mark hasPhoto ใน catalog
-            const _i = (typeof catalog!=='undefined') && catalog.findIndex(p=>p.barcode===bc);
-            if(typeof _i==='number' && _i>=0) catalog[_i]={...catalog[_i],hasPhoto:true};
-            return true;
-          })
-          .catch(()=>false)
-      );
-    }
-    if(cloudFetches.length){
-      // fetch แบบ batch 10 พร้อมกัน กัน RTDB rate limit
-      let anyFetched = false;
-      for(let i=0;i<cloudFetches.length;i+=10){
-        const batch = cloudFetches.slice(i,i+10);
-        const results = await Promise.all(batch);
-        if(results.some(Boolean)){ anyFetched=true; if(typeof renderRecords==='function') renderRecords(); }
-        if(i+10<cloudFetches.length) await new Promise(r=>setTimeout(r,200));
-      }
+    const idx = await cloudGet('photoIndex').catch(()=>null) || {};
+    // กรองเฉพาะ barcode ที่: (a) ยังไม่มีใน local และ (b) photoIndex บอกว่ามีรูปบน cloud
+    const needFetch = barcodes.filter(bc=> !_productPhotoMemCache[bc] && idx[bc]);
+    if(!needFetch.length) return;
+
+    // 3) fetch รูปจริงเฉพาะที่จำเป็น — batch 10 พร้อมกัน
+    for(let i=0;i<needFetch.length;i+=10){
+      const batch=needFetch.slice(i,i+10);
+      const results=await Promise.all(batch.map(bc=>
+        fetchProductPhotoFromCloud(bc).then(v=>{
+          const dataUrl=v&&(v.thumb||v.photo);
+          if(!dataUrl) return false;
+          _productPhotoMemCache[bc]=dataUrl;
+          saveProductPhoto(bc,v.photo||null,v.thumb||dataUrl);
+          const _i=(typeof catalog!=='undefined')&&catalog.findIndex(p=>p.barcode===bc);
+          if(typeof _i==='number'&&_i>=0) catalog[_i]={...catalog[_i],hasPhoto:true};
+          return true;
+        }).catch(()=>false)
+      ));
+      if(results.some(Boolean)&&typeof renderRecords==='function') renderRecords();
+      if(i+10<needFetch.length) await new Promise(r=>setTimeout(r,150));
     }
   }catch(e){}
 }
