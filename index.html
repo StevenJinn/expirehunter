@@ -9129,6 +9129,12 @@ window.cdbBulkUploadPhotos = async function(){
   };
   _upd();
 
+  // ── re-fetch photoIndex จาก RTDB ใหม่เสมอ (ไม่เชื่อ _photoIndexKnown ที่ cache ใน memory) ──
+  let _livePhotoIndex = {};
+  try{ _livePhotoIndex = (await cloudGet('photoIndex').catch(()=>null)) || {}; }catch(e){}
+  // sync กลับเข้า _photoIndexKnown ด้วยเพื่อให้ listener รู้สถานะล่าสุด
+  if(typeof _photoIndexKnown !== 'undefined') Object.assign(_photoIndexKnown, _livePhotoIndex);
+
   // ── Product photos ──
   // โหลด IDB ทั้งหมดเข้า memCache ก่อน (ใช้ฟังก์ชัน loadProductPhotosFromIDB ที่ define แล้ว)
   try{ await loadProductPhotosFromIDB(); }catch(e){}
@@ -9139,8 +9145,8 @@ window.cdbBulkUploadPhotos = async function(){
       const thumb = _productPhotoMemCache[bc] || null;
       const photo = null; // thumb ก็พอสำหรับ cloud display
       if(!thumb){ skipped++; done++; _upd(); continue; }
-      // ตรวจว่า cloud มีแล้วไหม (ดู photoIndex ก่อน — เร็วกว่า cloudGet รายตัว)
-      const existInIndex = (_photoIndexKnown||{})[bc];
+      // ตรวจว่า cloud มีแล้วไหม — ใช้ _livePhotoIndex ที่ fetch ใหม่จาก RTDB
+      const existInIndex = _livePhotoIndex[bc];
       if(existInIndex){
         skipped++; done++; _upd(); continue;
       }
@@ -9168,8 +9174,8 @@ window.cdbBulkUploadPhotos = async function(){
       const thumb = s.thumb || null;
       const photo = s.photo || null;
       if(!thumb && !photo){ skipped++; done++; _upd(); continue; }
-      // ตรวจ photoIndex ก่อน — ไม่ต้อง cloudGet รายตัว
-      if((_photoIndexKnown||{})['shelf_'+s.id]){
+      // ตรวจ photoIndex — ใช้ _livePhotoIndex ที่ fetch ใหม่จาก RTDB
+      if(_livePhotoIndex['shelf_'+s.id]){
         skipped++; done++; _upd(); continue;
       }
       const ok = await cloudSet('shelfPhoto_'+s.id, {photo: photo||null, thumb: thumb||null}, true);
