@@ -25,7 +25,7 @@
      ════════════════════════════════════════════════════════════════ -->
 <!-- @ZONE:BOOT-CONFIG — title/meta/CDN scripts (xlsx/zxing/firebase)/Google Fonts -->
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#0a0e1a"/>
@@ -37,6 +37,16 @@
 <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png"/>
 <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png"/>
 <title>Expire Hunter</title>
+<!-- @BOOT: Global error boundary — catches uncaught JS errors + unhandled promise rejections -->
+<script>
+window.onerror = function(msg, src, line, col, err) {
+  console.error('[ExpHunter] Uncaught error:', msg, '\n  at', src + ':' + line + ':' + col, err || '');
+  return false; // ไม่ suppress error ใน console
+};
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('[ExpHunter] Unhandled promise rejection:', e.reason);
+});
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/umd/index.min.js"></script>
@@ -6211,7 +6221,7 @@ body.cam-open #page-catalog{
 <body oncontextmenu="return false" onselectstart="return false">
 <canvas id="cdb-rain-canvas" style="display:none!important;"></canvas>
 
-<div id="nx-cloud-debug-modal" style="display:none" onclick="if(event.target===this)closeCloudDebug()">
+<div id="nx-cloud-debug-modal" role="dialog" aria-modal="true" aria-label="Cloud Sync Status" style="display:none" onclick="if(event.target===this)closeCloudDebug()">
   <div id="cdb-panel">
     <div class="cdb-vignette"></div>
 
@@ -7420,7 +7430,7 @@ body.cam-open #page-catalog{
       <div class="mc-corner br"></div>
 
       <!-- × close -->
-      <button id="mc-close-btn" onclick="closeMatch()">×</button>
+      <button id="mc-close-btn" onclick="closeMatch()" aria-label="ปิด">×</button>
 
       <!-- ① Product header -->
       <div id="mc-product-header">
@@ -7521,7 +7531,7 @@ body.cam-open #page-catalog{
         <span id="fQtyLabel" style="display:none">จำนวน</span>
 
         <!-- Save button -->
-        <button id="mc-save-btn" onclick="saveRecord()">
+        <button id="mc-save-btn" onclick="saveRecord()" aria-label="บันทึกล็อตนี้">
           <span id="save-btn-label">บันทึกล็อตนี้</span>
         </button>
 
@@ -7530,7 +7540,7 @@ body.cam-open #page-catalog{
 
         <!-- Done -->
         <div id="scan-done-row" style="display:none;margin-top:8px">
-          <button id="mc-done-btn" onclick="scanDone()">
+          <button id="mc-done-btn" onclick="scanDone()" aria-label="เสร็จสิ้น — บันทึกทั้งหมดแล้ว">
             เสร็จสิ้น — บันทึกทั้งหมดแล้ว ดูบันทึก
           </button>
         </div>
@@ -7665,7 +7675,7 @@ body.cam-open #page-catalog{
     <!-- ─ SORT + DEL HIST ROW ─ -->
     <div style="display:flex;gap:8px;margin-bottom:14px;align-items:stretch">
       <div style="position:relative;flex:1;min-width:0">
-        <button onclick="toggleSortMenu()" id="sort-btn">
+        <button onclick="toggleSortMenu()" id="sort-btn" aria-label="เรียงลำดับบันทึก" aria-haspopup="listbox">
           <span style="display:flex;align-items:center;gap:6px;z-index:1;position:relative">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="flex-shrink:0"><line x1="1" y1="3" x2="11" y2="3" stroke="#00d4aa" stroke-width="1.5"/><line x1="1" y1="6" x2="8" y2="6" stroke="rgba(0,212,170,.5)" stroke-width="1.5"/><line x1="1" y1="9" x2="5" y2="9" stroke="rgba(0,212,170,.25)" stroke-width="1.5"/></svg>
             <span id="sort-label">นำเข้าล่าสุด</span>
@@ -7681,7 +7691,7 @@ body.cam-open #page-catalog{
           <div onclick="setSort('unplaced')" id="sopt-unplaced" class="sort-opt" style="padding:11px 14px;font-size:11px;font-weight:700;cursor:pointer;color:#8a91b0">📦 ยังไม่ได้วาง</div>
         </div>
       </div>
-      <button onclick="openDeleteHistory()" class="rec-del-hist-btn">
+      <button onclick="openDeleteHistory()" class="rec-del-hist-btn" aria-label="ดูประวัติการลบ">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
         ประวัติลบ
       </button>
@@ -7741,7 +7751,7 @@ body.cam-open #page-catalog{
         <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,212,170,.8),rgba(75,207,250,.5),transparent);pointer-events:none"></div>
         <div style="display:flex;align-items:center;gap:10px;position:relative;z-index:1">
           <!-- Back -->
-          <button onclick="closeShelfDetail()" style="background:rgba(75,207,250,.1);border:1px solid rgba(75,207,250,.25);color:#4bcffa;font-size:16px;cursor:pointer;padding:0;width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s">
+          <button onclick="closeShelfDetail()" aria-label="กลับไปหน้าเชลฟ์" style="background:rgba(75,207,250,.1);border:1px solid rgba(75,207,250,.25);color:#4bcffa;font-size:16px;cursor:pointer;padding:0;width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div style="flex:1;min-width:0">
@@ -7750,7 +7760,7 @@ body.cam-open #page-catalog{
             <div id="shelf-detail-count" style="font-size:10px;color:rgba(75,207,250,.5);letter-spacing:.5px;font-weight:700;margin-top:1px"></div>
           </div>
           <!-- Delete -->
-          <button onclick="openDeleteShelfModal()" style="background:rgba(255,77,77,.08);border:1px solid rgba(255,77,77,.25);color:#ff6b6b;border-radius:10px;padding:7px 12px;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:.5px">DEL</button>
+          <button onclick="openDeleteShelfModal()" aria-label="ลบเชลฟ์นี้" style="background:rgba(255,77,77,.08);border:1px solid rgba(255,77,77,.25);color:#ff6b6b;border-radius:10px;padding:7px 12px;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:.5px">DEL</button>
         </div>
         <!-- bottom corner marks -->
         <div style="position:absolute;top:8px;left:8px;width:8px;height:8px;border-top:1.5px solid rgba(0,212,170,.4);border-left:1.5px solid rgba(0,212,170,.4);z-index:2;animation:pgCornerBlink 3s ease-in-out infinite"></div>
@@ -7867,14 +7877,14 @@ body.cam-open #page-catalog{
             <!-- ชั้น controls -->
             <div style="display:flex;align-items:center;gap:3px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:3px 6px">
               <div style="font-size:8px;color:rgba(255,255,255,.3);letter-spacing:.5px;margin-right:2px">ROW</div>
-              <button onclick="removeShelfRow()" style="width:24px;height:24px;background:rgba(255,77,77,.1);border:1px solid rgba(255,77,77,.25);color:#ff6b6b;border-radius:6px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:800">−</button>
-              <button onclick="addShelfRow()" style="width:24px;height:24px;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.3);color:#00d4aa;border-radius:6px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:800">+</button>
+              <button onclick="removeShelfRow()" aria-label="ลดแถว" style="width:24px;height:24px;background:rgba(255,77,77,.1);border:1px solid rgba(255,77,77,.25);color:#ff6b6b;border-radius:6px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:800">−</button>
+              <button onclick="addShelfRow()" aria-label="เพิ่มแถว" style="width:24px;height:24px;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.3);color:#00d4aa;border-radius:6px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:800">+</button>
             </div>
             <!-- ขา controls -->
             <div style="display:flex;align-items:center;gap:3px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:3px 6px">
               <div style="font-size:8px;color:rgba(255,255,255,.3);letter-spacing:.5px;margin-right:2px">COL</div>
-              <button onclick="removeShelfCol()" style="width:24px;height:24px;background:rgba(255,77,77,.1);border:1px solid rgba(255,77,77,.25);color:#ff6b6b;border-radius:6px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:800">−</button>
-              <button onclick="addShelfCol()" style="width:24px;height:24px;background:rgba(100,180,255,.1);border:1px solid rgba(100,180,255,.3);color:#64b4ff;border-radius:6px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:800">+</button>
+              <button onclick="removeShelfCol()" aria-label="ลดคอลัมน์" style="width:24px;height:24px;background:rgba(255,77,77,.1);border:1px solid rgba(255,77,77,.25);color:#ff6b6b;border-radius:6px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:800">−</button>
+              <button onclick="addShelfCol()" aria-label="เพิ่มคอลัมน์" style="width:24px;height:24px;background:rgba(100,180,255,.1);border:1px solid rgba(100,180,255,.3);color:#64b4ff;border-radius:6px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:800">+</button>
             </div>
           </div>
         </div>
@@ -7901,13 +7911,13 @@ body.cam-open #page-catalog{
     </div>
 
     <!-- ── New shelf modal ── -->
-    <div id="new-shelf-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;padding:20px">
+    <div id="new-shelf-modal" role="dialog" aria-modal="true" aria-label="สร้างเชลฟ์ใหม่" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;padding:20px">
       <div style="background:#1a1d27;border-radius:16px;padding:24px;width:100%;max-width:360px;border:1px solid #2e3347">
         <div style="font-size:16px;font-weight:800;color:#e8eaf6;margin-bottom:16px">🗄️ สร้างเชลฟ์ใหม่</div>
         <input id="new-shelf-name" placeholder="ชื่อเชลฟ์ เช่น เชลฟ์ A1, เครื่องดื่ม..." onkeydown="if(event.key==='Enter')confirmNewShelf()" style="width:100%;background:#0f1117;border:1.5px solid #2e3347;border-radius:10px;padding:12px 14px;color:#e8eaf6;font-size:15px;box-sizing:border-box;margin-bottom:12px"/>
         <div style="display:flex;gap:8px">
-          <button class="btn" onclick="confirmNewShelf()" style="flex:1;background:linear-gradient(135deg,#00d4aa,#00b891);color:#0f1117;font-weight:800;border:none;box-shadow:0 4px 14px rgba(0,212,170,.3)">สร้าง</button>
-          <button class="btn" onclick="closeNewShelf()" style="background:#22263a;color:#8a91b0;border:1.5px solid #2e3347">ยกเลิก</button>
+          <button class="btn" onclick="confirmNewShelf()" aria-label="ยืนยันสร้างเชลฟ์" style="flex:1;background:linear-gradient(135deg,#00d4aa,#00b891);color:#0f1117;font-weight:800;border:none;box-shadow:0 4px 14px rgba(0,212,170,.3)">สร้าง</button>
+          <button class="btn" onclick="closeNewShelf()" aria-label="ยกเลิก" style="background:#22263a;color:#8a91b0;border:1.5px solid #2e3347">ยกเลิก</button>
         </div>
       </div>
     </div><!-- /shelf-detail-view -->
@@ -7919,17 +7929,17 @@ body.cam-open #page-catalog{
       <div id="ssr-name" style="font-size:15px;font-weight:800;color:#e8eaf6;margin-bottom:2px"></div>
       <div id="ssr-barcode" style="font-size:11px;color:#555e7a;margin-bottom:10px"></div>
       <div style="display:flex;gap:8px">
-        <button onclick="confirmShelfItem()" class="btn" style="flex:1;background:linear-gradient(135deg,#00d4aa,#00b891);color:#0f1117;font-weight:800;border:none;font-size:13px">+ เพิ่มในเชลฟ์</button>
-        <button onclick="cancelShelfItem()" style="background:#22263a;border:1px solid #2e3347;color:#8a91b0;border-radius:8px;padding:0 14px;cursor:pointer;font-size:13px">ยกเลิก</button>
+        <button onclick="confirmShelfItem()" class="btn" aria-label="เพิ่มสินค้าในเชลฟ์" style="flex:1;background:linear-gradient(135deg,#00d4aa,#00b891);color:#0f1117;font-weight:800;border:none;font-size:13px">+ เพิ่มในเชลฟ์</button>
+        <button onclick="cancelShelfItem()" aria-label="ยกเลิก" style="background:#22263a;border:1px solid #2e3347;color:#8a91b0;border-radius:8px;padding:0 14px;cursor:pointer;font-size:13px">ยกเลิก</button>
       </div>
     </div>
     <!-- ── Pick from records modal ── -->
-    <div id="pick-records-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;flex-direction:column;padding:12px;padding-bottom:max(80px,env(safe-area-inset-bottom))">
+    <div id="pick-records-modal" role="dialog" aria-modal="true" aria-label="เลือกสินค้าจากบันทึก" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;flex-direction:column;padding:12px;padding-bottom:max(80px,env(safe-area-inset-bottom))">
       <div style="background:#1a1d27;border-radius:16px;display:flex;flex-direction:column;height:100%;border:1px solid #2e3347">
         <!-- fixed header - never scrolls -->
         <div style="padding:14px 16px;border-bottom:1px solid #2e3347;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-radius:16px 16px 0 0;background:#1a1d27">
           <div style="font-size:15px;font-weight:800;color:#e8eaf6">📋 เลือกจากบันทึก</div>
-          <button onclick="closePickFromRecords()" style="background:rgba(255,255,255,.1);border:none;color:#e8eaf6;font-size:20px;cursor:pointer;padding:0;line-height:1;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>
+          <button onclick="closePickFromRecords()" aria-label="ปิด" style="background:rgba(255,255,255,.1);border:none;color:#e8eaf6;font-size:20px;cursor:pointer;padding:0;line-height:1;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>
         </div>
         <div style="padding:10px 16px;border-bottom:1px solid #2e3347;flex-shrink:0;background:#1a1d27">
           <input id="pick-records-search" placeholder="🔍 ค้นหาชื่อหรือบาร์โค้ด..." oninput="renderPickRecords()" style="width:100%;background:#0f1117;border:1.5px solid #2e3347;border-radius:10px;padding:9px 12px;color:#e8eaf6;font-size:14px;box-sizing:border-box"/>
@@ -7940,7 +7950,7 @@ body.cam-open #page-catalog{
     </div>
 
     <!-- ── Delete confirmation modal ── -->
-    <div id="delete-shelf-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;align-items:center;justify-content:center;padding:20px">
+    <div id="delete-shelf-modal" role="dialog" aria-modal="true" aria-label="ยืนยันการลบเชลฟ์" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;align-items:center;justify-content:center;padding:20px">
       <div style="background:#1a1d27;border-radius:16px;padding:24px;width:100%;max-width:360px;border:1.5px solid rgba(255,77,77,.4)">
         <div style="font-size:22px;text-align:center;margin-bottom:8px">⚠️</div>
         <div style="font-size:16px;font-weight:800;color:#ff4d4d;text-align:center;margin-bottom:6px">ยืนยันการลบเชลฟ์</div>
@@ -7948,8 +7958,8 @@ body.cam-open #page-catalog{
         <div style="font-size:13px;color:#8a91b0;margin-bottom:8px">พิมพ์ <strong style="color:#ff4d4d">ยืนยัน</strong> เพื่อดำเนินการลบ:</div>
         <input id="delete-shelf-confirm-input" placeholder="พิมพ์: ยืนยัน" onkeydown="if(event.key==='Enter')confirmDeleteShelf()" oninput="checkDeleteInput()" style="width:100%;background:#0f1117;border:1.5px solid #2e3347;border-radius:10px;padding:12px 14px;color:#e8eaf6;font-size:15px;box-sizing:border-box;margin-bottom:12px;outline:none"/>
         <div style="display:flex;gap:8px">
-          <button id="delete-shelf-confirm-btn" onclick="confirmDeleteShelf()" disabled style="flex:1;background:#3a1a1a;border:1px solid rgba(255,77,77,.3);color:#555e7a;border-radius:10px;padding:12px;font-weight:800;font-size:14px;cursor:not-allowed;transition:.2s">ลบเชลฟ์</button>
-          <button onclick="closeDeleteShelfModal()" style="flex:1;background:#22263a;border:1.5px solid #2e3347;color:#8a91b0;border-radius:10px;padding:12px;font-weight:800;font-size:14px;cursor:pointer">ยกเลิก</button>
+          <button id="delete-shelf-confirm-btn" onclick="confirmDeleteShelf()" aria-label="ยืนยันลบเชลฟ์" disabled style="flex:1;background:#3a1a1a;border:1px solid rgba(255,77,77,.3);color:#555e7a;border-radius:10px;padding:12px;font-weight:800;font-size:14px;cursor:not-allowed;transition:.2s">ลบเชลฟ์</button>
+          <button onclick="closeDeleteShelfModal()" aria-label="ยกเลิก" style="flex:1;background:#22263a;border:1.5px solid #2e3347;color:#8a91b0;border-radius:10px;padding:12px;font-weight:800;font-size:14px;cursor:pointer">ยกเลิก</button>
         </div>
       </div>
     </div>
@@ -8372,7 +8382,7 @@ body.cam-open #page-catalog{
             btn.disabled=true; btn.textContent='PUSHING···';
             res.textContent='RUNNING···'; res.className='cdb-row-val warn';
             try{
-              const ok=await cloudSet('records',(typeof records!=='undefined'?records:[]),true);
+              const ok=await cloudSetAllRecords(typeof records!=='undefined'?records:[]);
               res.textContent=ok?'PUSH · SUCCESS · ✓':'PUSH · FAILED · ✗';
               res.className='cdb-row-val '+(ok?'ok':'fail');
             }catch(e){
@@ -8743,19 +8753,30 @@ try {
     .catch(e=>{ console.warn("[cloud] anon auth failed", e); _markCloudSyncError('auth: '+(e&&e.code||e)); });
 } catch(e) { console.warn("[cloud] init failed", e); _markCloudOffline('init failed'); }
 
-// RTDB path: /stores/expirehunter-main/data/{key}
+// ── RTDB path layout ──────────────────────────────────────────────────────────
+// Legacy (blob):   /stores/{id}/data/{key}          → { payloadJson, updatedAt }
+// Per-item:        /stores/{id}/items/records/{id}  → { ...recordFields, _ts }
+//                  /stores/{id}/items/shelves/{id}  → { ...shelfFields,  _ts }
+//                  /stores/{id}/data/{key}          → misc (catalogDelta, photos)
+// ─────────────────────────────────────────────────────────────────────────────
 function _cloudRef(key){ return _cloudDb.ref('stores/' + CLOUD_STORE_ID + '/data/' + key); }
+function _cloudItemRef(collection, id){ return _cloudDb.ref('stores/' + CLOUD_STORE_ID + '/items/' + collection + '/' + id); }
+function _cloudItemsRef(collection){ return _cloudDb.ref('stores/' + CLOUD_STORE_ID + '/items/' + collection); }
 
-let _lastWriteAt = {}; // key -> timestamp ของ write ล่าสุดที่ "เราเอง" เป็นคนส่งขึ้นไป (กันไม่ให้ listener ดึงค่าตัวเองกลับมาเขียนทับซ้ำ)
-let _lastSyncStatus = {}; // key -> {ok, msg, time} เก็บผล sync แยกราย key
+let _lastWriteAt = {}; // "records/{id}" | "shelves/{id}" | key → timestamp เราเขียนเอง (กัน echo loop)
+let _lastSyncStatus = {}; // key → {ok, msg, time, bytes}
 
+// ── write timestamp helpers ──────────────────────────────────────────────────
+function _stampWrite(tag){ _lastWriteAt[tag] = Date.now(); }
+function _wasOwnWrite(tag, ts){ return _lastWriteAt[tag] && ts <= _lastWriteAt[tag]; }
+
+// ── cloudGet: legacy blob path (ใช้สำหรับ catalogDelta และ boot migration) ──
 async function cloudGet(key){
   if (!_cloudReady) return null;
   try {
     const snap = await _cloudRef(key).get();
     if (!snap.exists()) return null;
     const d = snap.val();
-    // เก็บเป็น { payloadJson, updatedAt } — เหมือนโครงสร้างเดิม
     if (d && typeof d.payloadJson === 'string') {
       try { return JSON.parse(d.payloadJson); } catch(e) { console.warn('[cloud] payloadJson parse fail', key, e); return null; }
     }
@@ -8763,21 +8784,24 @@ async function cloudGet(key){
   }
   catch(e) { console.warn("[cloud] get fail:", key, e); _markCloudSyncError(key+': '+(e&&e.code||e&&e.message||e)); return null; }
 }
+
+// ── cloudSet: legacy blob path (ใช้สำหรับ catalogDelta และ photos) ──────────
 async function cloudSet(key, value, force){
   if (!_cloudReady) return false;
-  try {
-    // ── SAFETY GUARD: ห้ามให้ array ว่างไปเขียนทับข้อมูลที่ cloud มีอยู่แล้วโดยไม่ตั้งใจ ──
-    if (!force && Array.isArray(value) && value.length === 0 && (key === 'shelves' || key === 'records')) {
-      const existing = await cloudGet(key);
-      if (existing && existing.length > 0) {
-        console.warn('[cloud] BLOCKED empty overwrite for', key, '— cloud has', existing.length, 'items, refusing to wipe. Use force=true if intentional.');
-        _markCloudSyncError(key + ': blocked empty overwrite (data protection)');
-        return false;
-      }
+  // EMPTY GUARD — ใช้ _localDataReady แทน read-before-write (ลด 1 RTT ต่อ session)
+  // ถ้า local ยังไม่พร้อม แสดงว่า records/shelves ยังไม่โหลด → อย่าเพิ่งเขียนทับ
+  if (!force && Array.isArray(value) && value.length === 0
+      && (key === 'shelves' || key === 'records')) {
+    if (!_localDataReady) {
+      console.warn('[cloud] BLOCKED empty overwrite for', key, '— local not ready yet');
+      return false;
     }
+    // local พร้อมแล้วแต่ array ว่าง = ข้อมูลจริงๆ ว่าง → ผ่าน (ไม่ต้อง read)
+  }
+  try {
     _markCloudSyncing(key);
     const ts = Date.now();
-    _lastWriteAt[key] = ts;
+    _stampWrite(key);
     const payloadJson = JSON.stringify(value);
     await _cloudRef(key).set({ payloadJson: payloadJson, updatedAt: ts });
     _markCloudSynced(key);
@@ -8788,6 +8812,101 @@ async function cloudSet(key, value, force){
     console.warn("[cloud] set fail:", key, e);
     _markCloudSyncError(key+': '+(e&&e.code||e&&e.message||e));
     _lastSyncStatus[key] = {ok:false, time:Date.now(), msg:(e&&e.code||e&&e.message||String(e))};
+    return false;
+  }
+}
+
+// ── Per-item write: เขียนเฉพาะ item ที่เปลี่ยน ──────────────────────────────
+// records: เขียนทีละ record (ไม่ต้อง serialize ทั้ง array)
+async function cloudSetRecord(rec){
+  if (!_cloudReady || !rec || !rec.id) return false;
+  try {
+    const ts = Date.now();
+    _stampWrite('records/'+rec.id);
+    await _cloudItemRef('records', rec.id).set({...rec, _ts: ts});
+    _lastSyncStatus['rec:'+rec.id] = {ok:true, time:ts};
+    return true;
+  } catch(e) {
+    console.warn('[cloud] setRecord fail:', rec.id, e);
+    _lastSyncStatus['rec:'+rec.id] = {ok:false, time:Date.now(), msg:String(e)};
+    return false;
+  }
+}
+async function cloudDeleteRecord(id){
+  if (!_cloudReady || !id) return false;
+  try {
+    _stampWrite('records/'+id);
+    await _cloudItemRef('records', id).remove();
+    return true;
+  } catch(e) { console.warn('[cloud] deleteRecord fail:', id, e); return false; }
+}
+
+// shelves: เขียนทีละ shelf (ไม่รวมรูป — รูปใช้ path แยกเหมือนเดิม)
+async function cloudSetShelf(shelf){
+  if (!_cloudReady || !shelf || !shelf.id) return false;
+  try {
+    const {photo, thumb, _photoInline, ...meta} = shelf;
+    const ts = Date.now();
+    _stampWrite('shelves/'+shelf.id);
+    await _cloudItemRef('shelves', shelf.id).set({...meta, _ts: ts});
+    _lastSyncStatus['shelf:'+shelf.id] = {ok:true, time:ts};
+    return true;
+  } catch(e) {
+    console.warn('[cloud] setShelf fail:', shelf.id, e);
+    _lastSyncStatus['shelf:'+shelf.id] = {ok:false, time:Date.now(), msg:String(e)};
+    return false;
+  }
+}
+async function cloudDeleteShelf(id){
+  if (!_cloudReady || !id) return false;
+  try {
+    _stampWrite('shelves/'+id);
+    await _cloudItemRef('shelves', id).remove();
+    return true;
+  } catch(e) { console.warn('[cloud] deleteShelf fail:', id, e); return false; }
+}
+
+// ── Bulk write: ใช้ Firebase multi-path update (atomic, 1 round-trip) ────────
+async function cloudSetAllRecords(arr){
+  if (!_cloudReady) return false;
+  if (!arr || arr.length === 0) return true;
+  try {
+    _markCloudSyncing('records');
+    const ts = Date.now();
+    const updates = {};
+    arr.forEach(r => {
+      _stampWrite('records/'+r.id);
+      updates['stores/'+CLOUD_STORE_ID+'/items/records/'+r.id] = {...r, _ts: ts};
+    });
+    await _cloudDb.ref().update(updates);
+    _markCloudSynced('records');
+    _lastSyncStatus['records'] = {ok:true, time:ts, bytes: JSON.stringify(arr).length};
+    return true;
+  } catch(e) {
+    console.warn('[cloud] setAllRecords fail:', e);
+    _markCloudSyncError('records: '+(e&&e.code||String(e)));
+    return false;
+  }
+}
+async function cloudSetAllShelves(arr){
+  if (!_cloudReady) return false;
+  if (!arr || arr.length === 0) return true;
+  try {
+    _markCloudSyncing('shelves');
+    const ts = Date.now();
+    const updates = {};
+    arr.forEach(s => {
+      const {photo, thumb, _photoInline, ...meta} = s;
+      _stampWrite('shelves/'+s.id);
+      updates['stores/'+CLOUD_STORE_ID+'/items/shelves/'+s.id] = {...meta, _ts: ts};
+    });
+    await _cloudDb.ref().update(updates);
+    _markCloudSynced('shelves');
+    _lastSyncStatus['shelves'] = {ok:true, time:ts, bytes: JSON.stringify(arr).length};
+    return true;
+  } catch(e) {
+    console.warn('[cloud] setAllShelves fail:', e);
+    _markCloudSyncError('shelves: '+(e&&e.code||String(e)));
     return false;
   }
 }
@@ -8818,41 +8937,125 @@ async function cloudSet(key, value, force){
 })();
 let _lastCatalogDelta = [];
 let _lastShelvesMeta = [];
-const cloudSetRecords      = _dbounce(()=>cloudSet('records', records), 280);
-const cloudSetCatalogDelta = _dbounce(()=>cloudSet('catalogDelta', _lastCatalogDelta), 280);
-const cloudSetShelves      = _dbounce(()=>cloudSet('shelves', _lastShelvesMeta), 280);
 
-// ดึงข้อมูลจาก cloud ตอนเปิดแอป (เรียกหลัง anon auth สำเร็จ) — ถ้า cloud ว่าง ให้ดันข้อมูล local ขึ้นไปครั้งแรก
+// ── debounced bulk writes (fallback / force sync) ────────────────────────────
+const cloudSetRecords      = _dbounce(()=>cloudSetAllRecords(records), 280);
+const cloudSetCatalogDelta = _dbounce(()=>cloudSet('catalogDelta', _lastCatalogDelta), 280);
+const cloudSetShelves      = _dbounce(()=>cloudSetAllShelves(shelves), 280);
+
+// ── per-item debounce map (กัน write ถี่เกินบน item เดียวกัน) ───────────────
+const _recWriteTimers   = {};
+const _shelfWriteTimers = {};
+function cloudSetRecordDebounced(rec){
+  if (!rec || !rec.id) return;
+  clearTimeout(_recWriteTimers[rec.id]);
+  _recWriteTimers[rec.id] = setTimeout(()=>cloudSetRecord(rec), 250);
+}
+function cloudSetShelfDebounced(shelf){
+  if (!shelf || !shelf.id) return;
+  clearTimeout(_shelfWriteTimers[shelf.id]);
+  _shelfWriteTimers[shelf.id] = setTimeout(()=>cloudSetShelf(shelf), 250);
+}
+
+// ดึงข้อมูลจาก cloud ตอนเปิดแอป — per-item path ก่อน, fallback blob (migration)
 async function syncFromCloud(){
   if (!_cloudReady) return;
   try {
-    const [cRecords, cDelta, cShelves] = await Promise.all([
-      cloudGet('records'), cloudGet('catalogDelta'), cloudGet('shelves')
+    // ── ดึง 3 key พร้อมกัน (per-item + catalogDelta blob) ────────────────────
+    const [snapRecords, snapShelves, cDelta] = await Promise.all([
+      _cloudItemsRef('records').get(),
+      _cloudItemsRef('shelves').get(),
+      cloudGet('catalogDelta'),
     ]);
+
     let changed = false;
-    if (cRecords && cRecords.length) { records = cRecords; _lastCloudRecordCount = cRecords.length; localStorage.setItem("expiry-records-v2", JSON.stringify(records)); changed = true; }
-    else if (records.length) cloudSet('records', records);
 
-    if (cDelta && cDelta.length) { localStorage.setItem("expiry-catalog-delta", JSON.stringify(cDelta)); _applyCatalogDelta(cDelta); changed = true; }
-    else if (_lastCatalogDelta.length) cloudSet('catalogDelta', _lastCatalogDelta);
+    // ── RECORDS ──────────────────────────────────────────────────────────────
+    if (snapRecords.exists()) {
+      // per-item path มีข้อมูล → ใช้เลย (fast path)
+      const raw = snapRecords.val();
+      const cRecords = Object.values(raw).map(r => { const {_ts,...rest}=r; return rest; });
+      if (cRecords.length) {
+        records = cRecords;
+        _lastCloudRecordCount = cRecords.length;
+        localStorage.setItem("expiry-records-v2", JSON.stringify(records));
+        changed = true;
+      }
+    } else {
+      // ── Migration: blob เก่ายังอยู่ → ดึงมา migrate ขึ้น per-item path ────
+      const cRecords = await cloudGet('records');
+      if (cRecords && cRecords.length) {
+        records = cRecords;
+        _lastCloudRecordCount = cRecords.length;
+        localStorage.setItem("expiry-records-v2", JSON.stringify(records));
+        changed = true;
+        // migrate ขึ้น per-item path (background)
+        cloudSetAllRecords(records).then(ok => {
+          if (ok) {
+            // ลบ blob เก่าหลัง migrate สำเร็จ (cleanup)
+            _cloudRef('records').remove().catch(()=>{});
+            console.log('[cloud] migrated records blob → per-item', records.length, 'items');
+          }
+        });
+      } else if (records.length) {
+        // cloud ว่าง local มีข้อมูล → push ขึ้น
+        cloudSetAllRecords(records);
+      }
+    }
 
-    if (cShelves && cShelves.length) { _lastCloudShelfCount = cShelves.length;
-      shelves = cShelves.map(s=>{
-        const _ex = shelves.find(x=>x.id===s.id); // [FIX] เก็บรูป/thumb ที่มีอยู่แล้วในเครื่อง ไม่ให้หายไปก่อนตอน rebuild array
-        const photo=(_ex&&_ex.photo)||loadShelfPhoto(s.id)||s.photo||s.photoUrl||null;
-        const thumb=(_ex&&_ex.thumb)||loadShelfThumb(s.id)||s.thumb||s.thumbUrl||null;
-        return {...s, photo, thumb};
-      });
-      localStorage.setItem("expiry-shelves-v1", JSON.stringify(cShelves));
-      loadShelfPhotosFromIDB(); // ── ดึงรูปจาก IndexedDB กลับมา merge เข้า shelves ที่ rebuild ใหม่ (กันรูปหายตอน sync) ──
+    // ── SHELVES ───────────────────────────────────────────────────────────────
+    if (snapShelves.exists()) {
+      // per-item path มีข้อมูล → ใช้เลย
+      const raw = snapShelves.val();
+      const cShelves = Object.values(raw).map(s => { const {_ts,...rest}=s; return rest; });
+      if (cShelves.length) {
+        _lastCloudShelfCount = cShelves.length;
+        shelves = cShelves.map(s=>{
+          const _ex = shelves.find(x=>x.id===s.id);
+          const photo=(_ex&&_ex.photo)||loadShelfPhoto(s.id)||s.photo||s.photoUrl||null;
+          const thumb=(_ex&&_ex.thumb)||loadShelfThumb(s.id)||s.thumb||s.thumbUrl||null;
+          return {...s, photo, thumb};
+        });
+        localStorage.setItem("expiry-shelves-v1", JSON.stringify(cShelves));
+        loadShelfPhotosFromIDB();
+        changed = true;
+      }
+    } else {
+      // ── Migration: blob เก่า ────────────────────────────────────────────────
+      const cShelves = await cloudGet('shelves');
+      if (cShelves && cShelves.length) {
+        _lastCloudShelfCount = cShelves.length;
+        shelves = cShelves.map(s=>{
+          const _ex = shelves.find(x=>x.id===s.id);
+          const photo=(_ex&&_ex.photo)||loadShelfPhoto(s.id)||s.photo||s.photoUrl||null;
+          const thumb=(_ex&&_ex.thumb)||loadShelfThumb(s.id)||s.thumb||s.thumbUrl||null;
+          return {...s, photo, thumb};
+        });
+        localStorage.setItem("expiry-shelves-v1", JSON.stringify(cShelves));
+        loadShelfPhotosFromIDB();
+        changed = true;
+        // migrate ขึ้น per-item path (background)
+        cloudSetAllShelves(shelves).then(ok => {
+          if (ok) {
+            _cloudRef('shelves').remove().catch(()=>{});
+            console.log('[cloud] migrated shelves blob → per-item', shelves.length, 'items');
+          }
+        });
+      } else if (shelves.length) {
+        cloudSetAllShelves(shelves);
+      }
+    }
+
+    // ── CATALOG DELTA ─────────────────────────────────────────────────────────
+    if (cDelta && cDelta.length) {
+      localStorage.setItem("expiry-catalog-delta", JSON.stringify(cDelta));
+      _applyCatalogDelta(cDelta);
       changed = true;
-    } else if (shelves.length) {
-      const meta = shelves.map(s=>{ const {photo,thumb,_photoInline,...rest}=s; return rest; });
-      cloudSet('shelves', meta);
+    } else if (_lastCatalogDelta.length) {
+      cloudSet('catalogDelta', _lastCatalogDelta);
     }
 
     _markCloudSynced();
-    // Force header to ONLINE after sync — retry a few times in case DOM wasn't ready
     [100, 400, 1000, 2500].forEach(ms => setTimeout(()=>{
       if (_nxCurrentState === 'st-synced') _nxMirrorHdr('st-synced', 'ONLINE');
     }, ms));
@@ -8861,18 +9064,12 @@ async function syncFromCloud(){
       if (typeof renderCatalog === 'function') renderCatalog();
       if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
       else if (typeof renderShelfList === 'function') renderShelfList();
-      // ── ดึงรูปสินค้าจาก IDB/RTDB หลัง sync records+catalogDelta มาแล้ว ──
-      // ครอบคลุมเครื่องใหม่/ล้าง cache ที่ IDB ว่าง แต่ catalog entry มี hasPhoto=true
       if (typeof loadProductPhotosFromIDB === 'function') loadProductPhotosFromIDB();
-      // ── ผูก realtime listener รูปเชลฟ์ทันทีหลัง sync ครั้งแรก ──
       if (typeof _attachShelfPhotoListeners === 'function') _attachShelfPhotoListeners();
-      // ── ผูก realtime listener รูปสินค้า (ทุก barcode ใน records) ──
       if (typeof _attachProductPhotoListeners === 'function') _attachProductPhotoListeners();
     }
     _attachCloudListeners();
-    // ── drain รูปสินค้าที่รอ upload อยู่ (กรณี cloud offline ตอนที่เซฟรูป) ──
     if(typeof _drainPendingPhotoUploads==='function') _drainPendingPhotoUploads();
-    // ── safety: หลัง listeners ติดแล้ว → ดึงรูปอีกครั้ง กัน timing miss ──
     setTimeout(()=>{ if(typeof loadProductPhotosFromIDB==='function') loadProductPhotosFromIDB(); }, 1500);
   } catch(e) { console.warn("[cloud] syncFromCloud failed", e); _markCloudSyncError('syncFromCloud: '+(e&&e.code||e&&e.message||e)); }
 }
@@ -8885,98 +9082,142 @@ function _extractPayload(val){
   return val && val.payload !== undefined ? val.payload : null;
 }
 let _cloudListenersAttached = false;
-let _shelvesListenerFirstFire = true; // [FIX] fire แรกของ .on('value') ซ้ำกับข้อมูลที่ syncFromCloud() เพิ่ง render ไปแล้ว — ข้าม renderShelfList รอบนี้
-let _lastCloudRecordCount = null; // เก็บจาก listener — ใช้ใน showCloudDebug โดยไม่ต้อง re-fetch
-let _lastCloudShelfCount  = null; // เก็บจาก listener — ใช้ใน showCloudDebug โดยไม่ต้อง re-fetch
+let _shelvesListenerFirstFire = true;
+let _recordsListenerFirstFire = true;
+let _lastCloudRecordCount = null;
+let _lastCloudShelfCount  = null;
+
 function _attachCloudListeners(){
   if (_cloudListenersAttached || !_cloudReady) return;
   _cloudListenersAttached = true;
 
-  // shelves — sync สด
-  _cloudRef('shelves').on('value', snap=>{
-    if (!snap.exists()) return;
-    const d = snap.val();
-    // ข้าม snapshot ที่เกิดจาก write ของตัวเอง (ป้องกัน loop / กระพริบ)
-    if (d && d.updatedAt && _lastWriteAt['shelves'] && d.updatedAt <= _lastWriteAt['shelves']) return;
-    const cShelves = _extractPayload(d);
-    if (!cShelves) return;
-    // SAFETY: ถ้า payload จาก cloud ว่าง แต่เรามีข้อมูลเชลฟ์อยู่ในเครื่องแล้ว ไม่เขียนทับ
-    if (cShelves.length === 0 && shelves.length > 0) {
-      console.warn('[cloud] BLOCKED applying empty shelves snapshot — local has', shelves.length, 'shelves, ignoring remote empty state');
-      _markCloudSyncError('shelves: ignored empty remote (data protection)');
-      return;
-    }
-    shelves = cShelves.map(s=>{
-      const _ex = shelves.find(x=>x.id===s.id); // [FIX] เก็บรูป/thumb ที่มีอยู่แล้วในเครื่อง ไม่ให้หายไปก่อนตอน rebuild array
-      const photo=(_ex&&_ex.photo)||loadShelfPhoto(s.id)||s.photo||s.photoUrl||null;
-      const thumb=(_ex&&_ex.thumb)||loadShelfThumb(s.id)||s.thumb||s.thumbUrl||null;
-      return {...s, photo, thumb};
-    });
-    localStorage.setItem("expiry-shelves-v1", JSON.stringify(cShelves));
-    loadShelfPhotosFromIDB();
-    renderStockSummaryAll();
-    if (typeof renderDashboard === 'function') renderDashboard();
-    if (_shelvesListenerFirstFire) {
-      _shelvesListenerFirstFire = false; // [FIX] ข้าม render รอบแรก เพราะ syncFromCloud() render ข้อมูลเดียวกันนี้ไปแล้ว
-    } else {
-      if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
-      else if (typeof renderShelfList === 'function') renderShelfList();
-    }
-    if (typeof currentShelfId !== 'undefined' && currentShelfId) {
-      const s = shelves.find(x=>x.id===currentShelfId);
-      if (s) {
-        if (typeof _renderPlanogramDebounced === 'function') _renderPlanogramDebounced(s);
-        if (typeof _renderShelfItemsDebounced === 'function') _renderShelfItemsDebounced(s);
-      }
-    }
-    _lastCloudShelfCount = cShelves.length; // cache สำหรับ showCloudDebug
-    _markCloudSynced();
-    // ── ผูก listener รูปเชลฟ์สำหรับเชลฟ์ใหม่ที่ sync มาจากเครื่องอื่น ──
-    _attachShelfPhotoListeners();
-  }, e=>{ console.warn("[cloud] shelves listener fail", e); _markCloudSyncError('shelves-listen: '+(e&&e.code||e)); });
+  // ── RECORDS: per-item child events — รับเฉพาะ item ที่เปลี่ยน ─────────────
+  const recRef = _cloudItemsRef('records');
 
-  // records — sync สด
-  _cloudRef('records').on('value', snap=>{
-    if (!snap.exists()) return;
-    const d = snap.val();
-    if (d && d.updatedAt && _lastWriteAt['records'] && d.updatedAt <= _lastWriteAt['records']) return;
-    const cRecords = _extractPayload(d);
-    if (!cRecords) return;
-    if (cRecords.length === 0 && records.length > 0) {
-      console.warn('[cloud] BLOCKED applying empty records snapshot — local has', records.length, 'records, ignoring remote empty state');
-      _markCloudSyncError('records: ignored empty remote (data protection)');
-      return;
+  recRef.on('child_added', snap=>{
+    const d = snap.val(); if (!d) return;
+    if (_wasOwnWrite('records/'+snap.key, d._ts||0)) return;
+    const {_ts, ...rec} = d;
+    if (_recordsListenerFirstFire) return; // ข้าม batch initial load (syncFromCloud ทำแล้ว)
+    const idx = records.findIndex(r=>r.id===rec.id);
+    if (idx === -1) {
+      records.push(rec);
+      _lastCloudRecordCount = records.length;
+      localStorage.setItem("expiry-records-v2", JSON.stringify(records));
+      renderDashboard(); renderRecords(); renderStockSummaryAll();
+      _markCloudSynced();
+      if (typeof _attachProductPhotoListeners === 'function') _attachProductPhotoListeners();
     }
-    records = cRecords;
-    _lastCloudRecordCount = cRecords.length; // cache สำหรับ showCloudDebug
+  }, e=>console.warn('[cloud] records child_added fail', e));
+
+  recRef.on('child_changed', snap=>{
+    const d = snap.val(); if (!d) return;
+    if (_wasOwnWrite('records/'+snap.key, d._ts||0)) return;
+    const {_ts, ...rec} = d;
+    const idx = records.findIndex(r=>r.id===rec.id);
+    if (idx !== -1) {
+      records[idx] = rec;
+    } else {
+      records.push(rec);
+    }
+    _lastCloudRecordCount = records.length;
     localStorage.setItem("expiry-records-v2", JSON.stringify(records));
     renderDashboard(); renderRecords(); renderStockSummaryAll();
     _markCloudSynced();
-    // ── ผูก listener รูปสินค้าสำหรับ barcode ใหม่ที่ sync มาจากเครื่องอื่น ──
-    _attachProductPhotoListeners();
-    if (typeof loadProductPhotosFromIDB === 'function') loadProductPhotosFromIDB();
-  }, e=>{ console.warn("[cloud] records listener fail", e); _markCloudSyncError('records-listen: '+(e&&e.code||e)); });
+  }, e=>console.warn('[cloud] records child_changed fail', e));
 
-  // catalogDelta — sync สด
+  recRef.on('child_removed', snap=>{
+    if (_wasOwnWrite('records/'+snap.key, Date.now())) return;
+    records = records.filter(r=>r.id!==snap.key);
+    _lastCloudRecordCount = records.length;
+    localStorage.setItem("expiry-records-v2", JSON.stringify(records));
+    renderDashboard(); renderRecords(); renderStockSummaryAll();
+    _markCloudSynced();
+  }, e=>console.warn('[cloud] records child_removed fail', e));
+
+  // หลัง listeners ติดแล้ว → initial load เสร็จแล้ว ไม่ข้าม child_added อีกต่อไป
+  setTimeout(()=>{ _recordsListenerFirstFire = false; }, 2000);
+
+  // ── SHELVES: per-item child events ────────────────────────────────────────
+  const shelfRef = _cloudItemsRef('shelves');
+
+  shelfRef.on('child_added', snap=>{
+    const d = snap.val(); if (!d) return;
+    if (_wasOwnWrite('shelves/'+snap.key, d._ts||0)) return;
+    if (_shelvesListenerFirstFire) return;
+    const {_ts, ...s} = d;
+    const idx = shelves.findIndex(x=>x.id===s.id);
+    if (idx === -1) {
+      const photo = loadShelfPhoto(s.id)||null;
+      const thumb = loadShelfThumb(s.id)||null;
+      shelves.push({...s, photo, thumb});
+      _lastCloudShelfCount = shelves.length;
+      const meta = shelves.map(x=>{ const {photo,thumb,_photoInline,...r}=x; return r; });
+      localStorage.setItem("expiry-shelves-v1", JSON.stringify(meta));
+      renderStockSummaryAll(); renderDashboard();
+      if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
+      else if (typeof renderShelfList === 'function') renderShelfList();
+      _markCloudSynced();
+      _attachShelfPhotoListeners();
+    }
+  }, e=>console.warn('[cloud] shelves child_added fail', e));
+
+  shelfRef.on('child_changed', snap=>{
+    const d = snap.val(); if (!d) return;
+    if (_wasOwnWrite('shelves/'+snap.key, d._ts||0)) return;
+    const {_ts, ...s} = d;
+    const idx = shelves.findIndex(x=>x.id===s.id);
+    const photo = (idx!==-1&&shelves[idx].photo)||loadShelfPhoto(s.id)||null;
+    const thumb = (idx!==-1&&shelves[idx].thumb)||loadShelfThumb(s.id)||null;
+    if (idx !== -1) {
+      shelves[idx] = {...s, photo, thumb};
+    } else {
+      shelves.push({...s, photo, thumb});
+    }
+    _lastCloudShelfCount = shelves.length;
+    const meta = shelves.map(x=>{ const {photo:p,thumb:t,_photoInline,...r}=x; return r; });
+    localStorage.setItem("expiry-shelves-v1", JSON.stringify(meta));
+    renderStockSummaryAll(); renderDashboard();
+    if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
+    else if (typeof renderShelfList === 'function') renderShelfList();
+    // ถ้า shelf ที่เปิดอยู่ตรงกัน → re-render planogram
+    if (typeof currentShelfId !== 'undefined' && currentShelfId === s.id) {
+      if (typeof _renderPlanogramDebounced === 'function') _renderPlanogramDebounced(shelves[idx]||s);
+      if (typeof _renderShelfItemsDebounced === 'function') _renderShelfItemsDebounced(shelves[idx]||s);
+    }
+    _markCloudSynced();
+  }, e=>console.warn('[cloud] shelves child_changed fail', e));
+
+  shelfRef.on('child_removed', snap=>{
+    if (_wasOwnWrite('shelves/'+snap.key, Date.now())) return;
+    shelves = shelves.filter(x=>x.id!==snap.key);
+    _lastCloudShelfCount = shelves.length;
+    const meta = shelves.map(x=>{ const {photo,thumb,_photoInline,...r}=x; return r; });
+    localStorage.setItem("expiry-shelves-v1", JSON.stringify(meta));
+    renderStockSummaryAll(); renderDashboard();
+    if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
+    else if (typeof renderShelfList === 'function') renderShelfList();
+    _markCloudSynced();
+  }, e=>console.warn('[cloud] shelves child_removed fail', e));
+
+  setTimeout(()=>{ _shelvesListenerFirstFire = false; }, 2000);
+
+  // ── CATALOG DELTA: blob (ไม่เปลี่ยน) ────────────────────────────────────
   _cloudRef('catalogDelta').on('value', snap=>{
     if (!snap.exists()) return;
     const d = snap.val();
-
     const cDelta = _extractPayload(d);
     if (!cDelta) return;
     localStorage.setItem("expiry-catalog-delta", JSON.stringify(cDelta));
     _applyCatalogDelta(cDelta);
     if (typeof renderCatalog === 'function') renderCatalog();
-    // ── หลัง apply delta → ดึงรูปสินค้าจาก IDB/RTDB ──
     if (typeof loadProductPhotosFromIDB === 'function') loadProductPhotosFromIDB();
     _markCloudSynced();
-    // ── ต่อ realtime listener สำหรับ barcode ที่เพิ่งได้ hasPhoto=true ใหม่ ──
     _attachProductPhotoListeners();
   }, e=>{ console.warn("[cloud] catalogDelta listener fail", e); _markCloudSyncError('catalogDelta-listen: '+(e&&e.code||e)); });
 
-  // productPhoto_* — รับรูปสินค้าแบบ realtime จากเครื่องอื่น
+  // product/shelf photos (ไม่เปลี่ยน)
   _attachProductPhotoListeners();
-  // shelfPhoto_* — รับรูปเชลฟ์แบบ realtime จากเครื่องอื่น
   _attachShelfPhotoListeners();
 }
 
@@ -9211,18 +9452,14 @@ function loadData() {
   setTimeout(()=>{ if(window._hdrMetricsRefresh) window._hdrMetricsRefresh(); if(window._nxStatusRefresh) window._nxStatusRefresh(); },100);
 }
 function saveRecordsLS() {
-  // ── try/catch กัน localStorage throw (พื้นที่เต็ม / เปิดผ่าน content://-content URI ที่บล็อก storage) ──
-  // ถ้าไม่กันไว้ ฟังก์ชันที่เรียก saveRecordsLS() ก่อน closeUES()/render จะถูก throw ตัดตอน ทำให้ modal/sheet ค้างไม่ปิด
   try {
     localStorage.setItem("expiry-records-v2", JSON.stringify(records));
-    // backup ล่าสุดที่ไม่ว่าง — กันไว้กู้คืนเองได้ถ้าพลาด
     if (records.length > 0) localStorage.setItem("expiry-records-v2-backup", JSON.stringify(records));
   } catch(e) {
     console.error('[saveRecordsLS] localStorage เขียนไม่ผ่าน:', e);
     if (typeof showToast === 'function') showToast("พื้นที่จัดเก็บในเครื่องเต็ม/ถูกบล็อก — ข้อมูลอาจไม่ถูกบันทึกในเครื่อง","err");
   }
-  cloudSetRecords();
-  // ── ผูก realtime listener สำหรับ barcode ใหม่ที่อาจเพิ่งถูก add ──
+  cloudSetRecords(); // debounced bulk — ใช้เป็น fallback (beforeunload / force sync)
   if (typeof _attachProductPhotoListeners === 'function') _attachProductPhotoListeners();
 }
 function saveCatalogLS() {
@@ -9496,17 +9733,19 @@ function getShelfLocationsForRecord(r) {
 
 function mergeOrAdd(entry, {silent=false, fromImport=false}={}) {
   {
-    // ถ้ามี record บาร์โค้ด+วันหมด+จำนวนเหมือนกันแล้ว → ข้าม (ป้องกัน import ซ้ำ)
     if(fromImport) {
       const dup = records.find(r=>r.barcode===entry.barcode && r.expDate===entry.expDate && r.qty===entry.qty);
-      if(dup) return false; // ซ้ำ ข้าม
+      if(dup) return false;
     }
 
     const before = records.length;
+    // OOS records ที่ถูกลบ → ต้องลบออกจาก cloud ด้วย
+    const oosToDelete = records.filter(r => r.barcode===entry.barcode && r.qty===0);
     records = records.filter(r => !(r.barcode===entry.barcode && r.qty===0));
     const deletedOOS = records.length < before;
 
     let shelfFilled = 0;
+    const shelvesChanged = new Set();
     shelves.forEach(s => {
       s.items.forEach(item => {
         if (item.barcode === entry.barcode && item.qty === 0) {
@@ -9514,10 +9753,17 @@ function mergeOrAdd(entry, {silent=false, fromImport=false}={}) {
           item.expDate = entry.expDate;
           item.lotNum = entry.lotNum || null;
           shelfFilled++;
+          shelvesChanged.add(s);
         }
       });
     });
-    if (shelfFilled > 0) saveShelves();
+    if (shelfFilled > 0) {
+      // per-item save เฉพาะ shelf ที่เปลี่ยน
+      const allMeta = shelves.map(s=>{ const {photo,thumb,_photoInline,...r}=s; return r; });
+      try{ localStorage.setItem("expiry-shelves-v1", JSON.stringify(allMeta)); }catch(e){}
+      _lastShelvesMeta = allMeta;
+      shelvesChanged.forEach(s => cloudSetShelfDebounced(s));
+    }
 
     if (!silent) {
       if (deletedOOS && shelfFilled > 0) showToast('🗑 ลบ OOS + เติมเชลฟ์อัตโนมัติ', 'ok');
@@ -9525,8 +9771,14 @@ function mergeOrAdd(entry, {silent=false, fromImport=false}={}) {
       else if (shelfFilled > 0) showToast('📦 เติมเชลฟ์อัตโนมัติ', 'ok');
     }
 
+    // ลบ OOS เก่าออกจาก cloud (per-item delete)
+    oosToDelete.forEach(r => cloudDeleteRecord(r.id));
+
     records.unshift(entry);
-    saveRecordsLS();
+    // localStorage + per-item cloud write (เฉพาะ entry ใหม่)
+    try{ localStorage.setItem("expiry-records-v2", JSON.stringify(records)); }catch(e){}
+    cloudSetRecordDebounced(entry);
+    if (typeof _attachProductPhotoListeners === 'function') _attachProductPhotoListeners();
     return true;
   }
 }
@@ -9565,6 +9817,9 @@ function switchTab(name) {
     const btn = document.getElementById("tab-"+t);
     if(!btn || t==="scan") return;
     btn.classList.toggle("active", t===name);
+    // อัปเดต aria-current สำหรับ screen readers
+    if (t===name) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
   });
 
   // ── 2. scroll lock สำหรับ scan ──
@@ -10940,21 +11195,28 @@ function _doDeleteRecord(id) {
     } catch(e) {}
   }
   records = records.filter(r=>r.id!==id);
-  saveRecordsLS();
+  // per-item delete (เร็วกว่า saveRecordsLS ที่ส่ง array ทั้งก้อน)
+  try{ localStorage.setItem("expiry-records-v2", JSON.stringify(records)); }catch(e){}
+  cloudDeleteRecord(id);
   // ลบ shelf items ที่ผูกกับ record นี้
   let shelfChanged = false;
+  const shelvesAffected = new Set();
   shelves.forEach(s=>{
     const before = s.items.length;
     s.items = s.items.filter(i=> !(i.key && i.key === 'rec__' + id));
-    if(s.items.length !== before) shelfChanged = true;
+    if(s.items.length !== before){ shelfChanged = true; shelvesAffected.add(s); }
   });
-  if(shelfChanged) saveShelves();
+  if(shelfChanged){
+    const allMeta = shelves.map(s=>{ const {photo,thumb,_photoInline,...r}=s; return r; });
+    try{ localStorage.setItem("expiry-shelves-v1", JSON.stringify(allMeta)); }catch(e){}
+    _lastShelvesMeta = allMeta;
+    shelvesAffected.forEach(s => cloudSetShelfDebounced(s));
+  }
   // sync _scanSavedLots
   _scanSavedLots = _scanSavedLots.filter(l => l.id !== id);
   renderScanLots();
   renderDashboard();
   const _rl=document.getElementById("nav-records-label"); if(_rl)_rl.textContent="Record";
-  // refresh matchCard เสมอ ไม่ว่าจะเปิดอยู่หรือไม่ เพราะ records เปลี่ยนแล้ว
   if (matchedProduct) {
     _refreshMatchCardLots();
   }
@@ -12349,15 +12611,22 @@ function editScanLot(id) {
   }
   // ลบ record เก่าออก (จะ save ใหม่เมื่อกดบันทึก)
   records = records.filter(r => r.id !== id);
-  saveRecordsLS();
+  try{ localStorage.setItem("expiry-records-v2", JSON.stringify(records)); }catch(e){}
+  cloudDeleteRecord(id);
   // ลบ shelf item ที่ผูกกับ lot นี้ด้วย
   let shelfChanged = false;
+  const shelvesAffected2 = new Set();
   shelves.forEach(s => {
     const before = s.items.length;
     s.items = s.items.filter(i => !(i.key && i.key === 'rec__' + id));
-    if (s.items.length !== before) shelfChanged = true;
+    if (s.items.length !== before){ shelfChanged = true; shelvesAffected2.add(s); }
   });
-  if (shelfChanged) saveShelves();
+  if (shelfChanged) {
+    const allMeta = shelves.map(s=>{ const {photo,thumb,_photoInline,...r}=s; return r; });
+    try{ localStorage.setItem("expiry-shelves-v1", JSON.stringify(allMeta)); }catch(e){}
+    _lastShelvesMeta = allMeta;
+    shelvesAffected2.forEach(s => cloudSetShelfDebounced(s));
+  }
   // ลบออกจาก session list
   _scanSavedLots = _scanSavedLots.filter(x => x.id !== id);
   renderScanLots();
@@ -12373,14 +12642,21 @@ function deleteScanLot(id) {
   const l = _scanSavedLots.find(x => x.id === id);
   if (!l) return;
   records = records.filter(r => r.id !== id);
-  saveRecordsLS();
+  try{ localStorage.setItem("expiry-records-v2", JSON.stringify(records)); }catch(e){}
+  cloudDeleteRecord(id);
   let shelfChanged = false;
+  const shelvesAffected3 = new Set();
   shelves.forEach(s => {
     const before = s.items.length;
     s.items = s.items.filter(i => !(i.key && i.key === 'rec__' + id));
-    if (s.items.length !== before) shelfChanged = true;
+    if (s.items.length !== before){ shelfChanged = true; shelvesAffected3.add(s); }
   });
-  if (shelfChanged) saveShelves();
+  if (shelfChanged) {
+    const allMeta = shelves.map(s=>{ const {photo,thumb,_photoInline,...r}=s; return r; });
+    try{ localStorage.setItem("expiry-shelves-v1", JSON.stringify(allMeta)); }catch(e){}
+    _lastShelvesMeta = allMeta;
+    shelvesAffected3.forEach(s => cloudSetShelfDebounced(s));
+  }
   _scanSavedLots = _scanSavedLots.filter(x => x.id !== id);
   renderScanLots();
   renderDashboard();
@@ -12520,12 +12796,11 @@ function importBackup(input) {
 
         // ── push ขึ้น cloud ทันที (force=true, ไม่รอ debounce) แล้วยืนยันผลจริงให้เห็น ──
         // สำคัญสำหรับ restore: ต้องชัวร์ว่าข้อมูลที่กู้คืนมาขึ้น cloud จริง ไม่ใช่แค่รอ debounce เงียบๆ
-        if (typeof cloudSet === 'function' && typeof _cloudReady !== 'undefined' && _cloudReady) {
+        if (typeof cloudSetAllRecords === 'function' && typeof _cloudReady !== 'undefined' && _cloudReady) {
           (async () => {
-            const shelvesMeta = shelves.map(s=>{ const {photo,thumb,_photoInline,...rest}=s; return rest; });
-            const okS = await cloudSet('shelves', shelvesMeta, true);
-            const okR = await cloudSet('records', records, true);
-            if (okS && okR) showToast(`☁ Push ขึ้น cloud สำเร็จ: ${shelvesMeta.length} shelf · ${records.length} records`);
+            const okS = await cloudSetAllShelves(shelves);
+            const okR = await cloudSetAllRecords(records);
+            if (okS && okR) showToast(`☁ Push ขึ้น cloud สำเร็จ: ${shelves.length} shelf · ${records.length} records`);
             else showToast(`⚠ Push ขึ้น cloud ไม่สำเร็จบางส่วน (shelf:${okS?'OK':'FAIL'} / records:${okR?'OK':'FAIL'}) — ลองกด LAST·SYNC เพื่อเช็คซ้ำ`, 'err');
           })();
         } else {
@@ -14975,15 +15250,25 @@ function saveShelves(){
   const meta = shelves.map(s=>{ const {photo,thumb,_photoInline,...rest}=s; return rest; });
   try{
     localStorage.setItem("expiry-shelves-v1", JSON.stringify(meta));
-    // backup ล่าสุดที่ไม่ว่าง — กันไว้กู้คืนเองได้ถ้าพลาด (ดู localStorage key "expiry-shelves-v1-backup" ใน DevTools)
     if (meta.length > 0) localStorage.setItem("expiry-shelves-v1-backup", JSON.stringify(meta));
   }catch(e){
     showToast("พื้นที่จัดเก็บเต็ม — ข้อมูลเชลฟ์อาจไม่ถูกบันทึก","err");
   }
   _lastShelvesMeta = meta;
-  cloudSetShelves();
-  // ── ผูก realtime listener สำหรับเชลฟ์ใหม่ที่อาจเพิ่งถูก add ──
+  cloudSetShelves(); // debounced bulk (beforeunload / force sync)
   if (typeof _attachShelfPhotoListeners === 'function') _attachShelfPhotoListeners();
+}
+
+// per-item shelf save — เรียกหลังแก้ shelf เดี่ยว (เร็วกว่า saveShelves มาก)
+function saveShelf(shelf){
+  if (!shelf) return;
+  const {photo,thumb,_photoInline,...meta} = shelf;
+  const idx = shelves.findIndex(s=>s.id===shelf.id);
+  if (idx !== -1) shelves[idx] = shelf; // update in-memory
+  const allMeta = shelves.map(s=>{ const {photo:p,thumb:t,_photoInline:pi,...r}=s; return r; });
+  try{ localStorage.setItem("expiry-shelves-v1", JSON.stringify(allMeta)); }catch(e){}
+  _lastShelvesMeta = allMeta;
+  cloudSetShelfDebounced(shelf); // ← per-item write (เฉพาะ shelf นี้)
 }
 
 // ── force save on exit (records + shelves) ────────────────
@@ -15274,7 +15559,11 @@ function confirmDeleteShelf(){
   const deletedId = currentShelfId;
   shelves=shelves.filter(s=>s.id!==deletedId);
   deleteShelfPhoto(deletedId);
-  saveShelves();
+  // per-item delete + update localStorage
+  const allMeta = shelves.map(s=>{ const {photo,thumb,_photoInline,...r}=s; return r; });
+  try{ localStorage.setItem("expiry-shelves-v1", JSON.stringify(allMeta)); }catch(e){}
+  _lastShelvesMeta = allMeta;
+  cloudDeleteShelf(deletedId);
   currentShelfId = null;
   localStorage.removeItem('lastShelfId');
   closeDeleteShelfModal(); closeShelfDetail();
@@ -17694,7 +17983,7 @@ function _shelfPhotoMode(hasPhoto) {
 </div>
 
 <!-- ══ HUD DELETE HISTORY MODAL ══ -->
-<div id="delete-history-modal" style="display:none;position:fixed;inset:0;z-index:700;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);align-items:flex-end;justify-content:center" onclick="if(event.target===this){this.style.display='none';document.body.style.overflow='';}">
+<div id="delete-history-modal" role="dialog" aria-modal="true" aria-label="ลบประวัติ" style="display:none;position:fixed;inset:0;z-index:700;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);align-items:flex-end;justify-content:center" onclick="if(event.target===this){this.style.display='none';document.body.style.overflow='';}">
   <div style="background:linear-gradient(160deg,#090508 0%,#0d0810 60%,#07050c 100%);border:1px solid rgba(255,77,77,.25);border-radius:24px 24px 0 0;width:100%;max-width:480px;height:82vh;display:flex;flex-direction:column;box-shadow:0 -12px 60px rgba(0,0,0,.9);position:relative;overflow:hidden;animation:delHistIn .28s cubic-bezier(.34,1.56,.64,1) both">
 
     <!-- top glow line -->
@@ -17742,7 +18031,7 @@ function _shelfPhotoMode(hasPhoto) {
   <div id="hud-nav-bar">
 
     <!-- HOME -->
-    <button class="hud-nav-btn active" id="tab-dashboard" onclick="switchTab('dashboard');xNavRippleAnim(this)">
+    <button class="hud-nav-btn active" id="tab-dashboard" onclick="switchTab('dashboard');xNavRippleAnim(this)" aria-label="หน้าหลัก" aria-current="page">
       <div class="xpip"></div>
       <div class="xholo"></div>
       <div class="xeline"></div>
@@ -17756,7 +18045,7 @@ function _shelfPhotoMode(hasPhoto) {
     </button>
 
     <!-- SHELF -->
-    <button class="hud-nav-btn" id="tab-shelf" onclick="switchTab('shelf');xNavRippleAnim(this)" style="position:relative">
+    <button class="hud-nav-btn" id="tab-shelf" onclick="switchTab('shelf');xNavRippleAnim(this)" style="position:relative" aria-label="จัดการเชลฟ์">
       <div class="xpip"></div>
       <div class="xholo"></div>
       <div class="xeline"></div>
@@ -17777,7 +18066,7 @@ function _shelfPhotoMode(hasPhoto) {
       <div class="hud-fab-ping"></div>
       <div class="hud-fab-ping2"></div>
       <div class="hud-fab-glow"></div>
-      <button class="hud-fab" id="tab-scan" onclick="fabScanPress(this)">
+      <button class="hud-fab" id="tab-scan" onclick="fabScanPress(this)" aria-label="เปิดกล้องสแกน">
         <div class="hud-fab-hexborder"></div>
         <div class="hud-fab-hex"></div>
         <div class="fab-lens" id="fab-lens">
@@ -17808,7 +18097,7 @@ function _shelfPhotoMode(hasPhoto) {
     </div>
 
     <!-- LOG -->
-    <button class="hud-nav-btn" id="tab-records" onclick="switchTab('records');xNavRippleAnim(this)" style="position:relative">
+    <button class="hud-nav-btn" id="tab-records" onclick="switchTab('records');xNavRippleAnim(this)" style="position:relative" aria-label="บันทึก / ประวัติ">
       <div class="xpip"></div>
       <div class="xholo"></div>
       <div class="xeline"></div>
@@ -17824,7 +18113,7 @@ function _shelfPhotoMode(hasPhoto) {
     </button>
 
     <!-- STOCK -->
-    <button class="hud-nav-btn" id="tab-catalog" onclick="switchTab('catalog');xNavRippleAnim(this)" style="position:relative">
+    <button class="hud-nav-btn" id="tab-catalog" onclick="switchTab('catalog');xNavRippleAnim(this)" style="position:relative" aria-label="คลังสินค้า">
       <div class="xpip"></div>
       <div class="xholo"></div>
       <div class="xeline"></div>
@@ -17962,7 +18251,7 @@ function _fabFireShutter(callback){
 </script>
 
 <!-- ══ RENAME SHELF MODAL ══ -->
-<div id="rename-shelf-modal" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)cancelRenameShelf()">
+<div id="rename-shelf-modal" role="dialog" aria-modal="true" aria-label="เปลี่ยนชื่อเชลฟ์" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)cancelRenameShelf()">
   <div style="background:rgba(22,25,38,.97);border:1px solid rgba(46,51,71,.8);border-radius:20px;width:100%;max-width:400px;padding:24px 20px;box-shadow:0 -8px 40px rgba(0,0,0,.5)">
     <div style="font-size:13px;color:#8a91b0;margin-bottom:12px">✏️ แก้ไขชื่อเชลฟ์</div>
     <input id="rename-modal-input" class="inp" type="text"
@@ -17976,7 +18265,7 @@ function _fabFireShutter(callback){
   </div>
 </div>
 
-<div id="lots-modal" style="display:none;position:fixed;inset:0;z-index:700;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);align-items:flex-end;justify-content:center" onclick="if(event.target===this){this.style.display='none';document.body.style.overflow='';}">
+<div id="lots-modal" role="dialog" aria-modal="true" aria-label="รายการล็อต" style="display:none;position:fixed;inset:0;z-index:700;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);align-items:flex-end;justify-content:center" onclick="if(event.target===this){this.style.display='none';document.body.style.overflow='';}">
   <div style="background:rgba(22,25,38,.97);border:1px solid #2e3347;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px 20px calc(env(safe-area-inset-bottom,0px) + 80px);max-height:70vh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
       <div style="font-size:13px;font-weight:800;color:#e8eaf6">📦 รายละเอียดล็อต</div>
@@ -18010,7 +18299,7 @@ function _fabFireShutter(callback){
 
 
 <!-- Smart Refill Modal — HUD Edition -->
-<div id="refill-modal" style="display:none;position:fixed;inset:0;background:rgba(0,4,12,.88);z-index:501;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px)">
+<div id="refill-modal" role="dialog" aria-modal="true" aria-label="เติมสินค้า" style="display:none;position:fixed;inset:0;background:rgba(0,4,12,.88);z-index:501;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px)">
   <!-- backdrop grid -->
   <div style="position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(0,212,170,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,170,.03) 1px,transparent 1px);background-size:28px 28px;animation:rfGridFlow 4s linear infinite"></div>
 
@@ -18191,10 +18480,7 @@ function _fabFireShutter(callback){
 })();
 </script>
 
-</body>
-</html>
-
-<!-- @ZONE:CINEMATIC-SCAN-HUD — (part 1) Quantum Scanner Engine: canvas particle + SVG HUD + beam — note: this lives textually after </body></html>; browsers still parse/run it (HTML auto-recovery) but flagged here for future cleanup -->
+<!-- @ZONE:CINEMATIC-SCAN-HUD — (part 1) Quantum Scanner Engine: canvas particle + SVG HUD + beam -->
 <!-- ═══════════════════════════════════════════════════════
      QUANTUM SCANNER ENGINE — canvas particle + SVG HUD + beam
      ═══════════════════════════════════════════════════════ -->
