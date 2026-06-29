@@ -1520,6 +1520,10 @@ body.cam-open #page-catalog{
     margin-bottom:10px;overflow:hidden;
     opacity:0;
     position:relative;
+  }
+  .dash-ready .ht-action-panel{
+    animation:htCardIn .5s cubic-bezier(.34,1.56,.64,1) .3s both, alertPulseGlow 3s ease-in-out 1s infinite;
+  }
     /* Animated border via gradient */
     border:1.5px solid transparent;
     background-clip:padding-box;
@@ -1527,9 +1531,6 @@ body.cam-open #page-catalog{
       0 0 0 1.5px rgba(255,60,60,.25),
       0 0 30px rgba(255,40,40,.12),
       0 8px 32px rgba(0,0,0,.6);
-  }
-  .dash-ready .ht-action-panel{
-    animation:htCardIn .5s cubic-bezier(.34,1.56,.64,1) .3s both, alertPulseGlow 3s ease-in-out 1s infinite;
   }
   /* Animated gradient border top */
   .ht-action-panel::before{
@@ -8829,7 +8830,6 @@ async function syncFromCloud(){
       cloudGet('records'), cloudGet('catalogDelta'), cloudGet('shelves')
     ]);
     let changed = false;
-    let shelvesChanged = false; // [FIX] แยกจาก changed — กัน shelf list re-render ทุกครั้งที่ syncFromCloud() รัน (เช่น online event ยิงซ้ำตอนเน็ตไม่นิ่ง) ทั้งที่ shelves ไม่ได้เปลี่ยนจริง
     if (cRecords && cRecords.length) { records = cRecords; _lastCloudRecordCount = cRecords.length; localStorage.setItem("expiry-records-v2", JSON.stringify(records)); changed = true; }
     else if (records.length) cloudSet('records', records);
 
@@ -8837,10 +8837,6 @@ async function syncFromCloud(){
     else if (_lastCatalogDelta.length) cloudSet('catalogDelta', _lastCatalogDelta);
 
     if (cShelves && cShelves.length) { _lastCloudShelfCount = cShelves.length;
-      // [FIX] เช็คว่า shelves จาก cloud ต่างจากในเครื่องจริงไหม ก่อน mark shelvesChanged —
-      //       กัน online event ที่ยิงซ้ำตอนเน็ตไม่นิ่ง สั่ง render shelf list ทั้งที่ข้อมูลเหมือนเดิม
-      const _curMetaForDiff = shelves.map(s=>{ const {photo,thumb,_photoInline,...rest}=s; return rest; });
-      shelvesChanged = JSON.stringify(cShelves) !== JSON.stringify(_curMetaForDiff);
       shelves = cShelves.map(s=>{
         const _ex = shelves.find(x=>x.id===s.id); // [FIX] เก็บรูป/thumb ที่มีอยู่แล้วในเครื่อง ไม่ให้หายไปก่อนตอน rebuild array
         const photo=(_ex&&_ex.photo)||loadShelfPhoto(s.id)||s.photo||s.photoUrl||null;
@@ -8863,10 +8859,8 @@ async function syncFromCloud(){
     if (changed) {
       renderDashboard(); renderRecords(); renderStockSummaryAll();
       if (typeof renderCatalog === 'function') renderCatalog();
-      if (shelvesChanged) { // [FIX] เดิมเรียกทุกครั้งที่ changed (รวม records/catalog) ทำให้ shelf list re-render/กระพริบ ทั้งที่ shelves เองไม่เปลี่ยน
-        if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
-        else if (typeof renderShelfList === 'function') renderShelfList();
-      }
+      if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
+      else if (typeof renderShelfList === 'function') renderShelfList();
       // ── ดึงรูปสินค้าจาก IDB/RTDB หลัง sync records+catalogDelta มาแล้ว ──
       // ครอบคลุมเครื่องใหม่/ล้าง cache ที่ IDB ว่าง แต่ catalog entry มี hasPhoto=true
       if (typeof loadProductPhotosFromIDB === 'function') loadProductPhotosFromIDB();
@@ -8910,14 +8904,6 @@ function _attachCloudListeners(){
     if (cShelves.length === 0 && shelves.length > 0) {
       console.warn('[cloud] BLOCKED applying empty shelves snapshot — local has', shelves.length, 'shelves, ignoring remote empty state');
       _markCloudSyncError('shelves: ignored empty remote (data protection)');
-      return;
-    }
-    // [FIX] กัน shelf list กระพริบรัวๆ — ตอนเน็ตไม่นิ่ง RTDB reconnect แล้ว replay 'value' event เดิมซ้ำ
-    // (payload เหมือนของในเครื่องทุกตัวอักษร) เดิมไม่เช็ค เลย render ทุกครั้งที่ snapshot มาถึงแม้ไม่มีอะไรเปลี่ยนจริง
-    const _curShelvesMeta = shelves.map(s=>{ const {photo,thumb,_photoInline,...rest}=s; return rest; });
-    if (JSON.stringify(cShelves) === JSON.stringify(_curShelvesMeta)) {
-      _lastCloudShelfCount = cShelves.length;
-      _markCloudSynced();
       return;
     }
     shelves = cShelves.map(s=>{
@@ -9050,11 +9036,10 @@ function _attachShelfPhotoListeners(){
       if (v.photo) shelf.photo = v.photo;
       if (v.thumb) shelf.thumb = v.thumb;
       shelf.hasPhoto = true;
-      // [FIX] รูปเหมือนเดิมทุกตัวอักษร (เช่น RTDB reconnect ตอนเน็ตไม่นิ่ง replay snapshot เดิมซ้ำ) — ไม่ต้องทำอะไรต่อ
-      //       เดิม renderShelfList() ถูกเรียกแบบ unconditional อยู่นอก if บันทึก IDB ด้านล่าง ทำให้รีเฟรชลิสต์ทุกครั้งที่
-      //       snapshot มาถึงแม้รูปไม่เปลี่ยน — listener นี้ผูกแยก "ต่อเชลฟ์" ด้วย ยิ่งมีหลายเชลฟ์ที่มีรูป ยิ่งยิงซ้ำถี่/กระพริบรัวตอนเน็ตไม่นิ่ง
-      if (shelf.photo === _prevPhoto && shelf.thumb === _prevThumb) return;
-      saveShelfPhoto(s.id, shelf.photo||null, shelf.thumb||null);
+      // บันทึกลง IDB เฉพาะเมื่อรูปเปลี่ยนจริง (ประหยัด write)
+      if (shelf.photo !== _prevPhoto || shelf.thumb !== _prevThumb) {
+        saveShelfPhoto(s.id, shelf.photo||null, shelf.thumb||null);
+      }
       // refresh shelf list thumbnail
       if (typeof renderShelfList === 'function') renderShelfList();
       // ── ถ้า shelf-detail เปิดอยู่ตรงเชลฟ์นี้ → อัพเดทรูปในหน้า detail ทันที ──
@@ -15002,28 +14987,14 @@ function saveShelves(){
 }
 
 // ── force save on exit (records + shelves) ────────────────
-// [FIX] เดิมเซฟแค่ localStorage ฝั่ง records ไม่ได้ push cloud เลย — ถ้าผู้ใช้แก้ของแล้ว
-// สลับแอป/ปิดแท็บเร็วๆ การแก้ไขรอบล่าสุดจะไม่ขึ้น cloud จนกว่าจะเปิดแอปใหม่อีกรอบ (เครื่องอื่นไม่เห็น)
-// เรียก cloudSet ตรงๆ ไม่ผ่าน debounce (cloudSetRecords/cloudSetShelves) เพราะ beforeunload/visibilitychange
-// อาจถูกเบราว์เซอร์/OS ตัดตอนก่อน setTimeout ของ debounce จะ fire ทัน
 window.addEventListener("beforeunload",()=>{
   try{ localStorage.setItem("expiry-records-v2",JSON.stringify(records)); }catch(e){}
-  if (typeof _cloudReady !== 'undefined' && _cloudReady && typeof cloudSet === 'function') cloudSet('records', records);
   saveShelves();
-  if (typeof _cloudReady !== 'undefined' && _cloudReady && typeof cloudSet === 'function') {
-    const meta = shelves.map(s=>{ const {photo,thumb,_photoInline,...rest}=s; return rest; });
-    cloudSet('shelves', meta);
-  }
 });
 document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="hidden"){
     try{ localStorage.setItem("expiry-records-v2",JSON.stringify(records)); }catch(e){}
-    if (typeof _cloudReady !== 'undefined' && _cloudReady && typeof cloudSet === 'function') cloudSet('records', records);
     saveShelves();
-    if (typeof _cloudReady !== 'undefined' && _cloudReady && typeof cloudSet === 'function') {
-      const meta = shelves.map(s=>{ const {photo,thumb,_photoInline,...rest}=s; return rest; });
-      cloudSet('shelves', meta);
-    }
   }
 });
 
@@ -15405,16 +15376,10 @@ async function toggleShelfCam(){
   const idleDiv=document.getElementById("shelf-cam-idle");
   const activeDiv=document.getElementById("shelf-cam-active");
   const wrapper=document.getElementById("shelf-cam-wrapper");
-  const vid=document.getElementById("shelfCamVideo");
-  if(!vid||!wrapper){
-    // shelf-cam-* / shelfCamVideo markup doesn't exist in this build yet — bail out
-    // safely instead of crashing mid-stream after requesting camera permission.
-    showToast("ฟีเจอร์กล้องเชลฟ์ยังไม่พร้อมใช้งาน","err");
-    return;
-  }
   if(idleDiv) idleDiv.style.display="none";
   if(activeDiv) activeDiv.style.display="none";
   try{
+    const vid=document.getElementById("shelfCamVideo");
     if("BarcodeDetector" in window){
       shelfCamStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}}});
       vid.srcObject=shelfCamStream; vid.muted=true; await vid.play();
@@ -20976,12 +20941,7 @@ window.closeNexusOverlay=function(){
 
 <script>
 /* ── PWA Service Worker Registration ── */
-// [FIX] เดิมตรวจเจอเวอร์ชันใหม่แล้วแค่ log ลง console เงียบๆ ไม่ทำอะไรต่อ — ผู้ใช้ต้อง
-// refresh เองถึงจะได้โค้ดที่แก้ไปจริง ตอนนี้: ติดตั้งเสร็จแล้ว reload อัตโนมัติครั้งเดียว
-// (รอจนกว่าแท็บไม่ active อยู่ก่อน กันไม่ให้ reload ขัดจังหวะตอนกำลังกรอกข้อมูล)
 if ('serviceWorker' in navigator) {
-  let _swReloadPending = false;
-  let _swReloading = false;
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js', { scope: './' })
       .then(reg => {
@@ -20991,26 +20951,13 @@ if ('serviceWorker' in navigator) {
           if (!nw) return;
           nw.addEventListener('statechange', () => {
             if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-              console.log('[PWA] Update installed — will activate on next safe moment');
-              _swReloadPending = true;
-              _maybeApplySwUpdate();
+              console.log('[PWA] Update available — refresh to apply');
             }
           });
         });
       })
       .catch(err => console.warn('[PWA] SW registration failed:', err));
   });
-  function _maybeApplySwUpdate(){
-    if (!_swReloadPending || _swReloading) return;
-    // หน้าไม่ได้กำลังถูกมองอยู่ (สลับแอป/ปิดจอ) → ปลอดภัยที่จะ reload
-    if (document.visibilityState === 'hidden') {
-      _swReloading = true;
-      location.reload();
-    }
-  }
-  document.addEventListener('visibilitychange', _maybeApplySwUpdate);
-  // เผื่อกรณีแอปเปิดอยู่หน้าเดียวยาวๆ ไม่เคย hidden เลย — เช็คซ้ำเป็นระยะ
-  setInterval(_maybeApplySwUpdate, 60000);
 }
 </script>
 
