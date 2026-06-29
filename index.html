@@ -8830,6 +8830,7 @@ async function syncFromCloud(){
       cloudGet('records'), cloudGet('catalogDelta'), cloudGet('shelves')
     ]);
     let changed = false;
+    let shelvesChanged = false; // [FIX] แยกจาก changed — กัน shelf list re-render ทุกครั้งที่ syncFromCloud() รัน (เช่น online event ยิงซ้ำตอนเน็ตไม่นิ่ง) ทั้งที่ shelves ไม่ได้เปลี่ยนจริง
     if (cRecords && cRecords.length) { records = cRecords; _lastCloudRecordCount = cRecords.length; localStorage.setItem("expiry-records-v2", JSON.stringify(records)); changed = true; }
     else if (records.length) cloudSet('records', records);
 
@@ -8837,6 +8838,10 @@ async function syncFromCloud(){
     else if (_lastCatalogDelta.length) cloudSet('catalogDelta', _lastCatalogDelta);
 
     if (cShelves && cShelves.length) { _lastCloudShelfCount = cShelves.length;
+      // [FIX] เช็คว่า shelves จาก cloud ต่างจากในเครื่องจริงไหม ก่อน mark shelvesChanged —
+      //       กัน online event ที่ยิงซ้ำตอนเน็ตไม่นิ่ง สั่ง render shelf list ทั้งที่ข้อมูลเหมือนเดิม
+      const _curMetaForDiff = shelves.map(s=>{ const {photo,thumb,_photoInline,...rest}=s; return rest; });
+      shelvesChanged = JSON.stringify(cShelves) !== JSON.stringify(_curMetaForDiff);
       shelves = cShelves.map(s=>{
         const _ex = shelves.find(x=>x.id===s.id); // [FIX] เก็บรูป/thumb ที่มีอยู่แล้วในเครื่อง ไม่ให้หายไปก่อนตอน rebuild array
         const photo=(_ex&&_ex.photo)||loadShelfPhoto(s.id)||s.photo||s.photoUrl||null;
@@ -8859,8 +8864,10 @@ async function syncFromCloud(){
     if (changed) {
       renderDashboard(); renderRecords(); renderStockSummaryAll();
       if (typeof renderCatalog === 'function') renderCatalog();
-      if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
-      else if (typeof renderShelfList === 'function') renderShelfList();
+      if (shelvesChanged) { // [FIX] เดิมเรียกทุกครั้งที่ changed (รวม records/catalog) ทำให้ shelf list re-render/กระพริบ ทั้งที่ shelves เองไม่เปลี่ยน
+        if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
+        else if (typeof renderShelfList === 'function') renderShelfList();
+      }
       // ── ดึงรูปสินค้าจาก IDB/RTDB หลัง sync records+catalogDelta มาแล้ว ──
       // ครอบคลุมเครื่องใหม่/ล้าง cache ที่ IDB ว่าง แต่ catalog entry มี hasPhoto=true
       if (typeof loadProductPhotosFromIDB === 'function') loadProductPhotosFromIDB();
@@ -8904,6 +8911,14 @@ function _attachCloudListeners(){
     if (cShelves.length === 0 && shelves.length > 0) {
       console.warn('[cloud] BLOCKED applying empty shelves snapshot — local has', shelves.length, 'shelves, ignoring remote empty state');
       _markCloudSyncError('shelves: ignored empty remote (data protection)');
+      return;
+    }
+    // [FIX] กัน shelf list กระพริบรัวๆ — ตอนเน็ตไม่นิ่ง RTDB reconnect แล้ว replay 'value' event เดิมซ้ำ
+    // (payload เหมือนของในเครื่องทุกตัวอักษร) เดิมไม่เช็ค เลย render ทุกครั้งที่ snapshot มาถึงแม้ไม่มีอะไรเปลี่ยนจริง
+    const _curShelvesMeta = shelves.map(s=>{ const {photo,thumb,_photoInline,...rest}=s; return rest; });
+    if (JSON.stringify(cShelves) === JSON.stringify(_curShelvesMeta)) {
+      _lastCloudShelfCount = cShelves.length;
+      _markCloudSynced();
       return;
     }
     shelves = cShelves.map(s=>{
@@ -9036,10 +9051,11 @@ function _attachShelfPhotoListeners(){
       if (v.photo) shelf.photo = v.photo;
       if (v.thumb) shelf.thumb = v.thumb;
       shelf.hasPhoto = true;
-      // บันทึกลง IDB เฉพาะเมื่อรูปเปลี่ยนจริง (ประหยัด write)
-      if (shelf.photo !== _prevPhoto || shelf.thumb !== _prevThumb) {
-        saveShelfPhoto(s.id, shelf.photo||null, shelf.thumb||null);
-      }
+      // [FIX] รูปเหมือนเดิมทุกตัวอักษร (เช่น RTDB reconnect ตอนเน็ตไม่นิ่ง replay snapshot เดิมซ้ำ) — ไม่ต้องทำอะไรต่อ
+      //       เดิม renderShelfList() ถูกเรียกแบบ unconditional อยู่นอก if บันทึก IDB ด้านล่าง ทำให้รีเฟรชลิสต์ทุกครั้งที่
+      //       snapshot มาถึงแม้รูปไม่เปลี่ยน — listener นี้ผูกแยก "ต่อเชลฟ์" ด้วย ยิ่งมีหลายเชลฟ์ที่มีรูป ยิ่งยิงซ้ำถี่/กระพริบรัวตอนเน็ตไม่นิ่ง
+      if (shelf.photo === _prevPhoto && shelf.thumb === _prevThumb) return;
+      saveShelfPhoto(s.id, shelf.photo||null, shelf.thumb||null);
       // refresh shelf list thumbnail
       if (typeof renderShelfList === 'function') renderShelfList();
       // ── ถ้า shelf-detail เปิดอยู่ตรงเชลฟ์นี้ → อัพเดทรูปในหน้า detail ทันที ──
