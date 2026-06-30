@@ -3,7 +3,7 @@
    Hosted at: https://stevenjinn.github.io/expirehunter/
    ═══════════════════════════════════════════════════════════════ */
 
-const CACHE_VER  = 'v1.0.1';
+const CACHE_VER  = 'v1.0.2'; // bumped 2026-06-30: network-first HTML fix
 const CACHE_NAME = `expire-hunter-${CACHE_VER}`;
 const RUNTIME    = `expire-hunter-runtime-${CACHE_VER}`;
 const BASE       = '/expirehunter';
@@ -77,7 +77,31 @@ self.addEventListener('fetch', e => {
   }
 
   if (url.pathname.startsWith(BASE)) {
-    /* App shell: cache-first */
+    /* [FIX 2026-06-30] index.html/navigation ต้องเป็น network-first ไม่ใช่ cache-first
+       เดิม cache-first ทำให้พอ cache ครั้งแรกแล้ว ทุกครั้งหลังจากนั้นเสิร์ฟจาก cache เก่าตลอดไป
+       โดยไม่เช็ค network เลย — ถ้าลืม bump CACHE_VER ตอน deploy (sw.js ไบต์เหมือนเดิม) browser
+       จะไม่เห็นว่ามี SW update ให้ติดตั้งเลย ทำให้ index.html ค้างเวอร์ชันเก่าถาวรในเครื่องที่เคย
+       เปิดแอปมาก่อน (ต้นเหตุของปัญหา "บางเครื่องไม่เห็นหน้า login Google sign-in ใหม่")
+       network-first: พยายามดึงของสดจาก network ก่อนเสมอ (ถ้าเน็ตปกติจะได้ของล่าสุดทุกครั้ง)
+       ใช้ cache เป็น fallback เฉพาะตอนออฟไลน์/network fail เท่านั้น */
+    const isHTML = req.mode === 'navigate' ||
+                   url.pathname === `${BASE}/` ||
+                   url.pathname === `${BASE}/index.html` ||
+                   (req.headers.get('accept') || '').includes('text/html');
+
+    if (isHTML) {
+      e.respondWith(
+        fetch(req).then(res => {
+          if (res && res.status === 200) {
+            caches.open(CACHE_NAME).then(c => c.put(req, res.clone()));
+          }
+          return res;
+        }).catch(() => caches.match(req).then(cached => cached || caches.match(`${BASE}/index.html`)))
+      );
+      return;
+    }
+
+    /* ไฟล์ static อื่น (icons, manifest ฯลฯ) ไม่ค่อยเปลี่ยน — cache-first ตามเดิมได้ */
     e.respondWith(
       caches.match(req).then(cached => {
         if (cached) return cached;
@@ -85,13 +109,15 @@ self.addEventListener('fetch', e => {
           if (!res || res.status !== 200) return res;
           caches.open(CACHE_NAME).then(c => c.put(req, res.clone()));
           return res;
-        }).catch(() => {
-          if (req.mode === 'navigate') return caches.match(`${BASE}/index.html`);
-          return new Response('', { status: 503 });
-        });
+        }).catch(() => new Response('', { status: 503 }));
       })
     );
   }
+});
+
+/* ── MESSAGE (รับคำสั่ง skipWaiting จากฝั่ง client ถ้ามี) ── */
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('push', e => {

@@ -21238,20 +21238,54 @@ window.closeNexusOverlay=function(){
 
 <script>
 /* ── PWA Service Worker Registration ── */
+/* [FIX 2026-06-30] เดิม: เจอ update ได้ (updatefound) แต่แค่ console.log เฉยๆ ไม่ได้สั่งใช้จริง
+   ทำให้เครื่องที่เคยเปิดแอปมาก่อน "ค้าง" อยู่กับ SW/HTML เวอร์ชันเก่าตลอดไป (จนกว่าจะเคลียร์ cache มือ)
+   — นี่คือสาเหตุที่บางเครื่องไม่เห็น auth-gate overlay เลยหลัง deploy ฟีเจอร์ login ใหม่
+   แก้โดย: (1) skipWaiting ทันทีที่ SW ใหม่ installed (2) reload หน้าอัตโนมัติแค่ครั้งเดียวตอน
+   controller เปลี่ยน (3) เรียก reg.update() เช็คทุกครั้งที่เปิด/กลับมา foreground แอป เพื่อไม่ต้องรอ
+   browser เช็คเองตามจังหวะของมัน (อาจช้าเป็นชม./วัน) */
 if ('serviceWorker' in navigator) {
+  let _swReloading = false; // กัน reload วนซ้ำถ้า controllerchange ยิงมากกว่า 1 ครั้ง
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (_swReloading) return;
+    _swReloading = true;
+    console.log('[PWA] New SW took control — reloading to apply update');
+    window.location.reload();
+  });
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js', { scope: './' })
       .then(reg => {
         console.log('[PWA] Service Worker registered ✓', reg.scope);
+
+        const _activateWaitingSW = () => {
+          if (reg.waiting) {
+            console.log('[PWA] Update found — activating new SW now');
+            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+        };
+
+        // เผื่อมี SW รออยู่แล้วตั้งแต่ก่อน registration เสร็จ (เช่นโหลดหน้าซ้อนกัน)
+        _activateWaitingSW();
+
         reg.addEventListener('updatefound', () => {
           const nw = reg.installing;
           if (!nw) return;
           nw.addEventListener('statechange', () => {
             if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-              console.log('[PWA] Update available — refresh to apply');
+              console.log('[PWA] Update available — activating automatically');
+              _activateWaitingSW();
             }
           });
         });
+
+        // เช็ค update ทุกครั้งที่ tab กลับมา active (มือถือสลับแอปไปมาบ่อย, ไม่งั้นอาจไม่เช็คนาน)
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(()=>{});
+        });
+        // เช็คตอนโหลดด้วย เผื่อ browser cache ตัว manifest ของ SW ไว้นานกว่าที่ควร
+        reg.update().catch(()=>{});
       })
       .catch(err => console.warn('[PWA] SW registration failed:', err));
   });
