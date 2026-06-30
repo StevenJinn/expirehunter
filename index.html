@@ -14675,7 +14675,14 @@ async function loadShelfPhotosFromIDB(){
   }
   if(_cloudFetches.length) await Promise.all(_cloudFetches);
   if (!_anyPatched) return; // [FIX] ไม่มีรูปใหม่ต้องเติม — ไม่ต้อง render ซ้ำ แค่ไม่ทำอะไรเลย
-  renderShelfList(); // refresh thumbnails after photos loaded
+  // [FIX 2026-06-30] เดิมเรียก renderShelfList() ตรงๆ — ฟังก์ชันนี้ถูกเรียกจาก shelves listener
+  // (.on('value')) ทุกครั้งที่มีการ sync แม้ guard _shelvesListenerFirstFire จะข้าม render ของ
+  // listener เองไปแล้วตอน fire ครั้งแรก แต่ guard นั้นไม่ครอบฟังก์ชันนี้ ทำให้ตอนเปิดแอป/เปิดแท็บ
+  // เชลฟ์ครั้งแรก (photo ส่วนใหญ่ยังโหลดไม่ครบ → _anyPatched=true เกือบทุกครั้ง) เกิด render ซ้อน
+  // กับ render ที่ switchTab('shelf') ทำไปแล้วใน rAF เดียวกัน ทำให้เห็นเป็น "รีเฟรช 1-2 ครั้ง"
+  // ทุกครั้งที่เปิด — เปลี่ยนเป็น debounce แทน เพื่อรวม render ที่มาใกล้ๆกันให้เหลือรอบเดียว
+  if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
+  else renderShelfList(); // refresh thumbnails after photos loaded
   // ── [FIX] ถ้า shelf-detail-view เปิดอยู่ตรงเชลฟ์ที่รูปเพิ่งโหลดมาจาก IDB ให้ sync รูปกลับเข้าจอด้วย
   // (กันเคส openShelfDetail() เคยรันไปแล้วตอน s.photo ยังเป็น null ทำให้ค้างเป็นกริดเปล่าไม่มีรูป) ──
   if (typeof currentShelfId !== 'undefined' && currentShelfId) {
