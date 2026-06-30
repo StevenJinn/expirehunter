@@ -15040,7 +15040,13 @@ function _debounce(fn, ms){
 }
 const _renderPlanogramDebounced = _debounce((s)=>renderPlanogram(s), 30);
 const _renderShelfItemsDebounced = _debounce((s)=>renderShelfItems(s), 30);
-const _renderShelfListDebounced = _debounce(()=>renderShelfList(), 80);
+// [FIX 2026-06-30] เดิม debounce 80ms — แต่ตอนเปิดแอป/เปิดแท็บเชลฟ์ มี listener หลายตัวที่เป็น
+// อิสระจากกัน (shelves, records/catalogDelta ใน syncFromCloud, photoIndex, loadShelfPhotosFromIDB)
+// ต่างคนต่างเรียก _renderShelfListDebounced() ตามเวลาที่งานของตัวเองเสร็จ ซึ่งห่างกันมากกว่า 80ms
+// (เพราะรอ network/IDB คนละจังหวะ) ทำให้ debounce ไม่รวมกันเป็นรอบเดียว แต่แตกเป็น 3-4 รอบที่
+// เห็นเป็น "รีเฟรชหลายครั้ง" — ขยายหน้าต่างเป็น 450ms ให้ครอบคลุมช่วงที่ listener ส่วนใหญ่ทำงานเสร็จ
+// (ยังเร็วพอที่จะไม่รู้สึกหน่วงตอนกดใช้งานจริง)
+const _renderShelfListDebounced = _debounce(()=>renderShelfList(), 450);
 
 
 // ── Clean orphan shelf items (record ถูกลบแล้ว) ──────────────
