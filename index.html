@@ -11495,7 +11495,10 @@ function _uesRenderShelfPicker() {
   shelfArr.forEach((s, i) => {
     const div = document.createElement('div');
     div.className = 'ues-shelf-item' + (s.id === _uesShelfId ? ' cur' : '');
-    div.style.animationDelay = (i * 35) + 'ms';
+    // [FIX 2026-06-30] เดิม animationDelay = i*35ms — สเกลตามจำนวนเชลฟ์เป็นเส้นตรง ร้านที่มี
+    // 39 เชลฟ์ขึ้นไปต้องรอเชลฟ์ใบสุดท้าย ~1.3-1.5 วินาทีกว่าจะ fade-in ครบ ดูเหมือน "ช้ามาก"
+    // เวลาเลือกเชลฟ์จริง — ตัด stagger ออก ให้ทุกใบปรากฏพร้อมกันทันที (แอนิเมชัน .15s เดิมยังอยู่
+    // แค่ไม่ต้องรอคิวทีละใบ)
     const th = s.thumb || s.photo;
     const thumbHtml = th
       ? `<img src="${th}" style="width:32px;height:32px;object-fit:cover;border-radius:6px;border:1px solid rgba(0,212,170,.25);flex-shrink:0">`
@@ -15226,7 +15229,10 @@ function renderShelfList() {
     const hasD30       = d30Items.length > 0;
     const hasD60       = d60Items.length > 0;
     const hasD90       = d90Items.length > 0;
-    const delay=i*0.05;
+    // [FIX 2026-06-30] เดิม delay=i*0.05s — สเกลตามจำนวนเชลฟ์เป็นเส้นตรงเหมือนกับบั๊กใน
+    // _uesRenderShelfPicker ร้านที่มี 39 เชลฟ์ขึ้นไปต้องรอใบสุดท้าย ~1.9 วินาทีกว่าจะ fade-in
+    // ครบ — ตัด stagger ออก ให้ทุกใบปรากฏพร้อมกัน (แอนิเมชัน .4s ของแต่ละใบยังอยู่เหมือนเดิม)
+    const delay=0;
 
     // ── build status badges ──
     const hasOOS = oosItems > 0;
