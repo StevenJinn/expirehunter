@@ -6209,6 +6209,18 @@ body.cam-open #page-catalog{
 </style>
 </head>
 <body oncontextmenu="return false" onselectstart="return false">
+<!-- [FEATURE 2026-06-30] Google Sign-In gate — แทน anonymous auth เดิม ต้อง login ก่อนถึงใช้แอปได้ -->
+<div id="auth-gate-overlay" style="position:fixed;inset:0;z-index:99999;background:radial-gradient(ellipse at 50% 30%,#0d1420 0%,#05080d 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;font-family:'IBM Plex Mono',monospace;color:#e6f7f2">
+  <div style="width:64px;height:64px;border-radius:16px;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.35);display:flex;align-items:center;justify-content:center;font-size:30px;margin-bottom:18px">📦</div>
+  <div style="font-size:20px;font-weight:700;letter-spacing:1px;margin-bottom:6px">EXPIRE HUNTER</div>
+  <div style="font-size:12px;color:#7d8a9e;margin-bottom:32px;text-align:center">เข้าสู่ระบบด้วย Google เพื่อใช้งาน</div>
+  <button id="auth-gate-google-btn" onclick="_authGateSignIn()" style="display:flex;align-items:center;gap:10px;background:#fff;color:#1f1f1f;border:none;border-radius:10px;padding:13px 22px;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.4)">
+    <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.12-.84 2.07-1.79 2.71v2.26h2.9c1.7-1.56 2.69-3.87 2.69-6.61z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.84.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.33C2.44 15.98 5.48 18 9 18z"/><path fill="#FBBC05" d="M3.95 10.7A5.4 5.4 0 0 1 3.66 9c0-.59.1-1.17.29-1.7V4.97H.96A8.99 8.99 0 0 0 0 9c0 1.45.35 2.83.96 4.03l2.99-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.97l2.99 2.33C4.66 5.17 6.65 3.58 9 3.58z"/></svg>
+    เข้าสู่ระบบด้วย Google
+  </button>
+  <div id="auth-gate-status" style="margin-top:18px;font-size:11px;color:#ff6b6b;min-height:16px"></div>
+  <div style="position:absolute;bottom:24px;font-size:9px;color:#3a4555;letter-spacing:1px">SECURED · GOOGLE SIGN-IN</div>
+</div>
 <canvas id="cdb-rain-canvas" style="display:none!important;"></canvas>
 
 <div id="nx-cloud-debug-modal" style="display:none" onclick="if(event.target===this)closeCloudDebug()">
@@ -8230,6 +8242,14 @@ body.cam-open #page-catalog{
         <button onclick="(async()=>{if(typeof syncLocalPhotosToCloud==='function'){await syncLocalPhotosToCloud();setTimeout(showCloudDebug,200);}})()" style="flex:1;background:rgba(255,159,67,.1);border:1px solid rgba(255,159,67,.35);border-radius:7px;color:#ff9f43;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;padding:7px 10px;cursor:pointer;font-weight:700;transition:all .15s" onmouseenter="this.style.background='rgba(255,159,67,.2)'" onmouseleave="this.style.background='rgba(255,159,67,.1)'">↑ SYNC PHOTOS</button>`;
         c.appendChild(ppBtnRow);
 
+        // [FEATURE 2026-06-30] ปุ่ม logout — สำหรับสลับบัญชี Google หรือออกจากระบบ
+        const logoutRow=document.createElement('div');
+        logoutRow.style.cssText='display:flex;gap:8px;margin:4px 0 4px';
+        const _curUser = (typeof firebase!=='undefined' && firebase.auth().currentUser) || null;
+        const _curEmail = _curUser ? (_curUser.email||'unknown') : '—';
+        logoutRow.innerHTML=`<button onclick="if(typeof _authGateSignOut==='function')_authGateSignOut();" style="flex:1;background:rgba(255,77,109,.08);border:1px solid rgba(255,77,109,.3);border-radius:7px;color:#ff4d6d;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;padding:7px 10px;cursor:pointer;font-weight:700" >⏻ LOGOUT (${_curEmail})</button>`;
+        c.appendChild(logoutRow);
+
         const sep0=document.createElement('div');sep0.className='cdb-sep';c.appendChild(sep0);
 
         // ── LOCAL NODE ──
@@ -8751,14 +8771,38 @@ try {
   _cloudDb = firebase.database();
   _cloudStorage = firebase.storage();
   _markCloudConnecting('handshake · auth');
-  firebase.auth().signInAnonymously()
-    .then(()=>{
+
+  // [FEATURE 2026-06-30] เปลี่ยนจาก signInAnonymously() เป็น Google Sign-In gate —
+  // ต้อง login ก่อนถึงใช้แอปได้ ทุกครั้งที่เปิดแอป (เซสชันจะถูกจำไว้โดย Firebase Auth เอง
+  // ผ่าน IndexedDB ของเบราว์เซอร์ — ไม่ต้อง login ใหม่ทุกครั้งถ้ายังไม่ได้ logout/เคลียร์ข้อมูล)
+  window._authGateSignIn = function(){
+    const statusEl = document.getElementById('auth-gate-status');
+    if (statusEl) statusEl.textContent = '';
+    const provider = new firebase.auth.GoogleAuthProvider();
+    firebase.auth().signInWithPopup(provider).catch(e=>{
+      console.warn('[auth] google sign-in failed', e);
+      if (statusEl) statusEl.textContent = 'เข้าสู่ระบบไม่สำเร็จ: ' + (e&&e.code||e&&e.message||e);
+    });
+  };
+  window._authGateSignOut = function(){
+    firebase.auth().signOut().catch(()=>{});
+  };
+
+  firebase.auth().onAuthStateChanged(function(user){
+    const overlay = document.getElementById('auth-gate-overlay');
+    if (user) {
+      // ล็อกอินสำเร็จ — ซ่อน overlay แล้วเริ่ม sync เหมือนเดิมทุกอย่าง
+      if (overlay) overlay.style.display = 'none';
       _cloudReady = true;
       _markCloudConnecting('node linked · loading');
       if (_localDataReady) syncFromCloud();
       else _pendingCloudSync = true; // รอ initApp() โหลด local เสร็จก่อน ค่อย sync — กัน race
-    })
-    .catch(e=>{ console.warn("[cloud] anon auth failed", e); _markCloudSyncError('auth: '+(e&&e.code||e)); });
+    } else {
+      // ยังไม่ login (หรือเพิ่ง logout) — โชว์ overlay บัง UI ทั้งหมดไว้
+      _cloudReady = false;
+      if (overlay) overlay.style.display = 'flex';
+    }
+  });
 } catch(e) { console.warn("[cloud] init failed", e); _markCloudOffline('init failed'); }
 
 // RTDB path: /stores/expirehunter-main/data/{key}
