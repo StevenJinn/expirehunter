@@ -8226,7 +8226,8 @@ body.cam-open #page-catalog{
 
         const ppBtnRow=document.createElement('div');
         ppBtnRow.style.cssText='display:flex;gap:8px;margin:8px 0 4px';
-        ppBtnRow.innerHTML=`<button onclick="(async()=>{if(typeof syncFromCloud==='function'){await syncFromCloud();setTimeout(showCloudDebug,200);}})()" style="flex:1;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.35);border-radius:7px;color:#00d4aa;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;padding:7px 10px;cursor:pointer;font-weight:700;transition:all .15s" onmouseenter="this.style.background='rgba(0,212,170,.2)'" onmouseleave="this.style.background='rgba(0,212,170,.1)'">↻ FORCE · SYNC</button>`;
+        ppBtnRow.innerHTML=`<button onclick="(async()=>{if(typeof syncFromCloud==='function'){await syncFromCloud();setTimeout(showCloudDebug,200);}})()" style="flex:1;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.35);border-radius:7px;color:#00d4aa;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;padding:7px 10px;cursor:pointer;font-weight:700;transition:all .15s" onmouseenter="this.style.background='rgba(0,212,170,.2)'" onmouseleave="this.style.background='rgba(0,212,170,.1)'">↻ FORCE · SYNC</button>
+        <button onclick="(async()=>{if(typeof syncLocalPhotosToCloud==='function'){await syncLocalPhotosToCloud();setTimeout(showCloudDebug,200);}})()" style="flex:1;background:rgba(255,159,67,.1);border:1px solid rgba(255,159,67,.35);border-radius:7px;color:#ff9f43;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;padding:7px 10px;cursor:pointer;font-weight:700;transition:all .15s" onmouseenter="this.style.background='rgba(255,159,67,.2)'" onmouseleave="this.style.background='rgba(255,159,67,.1)'">↑ SYNC PHOTOS</button>`;
         c.appendChild(ppBtnRow);
 
         const sep0=document.createElement('div');sep0.className='cdb-sep';c.appendChild(sep0);
@@ -8893,6 +8894,9 @@ async function syncFromCloud(){
     _attachCloudListeners();
     // safety: หลัง listeners ติดแล้ว → ดึงรูปอีกครั้ง กัน timing miss
     setTimeout(()=>{ if(typeof loadProductPhotosFromIDB==='function') loadProductPhotosFromIDB(); }, 1500);
+    // [FEATURE 2026-06-30] ดันรูปที่มีอยู่ในเครื่องนี้ (IDB) แต่ยังไม่เคยขึ้น cloud ให้ครบ —
+    // ทำงานเงียบๆ เบื้องหลัง ไม่บล็อก sync หลัก (กันเคสรูปถ่ายตอนออฟไลน์ค้างอยู่แค่ในเครื่องเดียว)
+    if (typeof syncLocalPhotosToCloud === 'function') syncLocalPhotosToCloud({silent:true}).catch(()=>{});
   } catch(e) { console.warn("[cloud] syncFromCloud failed", e); _markCloudSyncError('syncFromCloud: '+(e&&e.code||e&&e.message||e)); }
   finally {
     _syncInProgress = false;
@@ -9003,45 +9007,50 @@ function _attachPhotoIndexListener(){
   _cloudRef('photoIndex').on('value', async snap=>{
     if(!snap.exists()) return;
     const idx = snap.val() || {};
-    const newKeys = Object.keys(idx).filter(k=> !_photoIndexKnown[k]);
-    // อัพเดท known map
+    // [FIX 2026-06-30] เดิมเช็คแค่ "key ใหม่" (!_photoIndexKnown[k]) — แปลว่าถ้าถ่ายรูปใหม่
+    // ทับของเดิม (key เดิมมีอยู่แล้ว) เครื่องอื่นจะไม่มีทาง sync รูปใหม่อัตโนมัติเลย ต้องกด
+    // อัพโหลด/รีเฟรชเองทุกครั้ง — เปลี่ยนมาเช็คว่า "ค่า (byte size) เปลี่ยน" แทน ซึ่งครอบคลุมทั้ง
+    // key ใหม่ (ค่าเดิมเป็น undefined) และรูปที่ถูกแทนที่ (byte size เปลี่ยนไปจากของเดิม)
+    const changedKeys = Object.keys(idx).filter(k=> idx[k] !== _photoIndexKnown[k]);
     Object.assign(_photoIndexKnown, idx);
-    if(!newKeys.length) return;
+    if(!changedKeys.length) return;
     // แยก product vs shelf
-    const prodKeys  = newKeys.filter(k=>!k.startsWith('shelf_'));
-    const shelfKeys = newKeys.filter(k=>k.startsWith('shelf_'));
+    const prodKeys  = changedKeys.filter(k=>!k.startsWith('shelf_'));
+    const shelfKeys = changedKeys.filter(k=>k.startsWith('shelf_'));
     let anyNew = false;
-    // fetch product photos ที่ยังไม่มีใน memcache
-    for(const bc of prodKeys){
-      if(_productPhotoMemCache[bc]) continue;
+    // [FIX 2026-06-30] เดิม fetch ทีละรูปด้วย await ใน for-loop เรียงคิว — ถ้ามีรูปใหม่หลายรูป
+    // พร้อมกัน (เช่นเปิดแอปครั้งแรกบนเครื่องใหม่) จะรอ network round-trip ทีละรอบ ทำให้ sync
+    // ดูเหมือน "ค้างนานมาก" — เปลี่ยนมาดึงพร้อมกันทั้งหมดด้วย Promise.all
+    const prodFetches = prodKeys.map(async bc=>{
       try{
         const v = await fetchProductPhotoFromCloud(bc);
-        if(!v) continue;
+        if(!v) return;
         const dataUrl = v.thumb||v.photo;
+        if(!dataUrl) return;
         _productPhotoMemCache[bc] = dataUrl;
         saveProductPhoto(bc, v.photo||null, v.thumb||null);
         const _i=(typeof catalog!=='undefined')&&catalog.findIndex(p=>p.barcode===bc);
         if(typeof _i==='number'&&_i>=0) catalog[_i]={...catalog[_i],hasPhoto:true};
         anyNew = true;
       }catch(e){}
-    }
-    // fetch shelf photos ที่ยังไม่มี
-    for(const k of shelfKeys){
+    });
+    const shelfFetches = shelfKeys.map(async k=>{
       const shelfId = k.replace(/^shelf_/,'');
-      const s = (typeof shelves!=='undefined')&&shelves.find(x=>x.id===shelfId);
-      if(s&&s.photo&&s.thumb) continue;
       try{
         const v = await fetchShelfPhotoFromCloud(shelfId);
-        if(!v) continue;
+        if(!v) return;
+        const s = (typeof shelves!=='undefined')&&shelves.find(x=>x.id===shelfId);
         if(s){
-          if(!s.photo&&v.photo) s.photo=v.photo;
-          if(!s.thumb&&v.thumb) s.thumb=v.thumb;
+          // [FIX] เขียนทับได้เลยตรงนี้ เพราะรู้แน่แล้วว่า byte size บน cloud เปลี่ยน (รูปใหม่กว่าจริง)
+          if(v.photo) s.photo=v.photo;
+          if(v.thumb) s.thumb=v.thumb;
           s.hasPhoto=true;
           saveShelfPhoto(shelfId, s.photo||null, s.thumb||null);
         }
         anyNew = true;
       }catch(e){}
-    }
+    });
+    await Promise.all([...prodFetches, ...shelfFetches]);
     if(anyNew){
       if(typeof renderRecords==='function') renderRecords();
       if(typeof renderShelfList==='function') renderShelfList();
@@ -10694,11 +10703,14 @@ function renderRecords() {
     const addedTs = r.addedAt ? new Date(r.addedAt).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
 
     // product photo thumbnail (shared per barcode, optional)
-    // fallback: ถ้า local ไม่มี → ใช้ thumbUrl/photoUrl จาก catalog ที่ sync มาจาก cloud โดยตรง
-    // (<img src> โหลด Firebase Storage URL ได้เลย ไม่ต้องผ่าน fetch/CORS)
+    // [FIX 2026-06-30] เดิม fallback ใช้ _prodCatalogEntry.thumbUrl/photoUrl ซึ่งไม่มีจริง —
+    // ฟิลด์นี้ไม่เคยถูกเซ็ตที่ไหนเลยในทั้งระบบ (มีแต่ catalog.hasPhoto) ทำให้ fallback เป็น
+    // dead code เสมอ ผลคือถ้าเครื่องนี้ยังไม่มีรูปใน IDB/memcache (เช่นเปิดแอปครั้งแรกบนเครื่องใหม่
+    // ก่อนที่ realtime listener จะ fetch ทันเวลา) จะไม่เห็นรูปเลย และดูเหมือนต้อง "อัพโหลดใหม่ทุกครั้ง"
+    // แก้โดยติด data-prod-photo-bc ไว้ที่ panel แล้วให้ _patchPendingProductPhotos() (เรียกหลัง
+    // render ของแต่ละ page ใน renderRecords) ไปดึงรูปจาก cloud มาแพทช์เข้า DOM ทีหลังแบบ async
     const _prodThumbLocal = r.barcode ? loadProductPhoto(r.barcode) : null;
-    const _prodCatalogEntry = r.barcode && (typeof catalog !== 'undefined') && catalog.find(p=>p.barcode===r.barcode);
-    const _prodThumb = _prodThumbLocal || (_prodCatalogEntry && (_prodCatalogEntry.thumbUrl || _prodCatalogEntry.photoUrl)) || null;
+    const _prodThumb = _prodThumbLocal || null;
 
     return `<div class="rec-card${isOOS?' oos-card':''} fade" data-record-id="${r.id}"
       style="
@@ -10734,7 +10746,7 @@ function renderRecords() {
         <div class="rec-card-barcode-row" style="margin-bottom:8px;position:relative;display:flex;gap:8px;align-items:stretch">
 
           <!-- PRODUCT PHOTO (tall) -->
-          <div class="rec-photo-panel"
+          <div class="rec-photo-panel" data-prod-photo-bc="${r.barcode||''}"
             style="width:72px;flex-shrink:0;border-radius:8px;overflow:hidden;position:relative;cursor:default;border:1px solid rgba(${accentRgb},.25);background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px rgba(${accentRgb},.08)">
             ${_prodThumb
               ? `<img src="${_prodThumb}" style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;pointer-events:none"/>`
@@ -10856,6 +10868,33 @@ function renderRecords() {
   // cancel old sentinel
   if (window._recSentinelObs) { window._recSentinelObs.disconnect(); window._recSentinelObs=null; }
 
+  // [FIX 2026-06-30] ดึงรูปสินค้าที่ยังไม่มีในเครื่องนี้มาแพทช์เข้าการ์ดแบบ async หลัง render
+  // (ไม่ต้องรอ realtime listener ทันเวลาก่อน render — กันเคส "เปิดแอปครั้งแรกแล้วไม่เห็นรูป")
+  function _patchPendingProductPhotos(nodes){
+    const seen = new Set();
+    nodes.forEach(n=>{
+      if(!n || !n.querySelectorAll) return;
+      const panels = (n.matches && n.matches('[data-prod-photo-bc]')) ? [n] : Array.from(n.querySelectorAll('[data-prod-photo-bc]'));
+      panels.forEach(panel=>{
+        const bc = panel.getAttribute('data-prod-photo-bc');
+        if(!bc || panel.querySelector('img') || seen.has(bc)) return;
+        seen.add(bc);
+        getProductPhotoAsync(bc).then(url=>{
+          if(!url) return;
+          // อาจมีหลายการ์ดของ barcode เดียวกัน (คนละล็อต/คนละ record) — แพทช์ทุกใบที่ยังไม่มีรูป
+          const sel = '[data-prod-photo-bc="'+(window.CSS&&CSS.escape?CSS.escape(bc):bc)+'"]';
+          document.querySelectorAll(sel).forEach(p=>{
+            if(p.querySelector('img')) return;
+            const placeholder = p.querySelector(':scope > div');
+            const img = document.createElement('img');
+            img.src = url;
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;object-position:center;display:block;pointer-events:none';
+            if(placeholder) placeholder.replaceWith(img); else p.insertBefore(img, p.firstChild);
+          });
+        }).catch(()=>{});
+      });
+    });
+  }
   function _appendPage() {
     const start = _recPage * PAGE;
     if (start >= shown.length) {
@@ -10876,6 +10915,7 @@ function renderRecords() {
     // สร้าง wrapper เพื่อ observe เฉพาะ canvas ใน chunk ใหม่
     requestAnimationFrame(()=>{
       newNodes.forEach(n=>{ if(n.querySelectorAll) renderBarcodeCanvases(n); });
+      _patchPendingProductPhotos(newNodes);
       // [PERF FIX] หยุด animation บนการ์ดที่ scroll ออกไปนอก viewport
       // เมื่อมีรายการเยอะ การ์ดด้านล่างที่มองไม่เห็นยังรัน glitch/scanline/blink อยู่
       if(!window._cardAnimObs){
@@ -14431,6 +14471,68 @@ function pickRecordToShelfConfirm(shelfId){
 
 // @ZONE:PHOTO-STORAGE — IndexedDB + Firebase Storage for shelf photos
 // ── Photo storage: แยก key ต่างหาก ไม่ยุ่งกับ shelf JSON ──
+// ── [FEATURE 2026-06-30] sync รูปที่มีอยู่แล้วในเครื่องนี้ (IndexedDB) ขึ้น cloud ──────────
+// ปัญหาที่แก้: รูปที่ถ่ายไว้ตั้งแต่ก่อนต่อ cloud หรือถ่ายตอนออฟไลน์ จะถูกบันทึกแค่ใน IndexedDB
+// ของเครื่องนั้นเท่านั้น (saveShelfPhoto/saveProductPhoto เซฟ local ก่อนเสมอ ส่วนอัพขึ้น cloud
+// เป็นคนละ step ที่เรียกแค่ตอน "ถ่าย/บันทึกรูปใหม่" — ถ้าตอนนั้นออฟไลน์หรือยังไม่ auth คำขออัพจะ
+// ถูก skip เงียบๆ และไม่มีอะไรมา retry ให้ทีหลังเลย) ผลคือรูปนั้น "มีอยู่ในเครื่องนี้" แต่เครื่องอื่น
+// ไม่มีทางเห็นได้ตลอดไปจนกว่าจะมีคนกดถ่าย/บันทึกใหม่อีกครั้ง
+// ฟังก์ชันนี้สแกนทุก key ใน IndexedDB เทียบกับ photoIndex บน cloud แล้วอัพโหลดตัวที่ขาดให้ครบ
+// (เรียกอัตโนมัติทุกครั้งที่ cloud sync สำเร็จ + มีปุ่ม "↑ SYNC PHOTOS" ให้กดเองได้ในแผง debug)
+async function syncLocalPhotosToCloud(opts){
+  const silent = !!(opts && opts.silent);
+  if(!_cloudReady) return {uploaded:0,skipped:0,failed:0};
+  let db;
+  try{ db = await _openIDB(); }catch(e){ return {uploaded:0,skipped:0,failed:0}; }
+  const cloudIdx = await cloudGet('photoIndex').catch(()=>null) || {};
+  const allKeys = await new Promise(res=>{
+    try{
+      const st = db.transaction(_IDB_STORE,'readonly').objectStore(_IDB_STORE);
+      const req = st.getAllKeys();
+      req.onsuccess = ()=>res(req.result||[]);
+      req.onerror = ()=>res([]);
+    }catch(e){ res([]); }
+  });
+  const _idbGet = (key)=>new Promise(res=>{
+    try{
+      const rq = db.transaction(_IDB_STORE,'readonly').objectStore(_IDB_STORE).get(key);
+      rq.onsuccess=()=>res(rq.result||null);
+      rq.onerror=()=>res(null);
+    }catch(e){ res(null); }
+  });
+  // จัดกลุ่ม key เป็น shelfId / barcode
+  const shelfIds = new Set(), prodBcs = new Set();
+  allKeys.forEach(k=>{
+    if(typeof k !== 'string') return;
+    if(k.startsWith('shelf-photo-v1-')) shelfIds.add(k.slice('shelf-photo-v1-'.length));
+    else if(k.startsWith('shelf-thumb-v1-')) shelfIds.add(k.slice('shelf-thumb-v1-'.length));
+    else if(k.startsWith('product-photo-v1-')) prodBcs.add(k.slice('product-photo-v1-'.length));
+    else if(k.startsWith('product-thumb-v1-')) prodBcs.add(k.slice('product-thumb-v1-'.length));
+  });
+  let uploaded=0, skipped=0, failed=0;
+  // อัพทีละ batch เล็กๆ (3 พร้อมกัน) กันยิง request เยอะเกินไปจนช้า/ล้นในเครื่องที่มีรูปสะสมมาก
+  async function runBatched(items, fn, batchSize){
+    const arr=[...items];
+    for(let i=0;i<arr.length;i+=batchSize){ await Promise.all(arr.slice(i,i+batchSize).map(fn)); }
+  }
+  await runBatched(shelfIds, async id=>{
+    if(cloudIdx['shelf_'+id]){ skipped++; return; } // มีบน cloud อยู่แล้ว ไม่ต้องอัพซ้ำ
+    const [photo, thumb] = await Promise.all([_idbGet(_photoKey(id)), _idbGet(_thumbKey(id))]);
+    if(!photo && !thumb){ skipped++; return; }
+    try{ const res = await uploadShelfPhotoToCloud(id, photo, thumb); res ? uploaded++ : failed++; }
+    catch(e){ failed++; }
+  }, 3);
+  await runBatched(prodBcs, async bc=>{
+    if(cloudIdx[bc]){ skipped++; return; }
+    const [photo, thumb] = await Promise.all([_idbGet(_productPhotoKey(bc)), _idbGet(_productThumbKey(bc))]);
+    if(!photo && !thumb){ skipped++; return; }
+    try{ const res = await uploadProductPhotoToCloud(bc, photo, thumb); res ? uploaded++ : failed++; }
+    catch(e){ failed++; }
+  }, 3);
+  if(!silent) showToast(`✅ ซิงค์รูปขึ้น cloud: อัพ ${uploaded} · ข้าม ${skipped}${failed?` · พลาด ${failed}`:''}`, failed?'err':'ok');
+  return {uploaded, skipped, failed};
+}
+
 function _photoKey(id){ return "shelf-photo-v1-"+id; }
 function _thumbKey(id){ return "shelf-thumb-v1-"+id; }
 // ── IndexedDB photo storage (unlimited size) ─────────────────
