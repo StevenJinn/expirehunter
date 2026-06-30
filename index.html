@@ -8384,7 +8384,7 @@ body.cam-open #page-catalog{
             });
 
             // 2) photoIndex — 1 request
-            cloudGet('photoIndex').catch(()=>null).then(idx=>{
+            cloudGetPhotoIndex().catch(()=>({})).then(idx=>{
               idx = idx || {};
               const barcodes=[...new Set((typeof records!=='undefined'?records:[]).map(r=>r.barcode).filter(Boolean))];
               const shelfIds=(typeof shelves!=='undefined'?shelves:[]).map(s=>s.id).filter(Boolean);
@@ -8781,6 +8781,22 @@ async function cloudGet(key){
   }
   catch(e) { console.warn("[cloud] get fail:", key, e); _markCloudSyncError(key+': '+(e&&e.code||e&&e.message||e)); return null; }
 }
+// [FIX 2026-06-30] photoIndex ไม่เคยถูกเขียนผ่าน cloudSet() (ไม่มี wrapper {payloadJson}/{payload})
+// — ทุกจุดเขียนตรงด้วย _cloudRef('photoIndex/'+key).set(bytes) เป็น flat map ธรรมดา
+// {barcode: bytes, shelf_id: bytes} เพราะฉะนั้นถ้าใช้ cloudGet('photoIndex') ปกติ มันจะมองหา
+// .payloadJson/.payload ในอ็อบเจกต์ที่ไม่มี field นั้นอยู่จริง แล้ว "return null เสมอ" ทุกเครื่อง
+// ทุกครั้ง (ไม่ใช่ปัญหา network/timing) — ทำให้แผง debug ขึ้น "0 / N ON CLOUD" ผิดพลาด แม้รูป
+// จะ sync จริงผ่าน realtime listener อีกเส้นทางหนึ่งที่อ่าน snap.val() ตรงๆ (ไม่ผ่าน cloudGet)
+// แก้โดยแยกฟังก์ชันอ่าน raw object ไว้ใช้เฉพาะ key นี้
+async function cloudGetPhotoIndex(){
+  if (!_cloudReady) return {};
+  try{
+    const snap = await _cloudRef('photoIndex').get();
+    if(!snap.exists()) return {};
+    const v = snap.val();
+    return (v && typeof v === 'object') ? v : {};
+  }catch(e){ console.warn('[cloud] photoIndex get fail', e); return {}; }
+}
 async function cloudSet(key, value, force){
   if (!_cloudReady) return false;
   try {
@@ -9154,7 +9170,7 @@ window.cdbBulkUploadPhotos = async function(){
 
   // ── re-fetch photoIndex จาก RTDB ใหม่เสมอ (ไม่เชื่อ _photoIndexKnown ที่ cache ใน memory) ──
   let _livePhotoIndex = {};
-  try{ _livePhotoIndex = (await cloudGet('photoIndex').catch(()=>null)) || {}; }catch(e){}
+  try{ _livePhotoIndex = (await cloudGetPhotoIndex().catch(()=>({}))) || {}; }catch(e){}
   // sync กลับเข้า _photoIndexKnown ด้วยเพื่อให้ listener รู้สถานะล่าสุด
   if(typeof _photoIndexKnown !== 'undefined') Object.assign(_photoIndexKnown, _livePhotoIndex);
 
@@ -14484,7 +14500,7 @@ async function syncLocalPhotosToCloud(opts){
   if(!_cloudReady) return {uploaded:0,skipped:0,failed:0};
   let db;
   try{ db = await _openIDB(); }catch(e){ return {uploaded:0,skipped:0,failed:0}; }
-  const cloudIdx = await cloudGet('photoIndex').catch(()=>null) || {};
+  const cloudIdx = await cloudGetPhotoIndex().catch(()=>({})) || {};
   const allKeys = await new Promise(res=>{
     try{
       const st = db.transaction(_IDB_STORE,'readonly').objectStore(_IDB_STORE);
@@ -14640,7 +14656,7 @@ async function loadShelfPhotosFromIDB(){
   }catch(e){}
   // ── fallback: ใช้ photoIndex กรองเฉพาะเชลฟ์ที่มีรูปบน cloud และยังไม่มีในเครื่อง ──
   if(!_cloudReady){ if(_anyPatched) renderShelfList(); return; }
-  const idx = await cloudGet('photoIndex').catch(()=>null) || {};
+  const idx = await cloudGetPhotoIndex().catch(()=>({})) || {};
   const _cloudFetches = [];
   for(const s of shelves){
     if(s.photo && s.thumb) continue;
@@ -14977,7 +14993,7 @@ async function loadProductPhotosFromIDB(){
 
     // 2) ดู photoIndex — 1 request รู้ทันทีว่า barcode ไหนมีรูปบน cloud
     if(!_cloudReady) return;
-    const idx = await cloudGet('photoIndex').catch(()=>null) || {};
+    const idx = await cloudGetPhotoIndex().catch(()=>({})) || {};
     // กรองเฉพาะ barcode ที่: (a) ยังไม่มีใน local และ (b) photoIndex บอกว่ามีรูปบน cloud
     const needFetch = barcodes.filter(bc=> !_productPhotoMemCache[bc] && idx[bc]);
     if(!needFetch.length) return;
