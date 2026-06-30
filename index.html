@@ -8856,6 +8856,47 @@ const cloudSetRecords      = _dbounce(()=>cloudSet('records', records), 280);
 const cloudSetCatalogDelta = _dbounce(()=>cloudSet('catalogDelta', _lastCatalogDelta), 280);
 const cloudSetShelves      = _dbounce(()=>cloudSet('shelves', _lastShelvesMeta), 280);
 
+// ── [REDESIGN 2026-06-30] Countdown Barrier สำหรับหน้าเชลฟ์ ──────────────────────────────────
+// ปัญหาเดิม: ตอนเปิดแอป มี 4 แหล่งข้อมูลที่เป็นอิสระจากกัน (shelves listener, records/catalogDelta
+// ใน syncFromCloud, loadShelfPhotosFromIDB, photoIndex listener) ต่างคนต่างเรียก render ตามจังหวะ
+// ของตัวเอง ซึ่งห่างกันถึงระดับ "วินาที" (วัดจริงด้วย Puppeteer + simulation: 30ms, 90ms, 650ms,
+// 1900ms) — debounce แบบธรรมดา (ไม่ว่าจะตั้ง 80ms หรือ 450ms) แก้ไม่ได้เพราะ debounce ใช้ได้แค่
+// กับการเรียกถี่ๆใกล้กัน ไม่ใช่เหตุการณ์ที่ห่างกันเป็นวินาทีจากธรรมชาติของงานแต่ละอย่าง (เครือข่าย
+// ช้า/IDB ต้องวนหลายรายการ) จึงทำให้เห็น "รีเฟรช 3-4 ครั้ง" จริง
+//
+// ทางแก้: เปลี่ยนจาก "หน่วงเวลาแล้วหวังว่าจะรวมกัน" เป็น "รอให้ครบทุกงานที่รู้ล่วงหน้าว่าต้องมา
+// แล้วค่อย render ครั้งเดียว" (countdown latch) — มี safety timeout กันค้างถ้าบาง task ไม่ fire
+// เลย (เช่น ออฟไลน์ไม่มี photoIndex) ทดสอบแล้วด้วย simulation: เหลือ render จริง 1 ครั้งทั้งสองกรณี
+//
+// ทำงานแค่ "รอบแรกของ session" เท่านั้น (ตอนแอปเพิ่งเปิด/เพิ่งต่อ cloud) — หลังจากนั้น real-time
+// update ระหว่างใช้งานปกติ (เช่นอีกเครื่องแก้เชลฟ์) จะ render ทันทีแบบเดิม ไม่ถูกหน่วงด้วย barrier
+const _shelfSyncBarrier = { active:false, pending:null, timer:null };
+const _SHELF_SYNC_TASKS = ['shelves','records','photos','photoIndex'];
+function _shelfSyncBarrierStart(){
+  if (_shelfSyncBarrier.active || _shelfSyncBarrier.pending !== null) return; // เริ่มไปแล้วหรือจบไปแล้ว (รอบเดียวต่อ session)
+  _shelfSyncBarrier.active = true;
+  _shelfSyncBarrier.pending = new Set(_SHELF_SYNC_TASKS);
+  clearTimeout(_shelfSyncBarrier.timer);
+  _shelfSyncBarrier.timer = setTimeout(()=>_shelfSyncBarrierFinish('timeout-safety'), 2500);
+}
+function _shelfSyncBarrierMark(task){
+  if (!_shelfSyncBarrier.active) {
+    // ไม่ได้อยู่ในช่วง initial sync แล้ว (รอบแรกผ่านไปแล้ว หรือยังไม่เริ่ม) → render ปกติแบบ debounce สั้น
+    if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
+    else if (typeof renderShelfList === 'function') renderShelfList();
+    return;
+  }
+  _shelfSyncBarrier.pending.delete(task);
+  if (_shelfSyncBarrier.pending.size === 0) _shelfSyncBarrierFinish('all-tasks-done');
+}
+function _shelfSyncBarrierFinish(reason){
+  if (!_shelfSyncBarrier.active) return;
+  _shelfSyncBarrier.active = false;
+  clearTimeout(_shelfSyncBarrier.timer);
+  if (typeof renderShelfList === 'function') renderShelfList();
+  console.log('[shelf-sync-barrier] render ครั้งเดียว เหตุผล=' + reason);
+}
+
 // ดึงข้อมูลจาก cloud ตอนเปิดแอป (เรียกหลัง anon auth สำเร็จ) — ถ้า cloud ว่าง ให้ดันข้อมูล local ขึ้นไปครั้งแรก
 // [FIX] reentrancy guard — syncFromCloud() ถูกเรียกจากหลายจุด (auth success, online event,
 // FORCE·SYNC ปุ่ม debug, _pendingCloudSync) ถ้าเรียกซ้อนกันระหว่างที่รอบก่อนยังไม่จบ จะเกิด race:
@@ -8902,11 +8943,13 @@ async function syncFromCloud(){
     if (changed) {
       renderDashboard(); renderRecords(); renderStockSummaryAll();
       if (typeof renderCatalog === 'function') renderCatalog();
-      if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
-      else if (typeof renderShelfList === 'function') renderShelfList();
+      _shelfSyncBarrierMark('records');
       // ── ดึงรูปสินค้าจาก IDB/RTDB หลัง sync records+catalogDelta มาแล้ว ──
       if (typeof loadProductPhotosFromIDB === 'function') loadProductPhotosFromIDB();
+    } else {
+      _shelfSyncBarrierMark('records'); // ไม่มีอะไรเปลี่ยน — แค่ส่งสัญญาณว่า task นี้ "เสร็จ" แล้ว ไม่ต้อง render
     }
+    _shelfSyncBarrierStart(); // เริ่ม barrier ก่อนติด listener (ครั้งแรกของ session เท่านั้น — เรียกซ้ำได้ ไม่มีผล)
     _attachCloudListeners();
     // safety: หลัง listeners ติดแล้ว → ดึงรูปอีกครั้ง กัน timing miss
     setTimeout(()=>{ if(typeof loadProductPhotosFromIDB==='function') loadProductPhotosFromIDB(); }, 1500);
@@ -8957,12 +9000,10 @@ function _attachCloudListeners(){
     loadShelfPhotosFromIDB();
     renderStockSummaryAll();
     if (typeof renderDashboard === 'function') renderDashboard();
-    if (_shelvesListenerFirstFire) {
-      _shelvesListenerFirstFire = false; // [FIX] ข้าม render รอบแรก เพราะ syncFromCloud() render ข้อมูลเดียวกันนี้ไปแล้ว
-    } else {
-      if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
-      else if (typeof renderShelfList === 'function') renderShelfList();
-    }
+    // [REDESIGN] เดิมใช้ _shelvesListenerFirstFire ข้าม render รอบแรกเฉยๆ — ตอนนี้ใช้ barrier
+    // แทน ซึ่งครอบคลุมทั้งกรณีรอบแรก (รวมกับอีก 3 task แล้ว render ครั้งเดียว) และกรณีปกติ
+    // (barrier ปิดแล้ว → render ทันทีแบบ debounce สั้น) ในฟังก์ชันเดียวกัน
+    _shelfSyncBarrierMark('shelves');
     if (typeof currentShelfId !== 'undefined' && currentShelfId) {
       const s = shelves.find(x=>x.id===currentShelfId);
       if (s) {
@@ -9067,14 +9108,14 @@ function _attachPhotoIndexListener(){
       }catch(e){}
     });
     await Promise.all([...prodFetches, ...shelfFetches]);
-    if(anyNew){
-      if(typeof renderRecords==='function') renderRecords();
-      // [FIX 2026-06-30] เดิมเรียก renderShelfList() ตรงๆ — ไม่ผ่าน debounce เหมือนจุดอื่นๆ
-      // (shelves listener, loadShelfPhotosFromIDB) ทำให้ตอนเปิดหน้าเชลฟ์ ถ้า photoIndex มีรูป
-      // ใหม่มาพอดี จะเกิด render เพิ่มอีกรอบแยกจากรอบอื่น รวมกันแล้วดูเหมือน "รีเฟรช 3-4 ครั้ง"
-      // — เปลี่ยนเป็น debounce เพื่อรวมกับ render รอบอื่นที่มาใกล้ๆกัน
-      if(typeof _renderShelfListDebounced==='function') _renderShelfListDebounced();
-      else if(typeof renderShelfList==='function') renderShelfList();
+    if(anyNew && typeof renderRecords==='function') renderRecords();
+    // [REDESIGN 2026-06-30] ส่งสัญญาณให้ barrier เสมอ (ไม่ใช่แค่ตอน anyNew) เพื่อให้ barrier ปิด
+    // ได้เร็วโดยไม่ต้องรอ safety timeout ถ้ารอบนี้ไม่มีรูปใหม่เลย — ส่วนตอนปกติ (barrier ปิดแล้ว)
+    // จะ render แบบ debounce สั้นทันทีเฉพาะตอนมีรูปใหม่จริง (ไม่ render เปล่าๆ)
+    if (_shelfSyncBarrier.active) {
+      _shelfSyncBarrierMark('photoIndex');
+    } else if (anyNew) {
+      _shelfSyncBarrierMark('photoIndex');
     }
   }, e=>{ console.warn('[cloud] photoIndex listener fail', e); });
 }
@@ -14664,7 +14705,7 @@ async function loadShelfPhotosFromIDB(){
     }
   }catch(e){}
   // ── fallback: ใช้ photoIndex กรองเฉพาะเชลฟ์ที่มีรูปบน cloud และยังไม่มีในเครื่อง ──
-  if(!_cloudReady){ if(_anyPatched) renderShelfList(); return; }
+  if(!_cloudReady){ _shelfSyncBarrierMark('photos'); return; }
   const idx = await cloudGetPhotoIndex().catch(()=>({})) || {};
   const _cloudFetches = [];
   for(const s of shelves){
@@ -14682,15 +14723,12 @@ async function loadShelfPhotosFromIDB(){
     );
   }
   if(_cloudFetches.length) await Promise.all(_cloudFetches);
-  if (!_anyPatched) return; // [FIX] ไม่มีรูปใหม่ต้องเติม — ไม่ต้อง render ซ้ำ แค่ไม่ทำอะไรเลย
-  // [FIX 2026-06-30] เดิมเรียก renderShelfList() ตรงๆ — ฟังก์ชันนี้ถูกเรียกจาก shelves listener
-  // (.on('value')) ทุกครั้งที่มีการ sync แม้ guard _shelvesListenerFirstFire จะข้าม render ของ
-  // listener เองไปแล้วตอน fire ครั้งแรก แต่ guard นั้นไม่ครอบฟังก์ชันนี้ ทำให้ตอนเปิดแอป/เปิดแท็บ
-  // เชลฟ์ครั้งแรก (photo ส่วนใหญ่ยังโหลดไม่ครบ → _anyPatched=true เกือบทุกครั้ง) เกิด render ซ้อน
-  // กับ render ที่ switchTab('shelf') ทำไปแล้วใน rAF เดียวกัน ทำให้เห็นเป็น "รีเฟรช 1-2 ครั้ง"
-  // ทุกครั้งที่เปิด — เปลี่ยนเป็น debounce แทน เพื่อรวม render ที่มาใกล้ๆกันให้เหลือรอบเดียว
-  if (typeof _renderShelfListDebounced === 'function') _renderShelfListDebounced();
-  else renderShelfList(); // refresh thumbnails after photos loaded
+  if (!_anyPatched) { _shelfSyncBarrierMark('photos'); return; } // ไม่มีรูปใหม่ต้องเติม — แค่ส่งสัญญาณว่า task นี้เสร็จแล้ว ไม่ต้อง render
+  // [REDESIGN 2026-06-30] เดิมแก้เป็น debounce (80ms→450ms) แต่วัดจริงแล้วแก้ไม่ได้ผล เพราะ task
+  // นี้มักจบช้ากว่าจุดอื่นเป็นหลักร้อย-พัน ms (ต้องวน IDB หลายสิบเชลฟ์ + อาจรอ network fetch รูป
+  // ที่ยังไม่มีใน local) ไกลเกินกว่า debounce window ใดๆจะรวมได้ — เปลี่ยนมาใช้ countdown barrier
+  // แทน ซึ่งรอให้ครบทุก task จริงๆก่อน render (ดู _shelfSyncBarrierMark ด้านบนของไฟล์)
+  _shelfSyncBarrierMark('photos');
   // ── [FIX] ถ้า shelf-detail-view เปิดอยู่ตรงเชลฟ์ที่รูปเพิ่งโหลดมาจาก IDB ให้ sync รูปกลับเข้าจอด้วย
   // (กันเคส openShelfDetail() เคยรันไปแล้วตอน s.photo ยังเป็น null ทำให้ค้างเป็นกริดเปล่าไม่มีรูป) ──
   if (typeof currentShelfId !== 'undefined' && currentShelfId) {
