@@ -9069,7 +9069,12 @@ function _attachPhotoIndexListener(){
     await Promise.all([...prodFetches, ...shelfFetches]);
     if(anyNew){
       if(typeof renderRecords==='function') renderRecords();
-      if(typeof renderShelfList==='function') renderShelfList();
+      // [FIX 2026-06-30] เดิมเรียก renderShelfList() ตรงๆ — ไม่ผ่าน debounce เหมือนจุดอื่นๆ
+      // (shelves listener, loadShelfPhotosFromIDB) ทำให้ตอนเปิดหน้าเชลฟ์ ถ้า photoIndex มีรูป
+      // ใหม่มาพอดี จะเกิด render เพิ่มอีกรอบแยกจากรอบอื่น รวมกันแล้วดูเหมือน "รีเฟรช 3-4 ครั้ง"
+      // — เปลี่ยนเป็น debounce เพื่อรวมกับ render รอบอื่นที่มาใกล้ๆกัน
+      if(typeof _renderShelfListDebounced==='function') _renderShelfListDebounced();
+      else if(typeof renderShelfList==='function') renderShelfList();
     }
   }, e=>{ console.warn('[cloud] photoIndex listener fail', e); });
 }
