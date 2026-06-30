@@ -9178,55 +9178,56 @@ window.cdbBulkUploadPhotos = async function(){
   // โหลด IDB ทั้งหมดเข้า memCache ก่อน (ใช้ฟังก์ชัน loadProductPhotosFromIDB ที่ define แล้ว)
   try{ await loadProductPhotosFromIDB(); }catch(e){}
 
-  for(const bc of barcodes){
-    try{
-      // ดึงจาก memCache (loadProductPhotosFromIDB populate ไว้แล้ว)
-      const thumb = _productPhotoMemCache[bc] || null;
-      const photo = null; // thumb ก็พอสำหรับ cloud display
-      if(!thumb){ skipped++; done++; _upd(); continue; }
-      // ตรวจว่า cloud มีแล้วไหม — ใช้ _livePhotoIndex ที่ fetch ใหม่จาก RTDB
-      const existInIndex = _livePhotoIndex[bc];
-      if(existInIndex){
-        skipped++; done++; _upd(); continue;
-      }
-      // upload
-      const ok = await cloudSet('productPhoto_'+bc, {photo: null, thumb: thumb}, true);
-      if(ok){
-        uploaded++;
-        const bytes=(thumb||'').length;
-        _cloudRef('photoIndex/'+bc).set(bytes||1).catch(()=>{});
-        if(typeof _photoIndexKnown!=='undefined') _photoIndexKnown[bc]=bytes||1;
-        const _idx=(typeof catalog!=='undefined')&&catalog.findIndex(p=>p.barcode===bc);
-        if(typeof _idx==='number'&&_idx>=0) catalog[_idx]={...catalog[_idx],hasPhoto:true};
-      } else { failed++; }
-    }catch(e){ failed++; }
-    done++; _upd();
-    await new Promise(r=>setTimeout(r,80));
+  // [FIX 2026-06-30] เดิม loop ทีละรูป (await cloudSet → sleep 80ms → ตัวต่อไป) — 426 รูปที่เหลือ
+  // กลายเป็น 426 round-trip เรียงคิวบน websocket connection เดียวของ Firebase SDK ทำให้ใช้เวลา
+  // หลายนาที และคำสั่งอื่น (เช่น PUSH·TEST) ที่ใช้ connection เดียวกันต้องรอคิวตามไปด้วย ทำให้ดู
+  // เหมือน "ค้าง/ไม่ตอบสนอง" ทั้งระบบ — แก้โดยอัพพร้อมกันเป็น batch (5 ต่อรอบ) ลดเวลารวมลง ~5 เท่า
+  // โดยยังไม่ยิงพร้อมกันทั้งหมดทีเดียว (กัน connection ล้น/throttle จาก Firebase)
+  const PHOTO_UPLOAD_BATCH = 5;
+  for(let i=0; i<barcodes.length; i+=PHOTO_UPLOAD_BATCH){
+    const batch = barcodes.slice(i, i+PHOTO_UPLOAD_BATCH);
+    await Promise.all(batch.map(async bc=>{
+      try{
+        const thumb = _productPhotoMemCache[bc] || null;
+        if(!thumb){ skipped++; done++; _upd(); return; }
+        if(_livePhotoIndex[bc]){ skipped++; done++; _upd(); return; }
+        const ok = await cloudSet('productPhoto_'+bc, {photo: null, thumb: thumb}, true);
+        if(ok){
+          uploaded++;
+          const bytes=(thumb||'').length;
+          _cloudRef('photoIndex/'+bc).set(bytes||1).catch(()=>{});
+          if(typeof _photoIndexKnown!=='undefined') _photoIndexKnown[bc]=bytes||1;
+          const _idx=(typeof catalog!=='undefined')&&catalog.findIndex(p=>p.barcode===bc);
+          if(typeof _idx==='number'&&_idx>=0) catalog[_idx]={...catalog[_idx],hasPhoto:true};
+        } else { failed++; }
+      }catch(e){ failed++; }
+      done++; _upd();
+    }));
   }
 
   // ── Shelf photos ──
   // shelves array มี photo/thumb จาก loadShelfPhotosFromIDB แล้ว
   try{ await loadShelfPhotosFromIDB(); }catch(e){}
 
-  for(const s of shelfList){
-    try{
-      const thumb = s.thumb || null;
-      const photo = s.photo || null;
-      if(!thumb && !photo){ skipped++; done++; _upd(); continue; }
-      // ตรวจ photoIndex — ใช้ _livePhotoIndex ที่ fetch ใหม่จาก RTDB
-      if(_livePhotoIndex['shelf_'+s.id]){
-        skipped++; done++; _upd(); continue;
-      }
-      const ok = await cloudSet('shelfPhoto_'+s.id, {photo: photo||null, thumb: thumb||null}, true);
-      if(ok){
-        uploaded++; s.hasPhoto=true;
-        const bytes=(photo||'').length+(thumb||'').length;
-        _cloudRef('photoIndex/shelf_'+s.id).set(bytes||1).catch(()=>{});
-        if(typeof _photoIndexKnown!=='undefined') _photoIndexKnown['shelf_'+s.id]=bytes||1;
-      } else { failed++; }
-    }catch(e){ failed++; }
-    done++; _upd();
-    await new Promise(r=>setTimeout(r,80));
+  // [FIX 2026-06-30] เดิม loop ทีละชั้นวาง — เปลี่ยนเป็น batch แบบเดียวกับด้านบน
+  for(let i=0; i<shelfList.length; i+=PHOTO_UPLOAD_BATCH){
+    const batch = shelfList.slice(i, i+PHOTO_UPLOAD_BATCH);
+    await Promise.all(batch.map(async s=>{
+      try{
+        const thumb = s.thumb || null;
+        const photo = s.photo || null;
+        if(!thumb && !photo){ skipped++; done++; _upd(); return; }
+        if(_livePhotoIndex['shelf_'+s.id]){ skipped++; done++; _upd(); return; }
+        const ok = await cloudSet('shelfPhoto_'+s.id, {photo: photo||null, thumb: thumb||null}, true);
+        if(ok){
+          uploaded++; s.hasPhoto=true;
+          const bytes=(photo||'').length+(thumb||'').length;
+          _cloudRef('photoIndex/shelf_'+s.id).set(bytes||1).catch(()=>{});
+          if(typeof _photoIndexKnown!=='undefined') _photoIndexKnown['shelf_'+s.id]=bytes||1;
+        } else { failed++; }
+      }catch(e){ failed++; }
+      done++; _upd();
+    }));
   }
 
   // done
