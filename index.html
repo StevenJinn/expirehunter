@@ -15229,10 +15229,7 @@ function renderShelfList() {
     const hasD30       = d30Items.length > 0;
     const hasD60       = d60Items.length > 0;
     const hasD90       = d90Items.length > 0;
-    // [FIX 2026-06-30] เดิม delay=i*0.05s — สเกลตามจำนวนเชลฟ์เป็นเส้นตรงเหมือนกับบั๊กใน
-    // _uesRenderShelfPicker ร้านที่มี 39 เชลฟ์ขึ้นไปต้องรอใบสุดท้าย ~1.9 วินาทีกว่าจะ fade-in
-    // ครบ — ตัด stagger ออก ให้ทุกใบปรากฏพร้อมกัน (แอนิเมชัน .4s ของแต่ละใบยังอยู่เหมือนเดิม)
-    const delay=0;
+    const delay=i*0.05;
 
     // ── build status badges ──
     const hasOOS = oosItems > 0;
