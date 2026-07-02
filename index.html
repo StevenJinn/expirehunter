@@ -6229,9 +6229,9 @@ body.cam-open #page-catalog{
 #auth-gate-overlay{
   position:fixed;inset:0;z-index:99999;
   display:flex;align-items:center;justify-content:center;
-  font-family:'IBM Plex Mono',monospace;color:#d0e8ff;
+  font-family:'Prompt',sans-serif;color:#d0e8ff;
   overflow:hidden;
-  background:#03040c; /* solid from frame 0 — nothing behind can show through before canvas paints */
+  background:#03040c;
 }
 #sl-canvas{position:absolute;inset:0;width:100%;height:100%}
 
@@ -6250,6 +6250,7 @@ body.cam-open #page-catalog{
   width:min(360px,90vw);
   padding:24px;
   text-align:center;
+  font-family:'Prompt',sans-serif;
 }
 
 /* ── title (static — no movement) ── */
@@ -6268,8 +6269,8 @@ body.cam-open #page-catalog{
   display:flex;align-items:center;justify-content:center;gap:10px;
   background:#ffffff;border:none;border-radius:4px;
   padding:14px 18px;
-  font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;
-  letter-spacing:1.2px;cursor:pointer;color:#3c3c3c;
+  font-family:'Prompt',sans-serif;font-size:14px;font-weight:700;
+  letter-spacing:.3px;cursor:pointer;color:#3c3c3c;
   box-shadow:0 2px 10px rgba(0,0,0,.4),0 0 0 1px rgba(0,0,0,.06);
   transition:transform .15s,box-shadow .15s;
   will-change:transform;
@@ -6288,8 +6289,8 @@ body.cam-open #page-catalog{
 /* ── sync progress view ── */
 #auth-gate-sync-view{display:none;padding-top:6px}
 #sl-sync-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-#sl-sync-label{font-size:9px;letter-spacing:2px;color:#7ab0ff;animation:slWarn 1.2s ease-in-out infinite;will-change:opacity}
-#sl-sync-pct{font-size:14px;letter-spacing:0;color:#a0c8ff}
+#sl-sync-label{font-size:9px;letter-spacing:2px;color:#7ab0ff;font-family:'IBM Plex Mono','Prompt',monospace;animation:slWarn 1.2s ease-in-out infinite;will-change:opacity}
+#sl-sync-pct{font-size:14px;letter-spacing:0;color:#a0c8ff;font-family:'IBM Plex Mono','Prompt',monospace}
 #am-seg-track,#am-seg-track~*{display:none!important} /* hide old IDs if any leaked */
 #sl-seg-track{display:flex;gap:3px;margin-bottom:8px}
 .sl-seg{
@@ -6301,9 +6302,13 @@ body.cam-open #page-catalog{
 .sl-seg.done{background:linear-gradient(90deg,rgba(40,80,200,.7),rgba(100,180,255,.85));border-color:rgba(120,180,255,.5)}
 .sl-seg.active{background:linear-gradient(90deg,rgba(40,80,180,.4),rgba(80,140,255,.55));border-color:rgba(100,160,255,.35);animation:slSegActive .7s ease-in-out infinite;will-change:opacity}
 #sl-node-lbls{display:flex;gap:3px;margin-bottom:11px}
-.sl-nlbl{flex:1;font-size:7px;letter-spacing:.5px;color:rgba(80,120,220,.3);text-align:center;transition:color .3s}
+.sl-nlbl{flex:1;font-size:7px;letter-spacing:1.5px;color:rgba(80,120,220,.3);text-align:center;transition:color .3s;font-family:'IBM Plex Mono','Prompt',monospace}
 .sl-nlbl.done{color:#7ab0ff}.sl-nlbl.active{color:#a0c8ff}
-#sl-sync-detail{font-size:8.5px;letter-spacing:2px;color:rgba(80,120,200,.4)}
+#sl-sync-detail{font-size:8.5px;letter-spacing:2px;color:rgba(80,120,200,.4);font-family:'IBM Plex Mono','Prompt',monospace}
+/* title fonts */
+#sl-title-th{font-family:'Prompt',sans-serif}
+#sl-title-en{font-family:'IBM Plex Mono','Prompt',monospace}
+#auth-gate-status{font-family:'Prompt',sans-serif}
 </style>
 
 <!-- ═══════════════════════════════════════════════════════════════════
@@ -9024,6 +9029,7 @@ let _cloudDb = null, _cloudReady = false;
 let _cloudStorage = null;
 let _localDataReady = false; // true หลัง loadData()+loadShelves() ใน initApp() เสร็จแล้ว — กัน race ที่ auth เสร็จเร็วกว่าโหลด local
 let _pendingCloudSync = false;
+let _appInitialized = false; // [FIX 2026-07-01] กัน initApp() ถูกเรียกซ้ำถ้า onAuthStateChanged fire หลายรอบ
 function _onLocalDataReady(){
   _localDataReady = true;
   if (_pendingCloudSync) { _pendingCloudSync = false; syncFromCloud(); }
@@ -9064,12 +9070,31 @@ try {
       _authGateSyncProgress(0);
       _cloudReady = true;
       _markCloudConnecting('node linked · loading');
+      // [FIX 2026-07-01] initApp() เดิมรันทันทีตอน DOM โหลดเสร็จ โดยไม่รอ auth state —
+      // แปลว่า dashboard/records/shelf UI render ทั้งหมดก่อนที่จะรู้ว่า user login อยู่หรือเปล่า
+      // แก้โดยให้ initApp() รันครั้งแรกได้ต่อเมื่อ Firebase ยืนยันแล้วว่า user != null เท่านั้น
+      // (Firebase persist session ไว้ใน IndexedDB เอง callback มาภายใน ~300ms โดยไม่ต้องรอ network)
+      if (!_appInitialized) {
+        _appInitialized = true;
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', ()=>initApp());
+        } else {
+          initApp();
+        }
+      }
       if (_localDataReady) syncFromCloud();
-      else _pendingCloudSync = true; // รอ initApp() โหลด local เสร็จก่อน ค่อย sync — กัน race
+      else _pendingCloudSync = true;
     } else {
-      // ยังไม่ login (หรือเพิ่ง logout) — โชว์ overlay บัง UI ทั้งหมดไว้
+      // ยังไม่ login (หรือเพิ่ง logout) — overlay บัง UI อยู่แล้วตั้งแต่ต้น (display:flex ใน CSS)
+      // ไม่ต้องทำอะไร นอกจากแน่ใจว่า overlay ยังแสดงอยู่ และปุ่ม login ยังโชว์
       _cloudReady = false;
       if (overlay) overlay.style.display = 'flex';
+      const btnEl  = document.getElementById('auth-gate-google-btn');
+      const statEl = document.getElementById('auth-gate-status');
+      const syncEl = document.getElementById('auth-gate-sync-view');
+      if (btnEl)  btnEl.style.display  = '';
+      if (statEl) statEl.style.display = '';
+      if (syncEl) syncEl.style.display = 'none';
     }
   });
 } catch(e) { console.warn("[cloud] init failed", e); _markCloudOffline('init failed'); }
@@ -9416,7 +9441,11 @@ function _attachCloudListeners(){
     if (typeof loadProductPhotosFromIDB === 'function') loadProductPhotosFromIDB();
     _markCloudSynced();
     // ── ต่อ realtime listener สำหรับ barcode ที่เพิ่งได้ hasPhoto=true ใหม่ ──
-    _attachProductPhotoListeners();
+    // [REDESIGN 2026-06-30] เดิมเรียก _attachProductPhotoListeners() ที่ผูก listener ราย barcode
+    // (451 connections) ซ้อนทับกับ photoIndex listener ที่ใช้ connection เดียว — ซ้ำซ้อนและขัดแย้ง:
+    // photoIndex overwrite รูปใหม่ได้ แต่ per-item listener ผูก Set ค้างไว้ทำให้ barcode ใหม่ที่เพิ่ม
+    // ทีหลังไม่ได้รับ listener เพิ่ม (จริงๆ photoIndex ดูแลอยู่แล้ว) — ลบออกแล้วใช้ photoIndex เพียงอย่างเดียว
+    // loadProductPhotosFromIDB() ด้านบนจัดการ initial load เสร็จแล้ว
   }, e=>{ console.warn("[cloud] catalogDelta listener fail", e); _markCloudSyncError('catalogDelta-listen: '+(e&&e.code||e)); });
 
   // ── photoIndex listener เดียว แทน per-barcode/shelf listeners ──
@@ -9472,6 +9501,18 @@ function _attachPhotoIndexListener(){
           saveShelfPhoto(shelfId, s.photo||null, s.thumb||null);
         }
         anyNew = true;
+        // ── ถ้า shelf-detail เปิดอยู่ตรงเชลฟ์นี้ → อัพเดทรูปใน detail UI ทันที ──
+        if (typeof currentShelfId !== 'undefined' && currentShelfId === shelfId) {
+          const img = document.getElementById('shelf-photo-img');
+          if (img && s && (s.photo || s.thumb)) {
+            img.src = s.thumb || s.photo;
+            const prev = document.getElementById('shelf-photo-preview');
+            const empty = document.getElementById('shelf-photo-empty');
+            if (prev) prev.style.display = 'block';
+            if (empty) empty.style.display = 'none';
+            if (typeof _shelfPhotoMode === 'function') _shelfPhotoMode(true);
+          }
+        }
       }catch(e){}
     });
     await Promise.all([...prodFetches, ...shelfFetches]);
@@ -9487,77 +9528,14 @@ function _attachPhotoIndexListener(){
   }, e=>{ console.warn('[cloud] photoIndex listener fail', e); });
 }
 
-// ── ต่อ listener ราย barcode สำหรับ productPhoto — เรียกได้ซ้ำ (จะ skip barcode ที่ผูกแล้ว) ──
-const _prodPhotoListenedBarcodes = new Set();
-function _attachProductPhotoListeners(){
-  if (!_cloudReady) return;
-  const barcodes = [...new Set(records.map(r=>r.barcode).filter(Boolean))];
-  barcodes.forEach(bc=>{
-    if (_prodPhotoListenedBarcodes.has(bc)) return; // ผูก listener แล้ว ข้าม
-    _prodPhotoListenedBarcodes.add(bc);
-    const key = 'productPhoto_' + bc;
-    _cloudRef(key).on('value', snap=>{
-      if (!snap.exists()) return;
-      const d = snap.val();
-      // ข้าม snapshot ที่เกิดจาก write ของตัวเอง
-      if (d && d.updatedAt && _lastWriteAt[key] && d.updatedAt <= _lastWriteAt[key]) return;
-      const v = _extractPayload(d);
-      if (!v || (!v.thumb && !v.photo)) return;
-      const dataUrl = v.thumb || v.photo;
-      if (_productPhotoMemCache[bc] === dataUrl) return; // ไม่มีอะไรเปลี่ยน
-      _productPhotoMemCache[bc] = dataUrl;
-      saveProductPhoto(bc, v.photo||null, v.thumb||null);
-      // ── mark hasPhoto ใน catalog entry ──
-      const _idx = (typeof catalog !== 'undefined') && catalog.findIndex(p=>p.barcode===bc);
-      if (typeof _idx === 'number' && _idx !== -1 && _idx !== false) {
-        const entry = {...catalog[_idx], hasPhoto: true};
-        catalog[_idx] = entry;
-      }
-      // ── refresh record cards ที่แสดง barcode นี้อยู่ ──
-      if (typeof renderRecords === 'function') renderRecords();
-    }, ()=>{ /* ignore listener errors for individual barcodes */ });
-  });
-}
+// ⚠️ DO-NOT-RESTORE: _attachProductPhotoListeners() และ _attachShelfPhotoListeners() ถูกลบออกแล้ว
+// เหตุผล: ทั้งสองถูกแทนที่ด้วย photoIndex listener (connection เดียว, smart byte-diff, parallel fetch)
+// _attachProductPhotoListeners สร้าง N connections (N = จำนวน barcode) + render ซ้อนกับ photoIndex
+// _attachShelfPhotoListeners มีบั๊ก overwrite ("if shelf.photo && shelf.thumb return") + ไม่เคยถูกเรียก
+// ถ้าจะ restore ต้องแก้บั๊ก overwrite และทดสอบว่าไม่ทำให้ render ซ้ำกับ photoIndex ก่อน
 
-// ── ต่อ listener ราย shelfId สำหรับ shelfPhoto — เรียกได้ซ้ำ (จะ skip shelfId ที่ผูกแล้ว) ──
-const _shelfPhotoListenedIds = new Set();
-function _attachShelfPhotoListeners(){
-  if (!_cloudReady) return;
-  shelves.forEach(s=>{
-    if (_shelfPhotoListenedIds.has(s.id)) return;
-    _shelfPhotoListenedIds.add(s.id);
-    const key = 'shelfPhoto_' + s.id;
-    _cloudRef(key).on('value', snap=>{
-      if (!snap.exists()) return;
-      const d = snap.val();
-      if (d && d.updatedAt && _lastWriteAt[key] && d.updatedAt <= _lastWriteAt[key]) return;
-      const v = _extractPayload(d);
-      if (!v || (!v.thumb && !v.photo)) return;
-      const shelf = shelves.find(x=>x.id===s.id);
-      if (!shelf) return;
-      // ไม่ overwrite รูปที่เครื่องนี้มีอยู่แล้ว (เครื่องอื่นอาจมีรูปเก่ากว่า)
-      if (shelf.photo && shelf.thumb) return;
-      if (v.photo && !shelf.photo) shelf.photo = v.photo;
-      if (v.thumb && !shelf.thumb) shelf.thumb = v.thumb;
-      shelf.hasPhoto = true;
-      saveShelfPhoto(s.id, shelf.photo||null, shelf.thumb||null);
-      // refresh shelf list thumbnail
-      if (typeof renderShelfList === 'function') renderShelfList();
-      // ── ถ้า shelf-detail เปิดอยู่ตรงเชลฟ์นี้ → อัพเดทรูปในหน้า detail ทันที ──
-      if (typeof currentShelfId !== 'undefined' && currentShelfId === s.id) {
-        const img = document.getElementById('shelf-photo-img');
-        if (img && (shelf.photo || shelf.thumb)) {
-          img.src = shelf.thumb || shelf.photo;
-          const prev = document.getElementById('shelf-photo-preview');
-          const empty = document.getElementById('shelf-photo-empty');
-          if (prev) prev.style.display = 'block';
-          if (empty) empty.style.display = 'none';
-          if (typeof _shelfPhotoMode === 'function') _shelfPhotoMode(true);
-        }
-      }
-    }, ()=>{});
-  });
-}
+// ── ต่อ listener ราย shelfId สำหรับ shelfPhoto — ถูกลบออกแล้ว ดูหมายเหตุด้านบน ──
+// ── ต่อ listener ราย barcode สำหรับ productPhoto — ถูกลบออกแล้ว ดูหมายเหตุด้านบน ──
 // ── Bulk upload รูปทั้งหมดจาก IDB → RTDB (เรียกจากปุ่มใน Cloud Debug panel) ──
 window.cdbBulkUploadPhotos = async function(){
   const btn = document.getElementById('cdb-upload-all-btn');
@@ -14583,11 +14561,9 @@ function initApp() {
     });
   });
 }
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initApp);
-} else {
-  initApp();
-}
+// initApp() ถูกย้ายไปรันใน onAuthStateChanged เมื่อ user != null เท่านั้น
+// (ดูใน firebase.auth().onAuthStateChanged callback ด้านบน)
+// กัน UI render ก่อนรู้ว่า user login อยู่หรือเปล่า
 
 // ── Global scan scroll lock — block touchmove เมื่ออยู่หน้า scan ──
 document.addEventListener('touchmove', function(e) {
