@@ -6210,68 +6210,279 @@ body.cam-open #page-catalog{
 </head>
 <body oncontextmenu="return false" onselectstart="return false">
 <style>
-@keyframes authGridDrift{0%{background-position:0 0}100%{background-position:48px 48px}}
-@keyframes authScanSweep{0%{transform:translateY(-100%)}50%{transform:translateY(420%)}100%{transform:translateY(420%)}}
-@keyframes authRingSpin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
-@keyframes authRingSpinRev{0%{transform:rotate(0)}100%{transform:rotate(-360deg)}}
-@keyframes authCornerPulse{0%,100%{opacity:.5}50%{opacity:1}}
-@keyframes authCaret{0%,49%{opacity:1}50%,100%{opacity:0}}
-@keyframes authFadeUp{0%{opacity:0;transform:translateY(14px)}100%{opacity:1;transform:translateY(0)}}
+/* ══════════════════════════════════════════════════════════════════════
+   ล่าหมดอายุ — AUTH GATE v5  "PURE STARFIELD & NEBULA"  2026-07-02
+   Canvas: procedural nebula clouds + star field + shooting stars only
+   Panel: no frame, no glass panel, no solar system — content floats
+   directly over the starfield/nebula background.
+   GPU-safe animations: transform + opacity ONLY, no box-shadow/color/filter anim
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── keyframes: GPU-compositor only ── */
+@keyframes slCaret    {0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes slTwinkle  {0%,100%{opacity:.2}50%{opacity:1}}
+@keyframes slWarn     {0%,100%{opacity:.35}50%{opacity:1}}
+@keyframes slBtnShine {0%{transform:translateX(-120%)}100%{transform:translateX(320%)}}
+@keyframes slSegActive{0%,100%{opacity:.4}50%{opacity:1}}
+
+/* ── overlay ── */
 #auth-gate-overlay{
-  background:
-    radial-gradient(ellipse at 50% 22%, rgba(0,212,170,.08) 0%, transparent 55%),
-    repeating-linear-gradient(0deg, rgba(0,212,170,.05) 0 1px, transparent 1px 48px),
-    repeating-linear-gradient(90deg, rgba(0,212,170,.05) 0 1px, transparent 1px 48px),
-    radial-gradient(ellipse at 50% 30%,#0c1622 0%,#050a0f 72%);
-  background-size:auto,48px 48px,48px 48px,auto;
-  animation:authGridDrift 9s linear infinite;
+  position:fixed;inset:0;z-index:99999;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'IBM Plex Mono',monospace;color:#d0e8ff;
+  overflow:hidden;
+  background:#03040c; /* solid from frame 0 — nothing behind can show through before canvas paints */
 }
-#auth-gate-panel{position:relative;width:min(340px,86vw);padding:38px 26px 28px;animation:authFadeUp .5s ease both}
-#auth-gate-panel::before,#auth-gate-panel::after,
-.auth-corner-tl,.auth-corner-tr,.auth-corner-bl,.auth-corner-br{position:absolute;width:18px;height:18px;border-color:#00d4aa;animation:authCornerPulse 2.4s ease-in-out infinite}
-.auth-corner-tl{top:0;left:0;border-top:2px solid;border-left:2px solid}
-.auth-corner-tr{top:0;right:0;border-top:2px solid;border-right:2px solid}
-.auth-corner-bl{bottom:0;left:0;border-bottom:2px solid;border-left:2px solid}
-.auth-corner-br{bottom:0;right:0;border-bottom:2px solid;border-right:2px solid;animation-delay:.6s}
-.auth-corner-tr{animation-delay:.2s}
-.auth-corner-bl{animation-delay:.4s}
-#auth-scan-rail{position:absolute;inset:0;overflow:hidden;border-radius:2px;pointer-events:none}
-#auth-scan-rail::after{content:"";position:absolute;left:0;right:0;height:26%;background:linear-gradient(180deg,transparent,rgba(0,212,170,.16),transparent);animation:authScanSweep 3.6s ease-in-out infinite}
-#auth-gate-ring{position:relative;width:76px;height:76px;margin:0 auto 22px}
-#auth-gate-ring .ring-outer{position:absolute;inset:0;border-radius:50%;border:1px solid rgba(0,212,170,.3);border-top-color:#00d4aa;animation:authRingSpin 4s linear infinite}
-#auth-gate-ring .ring-inner{position:absolute;inset:10px;border-radius:50%;border:1px dashed rgba(255,159,67,.35);animation:authRingSpinRev 6s linear infinite}
-#auth-gate-ring .ring-core{position:absolute;inset:20px;border-radius:14px;background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.4);display:flex;align-items:center;justify-content:center;font-size:26px;box-shadow:0 0 22px rgba(0,212,170,.25) inset}
+#sl-canvas{position:absolute;inset:0;width:100%;height:100%}
+
+/* vignette + deep-space colour wash */
+#sl-vignette{
+  position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 65% 55% at 30% 35%, rgba(60,0,160,.18) 0%,transparent 60%),
+    radial-gradient(ellipse 55% 45% at 75% 65%, rgba(180,60,0,.14) 0%,transparent 55%),
+    radial-gradient(ellipse 100% 100% at 50% 50%, transparent 40%, rgba(0,0,8,.78) 100%);
+}
+
+/* ── panel: no frame/border/box — just centered content over the stars ── */
+#auth-gate-panel{
+  position:relative;
+  width:min(360px,90vw);
+  padding:24px;
+  text-align:center;
+}
+
+/* ── title (static — no movement) ── */
+#sl-title-th{
+  font-size:30px;font-weight:800;letter-spacing:1px;
+  background:linear-gradient(135deg,#a0c8ff 0%,#ffffff 45%,#ffd080 75%,#ff9040 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  margin-bottom:6px;line-height:1.15;
+  text-shadow:0 0 50px rgba(120,160,255,.25);
+}
+#sl-title-en{font-size:9px;letter-spacing:3.5px;color:rgba(140,180,255,.5);margin-bottom:34px}
+
+/* ── white Google button ── */
+#auth-gate-google-btn{
+  position:relative;width:100%;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  background:#ffffff;border:none;border-radius:4px;
+  padding:14px 18px;
+  font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;
+  letter-spacing:1.2px;cursor:pointer;color:#3c3c3c;
+  box-shadow:0 2px 10px rgba(0,0,0,.4),0 0 0 1px rgba(0,0,0,.06);
+  transition:transform .15s,box-shadow .15s;
+  will-change:transform;
+}
+#auth-gate-google-btn::before{
+  content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);
+  transform:translateX(-120%);
+  animation:slBtnShine 3.5s ease-in-out infinite;pointer-events:none;
+}
+#auth-gate-google-btn:hover{box-shadow:0 4px 18px rgba(0,0,0,.5)}
+#auth-gate-google-btn:active{transform:scale(.97)}
+
+#auth-gate-status{margin-top:11px;font-size:10px;color:#ff8080;min-height:14px;letter-spacing:.5px}
+
+/* ── sync progress view ── */
+#auth-gate-sync-view{display:none;padding-top:6px}
+#sl-sync-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+#sl-sync-label{font-size:9px;letter-spacing:2px;color:#7ab0ff;animation:slWarn 1.2s ease-in-out infinite;will-change:opacity}
+#sl-sync-pct{font-size:14px;letter-spacing:0;color:#a0c8ff}
+#am-seg-track,#am-seg-track~*{display:none!important} /* hide old IDs if any leaked */
+#sl-seg-track{display:flex;gap:3px;margin-bottom:8px}
+.sl-seg{
+  flex:1;height:9px;border-radius:1px;overflow:hidden;
+  background:rgba(60,80,160,.15);border:1px solid rgba(100,140,255,.14);
+  transition:background .35s,border-color .35s;
+}
+.sl-seg::before{content:'';display:block;height:100%;background:repeating-linear-gradient(90deg,rgba(100,160,255,.08) 0 2px,transparent 2px 5px)}
+.sl-seg.done{background:linear-gradient(90deg,rgba(40,80,200,.7),rgba(100,180,255,.85));border-color:rgba(120,180,255,.5)}
+.sl-seg.active{background:linear-gradient(90deg,rgba(40,80,180,.4),rgba(80,140,255,.55));border-color:rgba(100,160,255,.35);animation:slSegActive .7s ease-in-out infinite;will-change:opacity}
+#sl-node-lbls{display:flex;gap:3px;margin-bottom:11px}
+.sl-nlbl{flex:1;font-size:7px;letter-spacing:.5px;color:rgba(80,120,220,.3);text-align:center;transition:color .3s}
+.sl-nlbl.done{color:#7ab0ff}.sl-nlbl.active{color:#a0c8ff}
+#sl-sync-detail{font-size:8.5px;letter-spacing:2px;color:rgba(80,120,200,.4)}
 </style>
-<!-- [FEATURE 2026-06-30] Google Sign-In gate — แทน anonymous auth เดิม ต้อง login ก่อนถึงใช้แอปได้
-     ดีไซน์ใหม่: "ACCESS TERMINAL" ให้เข้าธีม scan-HUD เดียวกับทั้งแอป (มุมเฟรม/สแกนบีม/grid)
-     แทนการ์ดสีขาวกลางจอแบบทั่วไป -->
-<div id="auth-gate-overlay" style="position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;font-family:'IBM Plex Mono',monospace;color:#e6f7f2">
-  <div id="auth-gate-panel" style="background:#0a1119;border:1px solid rgba(0,212,170,.15);border-radius:2px;text-align:center">
-    <div class="auth-corner-tl"></div><div class="auth-corner-tr"></div><div class="auth-corner-bl"></div><div class="auth-corner-br"></div>
-    <div id="auth-scan-rail"></div>
 
-    <div style="font-size:9px;letter-spacing:3px;color:#00d4aa;opacity:.75;margin-bottom:18px">ACCESS · TERMINAL <span style="animation:authCaret 1s step-end infinite">_</span></div>
+<!-- ═══════════════════════════════════════════════════════════════════
+     ล่าหมดอายุ — AUTH GATE v5  "PURE STARFIELD & NEBULA"  2026-07-02
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="auth-gate-overlay">
+  <canvas id="sl-canvas"></canvas>
+  <div id="sl-vignette"></div>
 
-    <div id="auth-gate-ring">
-      <div class="ring-outer"></div>
-      <div class="ring-inner"></div>
-      <div class="ring-core">📦</div>
-    </div>
+  <div id="auth-gate-panel">
+    <div id="sl-title-th">ล่าหมดอายุ</div>
+    <div id="sl-title-en">EXPIRE HUNTER</div>
 
-    <div style="font-size:19px;font-weight:700;letter-spacing:2px;margin-bottom:4px">EXPIRE HUNTER</div>
-    <div style="font-size:10px;letter-spacing:1px;color:#5c6b80;margin-bottom:26px">AUTHORIZATION REQUIRED · GOOGLE NODE</div>
-
-    <button id="auth-gate-google-btn" onclick="_authGateSignIn()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#1f1f1f;border:none;border-radius:6px;padding:13px 18px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:700;cursor:pointer;letter-spacing:.3px;box-shadow:0 4px 18px rgba(0,0,0,.4)">
-      <svg width="18" height="18" viewBox="0 0 18 18" style="flex-shrink:0"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.12-.84 2.07-1.79 2.71v2.26h2.9c1.7-1.56 2.69-3.87 2.69-6.61z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.84.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.33C2.44 15.98 5.48 18 9 18z"/><path fill="#FBBC05" d="M3.95 10.7A5.4 5.4 0 0 1 3.66 9c0-.59.1-1.17.29-1.7V4.97H.96A8.99 8.99 0 0 0 0 9c0 1.45.35 2.83.96 4.03l2.99-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.97l2.99 2.33C4.66 5.17 6.65 3.58 9 3.58z"/></svg>
+    <button id="auth-gate-google-btn" onclick="_authGateSignIn()">
+      <svg width="18" height="18" viewBox="0 0 18 18" style="flex-shrink:0">
+        <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.12-.84 2.07-1.79 2.71v2.26h2.9c1.7-1.56 2.69-3.87 2.69-6.61z"/>
+        <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.84.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.33C2.44 15.98 5.48 18 9 18z"/>
+        <path fill="#FBBC05" d="M3.95 10.7A5.4 5.4 0 0 1 3.66 9c0-.59.1-1.17.29-1.7V4.97H.96A8.99 8.99 0 0 0 0 9c0 1.45.35 2.83.96 4.03l2.99-2.33z"/>
+        <path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.97l2.99 2.33C4.66 5.17 6.65 3.58 9 3.58z"/>
+      </svg>
       เข้าสู่ระบบด้วย Google
     </button>
-    <div id="auth-gate-status" style="margin-top:14px;font-size:10.5px;color:#ff6b6b;min-height:14px;letter-spacing:.3px"></div>
+    <div id="auth-gate-status"></div>
 
-    <div style="margin-top:22px;padding-top:14px;border-top:1px dashed rgba(0,212,170,.15);font-size:8.5px;letter-spacing:2px;color:#3a4a58;display:flex;justify-content:space-between">
-      <span>NODE · SECURED</span><span>OAUTH2 · GOOGLE</span>
+    <!-- sync progress -->
+    <div id="auth-gate-sync-view">
+      <div id="sl-sync-hdr">
+        <div id="sl-sync-label">LOADING · STAR CHARTS <span style="animation:slCaret .6s step-end infinite">_</span></div>
+        <div id="sl-sync-pct">0%</div>
+      </div>
+      <div id="sl-seg-track">
+        <div class="sl-seg" id="ag-seg-0"></div>
+        <div class="sl-seg" id="ag-seg-1"></div>
+        <div class="sl-seg" id="ag-seg-2"></div>
+        <div class="sl-seg" id="ag-seg-3"></div>
+      </div>
+      <div id="sl-node-lbls">
+        <div class="sl-nlbl" id="ag-lbl-0">SHELVES</div>
+        <div class="sl-nlbl" id="ag-lbl-1">RECORDS</div>
+        <div class="sl-nlbl" id="ag-lbl-2">PHOTOS</div>
+        <div class="sl-nlbl" id="ag-lbl-3">INDEX</div>
+      </div>
+      <div id="sl-sync-detail">0 / 4 NODES · STANDBY</div>
     </div>
   </div>
 </div>
+
+<script>
+/* ─── Starfield & Nebula Canvas ─────────────────────────────────── */
+(function(){
+  const cv = document.getElementById('sl-canvas');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  function resize(){ cv.width=innerWidth; cv.height=innerHeight; }
+  resize(); addEventListener('resize', resize);
+
+  /* ── star field: 2 layers for parallax depth ── */
+  function mkStars(n, rMin, rMax, aMin, aMax){
+    return Array.from({length:n}, ()=>({
+      x:Math.random(), y:Math.random(),
+      r:rMin+Math.random()*(rMax-rMin),
+      a:aMin+Math.random()*(aMax-aMin),
+      twinkleSpeed:.003+Math.random()*.008,
+      twinklePhase:Math.random()*Math.PI*2,
+      hue: Math.random()<.15 ? (Math.random()<.5?200:30) : 0, // blue giants / orange giants
+    }));
+  }
+  const STARS_BG = mkStars(280, .4, 1.2, .3, .85);
+  const STARS_FG = mkStars(80,  .8, 2.0, .5, 1.0);
+
+  /* ── nebula cloud blobs ── */
+  const CLOUDS = [
+    // { cx, cy (0–1), rx, ry, hue, sat, lig, alpha }
+    { cx:.22, cy:.32, rx:.28, ry:.18, hue:265, sat:80, lig:40, a:.09 },
+    { cx:.68, cy:.25, rx:.22, ry:.16, hue:220, sat:70, lig:50, a:.07 },
+    { cx:.78, cy:.70, rx:.30, ry:.20, hue:30,  sat:90, lig:45, a:.08 },
+    { cx:.30, cy:.72, rx:.25, ry:.17, hue:300, sat:75, lig:40, a:.06 },
+    { cx:.50, cy:.48, rx:.18, ry:.12, hue:200, sat:80, lig:55, a:.05 },
+    { cx:.12, cy:.55, rx:.20, ry:.14, hue:260, sat:85, lig:35, a:.07 },
+    { cx:.85, cy:.45, rx:.18, ry:.13, hue:15,  sat:80, lig:45, a:.06 },
+  ];
+
+  /* pre-compute nebula once to offscreen canvas for perf */
+  let nebulaCache = null;
+  function buildNebula(W, H){
+    const oc = document.createElement('canvas');
+    oc.width=W; oc.height=H;
+    const oc2 = oc.getContext('2d');
+    oc2.fillStyle='#00000e';
+    oc2.fillRect(0,0,W,H);
+    CLOUDS.forEach(c=>{
+      const gx=c.cx*W, gy=c.cy*H, grx=c.rx*W, gry=c.ry*H;
+      // draw elliptical radial gradient (scale + translate trick)
+      oc2.save();
+      oc2.translate(gx,gy);
+      oc2.scale(grx/gry,1);
+      const g=oc2.createRadialGradient(0,0,0,0,0,gry);
+      g.addColorStop(0,   `hsla(${c.hue},${c.sat}%,${c.lig}%,${c.a})`);
+      g.addColorStop(.45, `hsla(${c.hue},${c.sat}%,${c.lig-10}%,${c.a*.55})`);
+      g.addColorStop(1,   `hsla(${c.hue},${c.sat}%,${c.lig-20}%,0)`);
+      oc2.fillStyle=g;
+      oc2.beginPath();oc2.arc(0,0,gry,0,Math.PI*2);oc2.fill();
+      oc2.restore();
+    });
+    return oc;
+  }
+
+  /* shooting star */
+  let shoot = null;
+  function maybeShoot(){
+    if (!shoot && Math.random()<.006){
+      const W=cv.width, H=cv.height;
+      const angle=-Math.PI*.22;
+      shoot={x:Math.random()*W*.8,y:Math.random()*H*.4,len:80+Math.random()*60,speed:8+Math.random()*6,a:1,vx:Math.cos(angle),vy:Math.sin(angle)};
+    }
+  }
+
+  let frame=0, lastW=0, lastH=0;
+  function draw(){
+    const W=cv.width, H=cv.height;
+    if(W!==lastW||H!==lastH){ nebulaCache=buildNebula(W,H); lastW=W; lastH=H; }
+
+    /* nebula (static, from cache) */
+    ctx.drawImage(nebulaCache,0,0);
+
+    /* ── background stars ── */
+    STARS_BG.forEach(s=>{
+      const a = s.a*(0.5+0.5*Math.sin(frame*s.twinkleSpeed+s.twinklePhase));
+      ctx.fillStyle= s.hue===200 ? `rgba(100,180,255,${a})` : s.hue===30 ? `rgba(255,200,100,${a})` : `rgba(255,255,255,${a})`;
+      ctx.beginPath();ctx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2);ctx.fill();
+    });
+
+    /* ── foreground stars (slightly brighter) ── */
+    STARS_FG.forEach(s=>{
+      const a = s.a*(0.6+0.4*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+1));
+      ctx.fillStyle=`rgba(255,255,255,${a})`;
+      ctx.beginPath();ctx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2);ctx.fill();
+      /* subtle cross-hair flare on bright stars */
+      if(s.r>1.4){
+        ctx.strokeStyle=`rgba(255,255,255,${a*.25})`;ctx.lineWidth=.5;
+        ctx.beginPath();ctx.moveTo(s.x*W-4,s.y*H);ctx.lineTo(s.x*W+4,s.y*H);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(s.x*W,s.y*H-4);ctx.lineTo(s.x*W,s.y*H+4);ctx.stroke();
+      }
+    });
+
+    /* ── Milky Way band (faint diagonal strip) ── */
+    {
+      const cx2=W*.5,cy2=H*.5,len=Math.max(W,H)*1.4,bw=H*.22;
+      ctx.save();ctx.translate(cx2,cy2);ctx.rotate(-.32);
+      const mg=ctx.createLinearGradient(0,-bw*.5,0,bw*.5);
+      mg.addColorStop(0,'transparent');
+      mg.addColorStop(.35,'rgba(180,190,220,.025)');
+      mg.addColorStop(.5,'rgba(200,210,240,.04)');
+      mg.addColorStop(.65,'rgba(180,190,220,.025)');
+      mg.addColorStop(1,'transparent');
+      ctx.fillStyle=mg;ctx.fillRect(-len*.5,-bw*.5,len,bw);
+      ctx.restore();
+    }
+
+    /* ── shooting star ── */
+    maybeShoot();
+    if(shoot){
+      ctx.save();
+      const g2=ctx.createLinearGradient(shoot.x,shoot.y,shoot.x-shoot.vx*shoot.len,shoot.y-shoot.vy*shoot.len);
+      g2.addColorStop(0,`rgba(255,255,255,${shoot.a})`);
+      g2.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.strokeStyle=g2;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(shoot.x,shoot.y);ctx.lineTo(shoot.x-shoot.vx*shoot.len,shoot.y-shoot.vy*shoot.len);ctx.stroke();
+      ctx.restore();
+      shoot.x+=shoot.vx*shoot.speed;shoot.y+=shoot.vy*shoot.speed;shoot.a-=.025;
+      if(shoot.a<=0||shoot.x>W||shoot.y>H) shoot=null;
+    }
+
+    frame++;
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
 <canvas id="cdb-rain-canvas" style="display:none!important;"></canvas>
 
 <div id="nx-cloud-debug-modal" style="display:none" onclick="if(event.target===this)closeCloudDebug()">
@@ -8842,8 +9053,15 @@ try {
   firebase.auth().onAuthStateChanged(function(user){
     const overlay = document.getElementById('auth-gate-overlay');
     if (user) {
-      // ล็อกอินสำเร็จ — ซ่อน overlay แล้วเริ่ม sync เหมือนเดิมทุกอย่าง
-      if (overlay) overlay.style.display = 'none';
+      // ล็อกอินสำเร็จ — สลับ overlay มาแสดง sync-progress view แทนซ่อนทันที
+      // (ซ่อนจริงจะเกิดใน _shelfSyncBarrierFinish หลัง first-sync ครบทุก task)
+      const btnEl  = document.getElementById('auth-gate-google-btn');
+      const statEl = document.getElementById('auth-gate-status');
+      const syncEl = document.getElementById('auth-gate-sync-view');
+      if (btnEl)  btnEl.style.display  = 'none';
+      if (statEl) statEl.style.display = 'none';
+      if (syncEl) syncEl.style.display = 'block';
+      _authGateSyncProgress(0);
       _cloudReady = true;
       _markCloudConnecting('node linked · loading');
       if (_localDataReady) syncFromCloud();
@@ -8965,12 +9183,63 @@ const cloudSetShelves      = _dbounce(()=>cloudSet('shelves', _lastShelvesMeta),
 //
 // ทำงานแค่ "รอบแรกของ session" เท่านั้น (ตอนแอปเพิ่งเปิด/เพิ่งต่อ cloud) — หลังจากนั้น real-time
 // update ระหว่างใช้งานปกติ (เช่นอีกเครื่องแก้เชลฟ์) จะ render ทันทีแบบเดิม ไม่ถูกหน่วงด้วย barrier
-const _shelfSyncBarrier = { active:false, pending:null, timer:null };
+// [FEATURE 2026-06-30] Auth-gate sync progress — อัปเดต progress bar บน overlay ระหว่าง first-sync
+// เรียกจาก _shelfSyncBarrierMark (ทีละ task) และ _shelfSyncBarrierFinish (ครบ/timeout)
+// ใช้ชื่อ task ตรงกับ _SHELF_SYNC_TASKS = ['shelves','records','photos','photoIndex']
+const _SYNC_TASK_LABELS = {
+  shelves:    'SHELVES',
+  records:    'RECORDS',
+  photos:     'PHOTOS',
+  photoIndex: 'INDEX',
+};
+const _SYNC_TASK_ORDER = ['shelves','records','photos','photoIndex'];
+
+function _authGateSyncProgress(doneTasks, lastTask){
+  const detail = document.getElementById('sl-sync-detail');
+  const label  = document.getElementById('sl-sync-label');
+  const pct    = document.getElementById('sl-sync-pct');
+  _SYNC_TASK_ORDER.forEach((task, i) => {
+    const seg = document.getElementById('ag-seg-' + i);
+    const lbl = document.getElementById('ag-lbl-' + i);
+    if (!seg) return;
+    const taskDone = _shelfSyncBarrier.pending && !_shelfSyncBarrier.pending.has(task);
+    if (taskDone) {
+      seg.className = 'sl-seg done';
+      if (lbl) lbl.className = 'sl-nlbl done';
+    } else if (task === lastTask || (!lastTask && i === doneTasks)) {
+      seg.className = 'sl-seg active';
+      if (lbl) lbl.className = 'sl-nlbl active';
+    }
+  });
+  const p = Math.round((doneTasks / 4) * 100);
+  if (pct)    pct.textContent    = p + '%';
+  if (detail) detail.textContent = doneTasks + ' / 4 NODES · LOADING';
+  if (label && lastTask) label.innerHTML = 'MAPPING · ' + (_SYNC_TASK_LABELS[lastTask]||lastTask) + ' <span style="animation:slCaret .6s step-end infinite">_</span>';
+}
+function _authGateSyncDone(){
+  _SYNC_TASK_ORDER.forEach((t, i) => {
+    const seg = document.getElementById('ag-seg-' + i);
+    const lbl = document.getElementById('ag-lbl-' + i);
+    if (seg) seg.className = 'sl-seg done';
+    if (lbl) lbl.className = 'sl-nlbl done';
+  });
+  const detail  = document.getElementById('sl-sync-detail');
+  const label   = document.getElementById('sl-sync-label');
+  const pct     = document.getElementById('sl-sync-pct');
+  const overlay = document.getElementById('auth-gate-overlay');
+  if (pct)    pct.textContent    = '100%';
+  if (detail) detail.textContent = '4 / 4 NODES · CHARTED';
+  if (label)  { label.innerHTML = 'STELLAR LINK READY ✓'; label.style.animation='none'; label.style.color='#a0e8ff'; }
+  setTimeout(() => { if (overlay) overlay.style.display = 'none'; }, 520);
+}
+
+const _shelfSyncBarrier = { active:false, pending:null, timer:null, done:0 };
 const _SHELF_SYNC_TASKS = ['shelves','records','photos','photoIndex'];
 function _shelfSyncBarrierStart(){
   if (_shelfSyncBarrier.active || _shelfSyncBarrier.pending !== null) return; // เริ่มไปแล้วหรือจบไปแล้ว (รอบเดียวต่อ session)
   _shelfSyncBarrier.active = true;
   _shelfSyncBarrier.pending = new Set(_SHELF_SYNC_TASKS);
+  _shelfSyncBarrier.done = 0;
   clearTimeout(_shelfSyncBarrier.timer);
   _shelfSyncBarrier.timer = setTimeout(()=>_shelfSyncBarrierFinish('timeout-safety'), 2500);
 }
@@ -8982,12 +9251,15 @@ function _shelfSyncBarrierMark(task){
     return;
   }
   _shelfSyncBarrier.pending.delete(task);
+  _shelfSyncBarrier.done = (_shelfSyncBarrier.done || 0) + 1;
+  _authGateSyncProgress(_shelfSyncBarrier.done, task); // อัปเดต progress bar
   if (_shelfSyncBarrier.pending.size === 0) _shelfSyncBarrierFinish('all-tasks-done');
 }
 function _shelfSyncBarrierFinish(reason){
   if (!_shelfSyncBarrier.active) return;
   _shelfSyncBarrier.active = false;
   clearTimeout(_shelfSyncBarrier.timer);
+  _authGateSyncDone(); // bar → 100%, รอ 420ms แล้วซ่อน overlay
   if (typeof renderShelfList === 'function') renderShelfList();
   console.log('[shelf-sync-barrier] render ครั้งเดียว เหตุผล=' + reason);
 }
