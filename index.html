@@ -10441,9 +10441,9 @@ function renderDashboard() {
       ? `<img src="${_shelfPhoto}" style="width:100%;height:100%;object-fit:cover;display:block" />`
       : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;opacity:.5">🗄️</div>`;
     const thumbCluster=`
-      <div style="position:relative;flex-shrink:0;width:64px;height:84px;margin-right:2px">
-        <div id="${_thumbUid}" data-prod-thumb="${a.barcode||''}" style="width:64px;height:84px;border-radius:10px;overflow:hidden;border:1.5px solid ${c}55;background:#0d0f1a;box-shadow:0 0 8px ${c}22">${prodThumbHtml}</div>
-        ${a.shelf?`<div style="position:absolute;bottom:-6px;right:-6px;width:26px;height:26px;border-radius:7px;overflow:hidden;border:1.5px solid #0a0b12;box-shadow:0 0 0 1.5px ${c}88;background:#0d0f1a" title="${a.shelf}${a.pos?' · '+a.pos:''}">${shelfThumbHtml}</div>`:""}
+      <div style="position:relative;flex-shrink:0;width:72px;height:96px;margin-right:2px">
+        <div id="${_thumbUid}" data-prod-thumb="${a.barcode||''}" style="width:72px;height:96px;border-radius:8px;overflow:hidden;border:1.5px solid ${c}55;background:rgba(0,0,0,.4);box-shadow:0 0 12px ${c}18">${prodThumbHtml}</div>
+        ${a.shelf?`<div style="position:absolute;bottom:-6px;right:-6px;width:28px;height:28px;border-radius:7px;overflow:hidden;border:1.5px solid #0a0b12;box-shadow:0 0 0 1.5px ${c}88;background:#0d0f1a" title="${a.shelf}${a.pos?' · '+a.pos:''}">${shelfThumbHtml}</div>`:""}
       </div>`;
     const daysNum=a.d!==null&&a.d!==undefined?Math.abs(a.d):null;
     const isOver=a.d!==null&&a.d!==undefined&&a.d<=0;
