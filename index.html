@@ -10440,10 +10440,14 @@ function renderDashboard() {
     const shelfThumbHtml=_shelfPhoto
       ? `<img src="${_shelfPhoto}" style="width:100%;height:100%;object-fit:cover;display:block" />`
       : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;opacity:.5">🗄️</div>`;
+    const _typeIconOverlay = a.type==='expired'
+      ? `<div class="act-siren-wrap" style="position:absolute;top:-8px;left:-10px;width:38px;height:28px;z-index:5"><div class="act-siren-em1"></div><div class="act-siren-em2"></div><div class="act-siren-outer-ring"></div><div class="act-siren-ticks"></div><div class="act-siren-beam"></div><div class="act-siren-inner-ring"></div><div class="act-siren-core"></div><div class="act-siren-emoji">🚨</div></div>`
+      : `<div style="position:absolute;top:-6px;left:-6px;width:22px;height:22px;border-radius:6px;background:#0d0f1a;border:1.5px solid ${c}88;display:flex;align-items:center;justify-content:center;font-size:12px;z-index:5;box-shadow:0 0 6px ${c}40">${icons[a.type]}</div>`;
     const thumbCluster=`
-      <div style="position:relative;flex-shrink:0;width:72px;height:96px;margin-right:2px">
+      <div style="position:relative;flex-shrink:0;width:72px;height:96px;margin-right:2px;margin-left:8px">
         <div id="${_thumbUid}" data-prod-thumb="${a.barcode||''}" style="width:72px;height:96px;border-radius:8px;overflow:hidden;border:1.5px solid ${c}55;background:rgba(0,0,0,.4);box-shadow:0 0 12px ${c}18">${prodThumbHtml}</div>
         ${a.shelf?`<div style="position:absolute;bottom:-6px;right:-6px;width:28px;height:28px;border-radius:7px;overflow:hidden;border:1.5px solid #0a0b12;box-shadow:0 0 0 1.5px ${c}88;background:#0d0f1a" title="${a.shelf}${a.pos?' · '+a.pos:''}">${shelfThumbHtml}</div>`:""}
+        ${_typeIconOverlay}
       </div>`;
     const daysNum=a.d!==null&&a.d!==undefined?Math.abs(a.d):null;
     const isOver=a.d!==null&&a.d!==undefined&&a.d<=0;
@@ -10464,9 +10468,6 @@ function renderDashboard() {
     return `
     <div onclick="${a.actionFn||''}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #1a1d2a;${a.actionFn?"cursor:pointer;":""}transition:background .15s" onmousedown="this.style.background='rgba(255,255,255,.03)'" ontouchstart="this.style.background='rgba(255,255,255,.03)'" onmouseup="this.style.background=''" ontouchend="this.style.background=''">
       ${thumbCluster}
-      ${a.type==='expired'
-        ? `<div class="act-siren-wrap" style="width:20px"><div class="act-siren-em1"></div><div class="act-siren-em2"></div><div class="act-siren-outer-ring"></div><div class="act-siren-ticks"></div><div class="act-siren-beam"></div><div class="act-siren-inner-ring"></div><div class="act-siren-core"></div><div class="act-siren-emoji">🚨</div></div>`
-        : `<div style="font-size:14px;flex-shrink:0;width:16px;text-align:center;opacity:.85">${icons[a.type]}</div>`}
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:700;color:#e8eaf6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">${a.name}${a.lot?` <span style="font-size:9px;font-weight:800;color:#00d4aa;background:rgba(0,212,170,.12);border:1px solid rgba(0,212,170,.35);border-radius:4px;padding:1px 6px;letter-spacing:.3px;vertical-align:middle">L${a.lot}</span>`:""}</div>
         <div style="font-size:10px;color:#555e7a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:5px;font-family:'Prompt',sans-serif">${a.barcode||""}</div>
