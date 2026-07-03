@@ -25,11 +25,11 @@
      ════════════════════════════════════════════════════════════════ -->
 <!-- @ZONE:BOOT-CONFIG — title/meta/CDN scripts (xlsx/zxing/firebase)/Google Fonts -->
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="mobile-web-app-capable" content="yes"/>
-<meta name="theme-color" content="#0a0e1a"/>
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="theme-color" content="#000000"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black"/>
 <meta name="apple-mobile-web-app-title" content="ExpHunter"/>
 <meta name="application-name" content="Expire Hunter"/>
 <meta name="msapplication-TileColor" content="#0a0e1a"/>
@@ -50,7 +50,13 @@
 <style>
 /* ── moved from original STYLE-TAG block L43-L709 (internal @ZONE tags below kept as-is) ── */
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-html,body{font-family:"Prompt",sans-serif;background:#0a0e1a;color:#e8eaf0;min-height:100vh;overflow-x:hidden;font-size:16px}
+html,body{font-family:"Prompt",sans-serif;background:#0a0e1a;color:#e8eaf0;min-height:100vh;overflow-x:hidden;font-size:16px;
+  /* safe area for notch/home-indicator (iOS) and camera punch-hole (Android) */
+  padding-top:env(safe-area-inset-top);
+  padding-bottom:env(safe-area-inset-bottom);
+  padding-left:env(safe-area-inset-left);
+  padding-right:env(safe-area-inset-right);
+}
 ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#3d4260;border-radius:4px}
 .mono{font-family:"IBM Plex Mono","Prompt",monospace}
 input,button,select{font-family:"Prompt",sans-serif}
@@ -6291,18 +6297,29 @@ body.cam-open #page-catalog{
 #sl-sync-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 #sl-sync-label{font-size:9px;letter-spacing:2px;color:#7ab0ff;font-family:'IBM Plex Mono','Prompt',monospace;animation:slWarn 1.2s ease-in-out infinite;will-change:opacity}
 #sl-sync-pct{font-size:14px;letter-spacing:0;color:#a0c8ff;font-family:'IBM Plex Mono','Prompt',monospace}
-#am-seg-track,#am-seg-track~*{display:none!important} /* hide old IDs if any leaked */
-#sl-seg-track{display:flex;gap:3px;margin-bottom:8px}
-.sl-seg{
-  flex:1;height:9px;border-radius:1px;overflow:hidden;
+#am-seg-track,#am-seg-track~*{display:none!important}
+/* single continuous progress bar */
+#sl-seg-track{
+  height:9px;border-radius:5px;overflow:hidden;margin-bottom:8px;
   background:rgba(60,80,160,.15);border:1px solid rgba(100,140,255,.14);
-  transition:background .35s,border-color .35s;
+  position:relative;
 }
-.sl-seg::before{content:'';display:block;height:100%;background:repeating-linear-gradient(90deg,rgba(100,160,255,.08) 0 2px,transparent 2px 5px)}
-.sl-seg.done{background:linear-gradient(90deg,rgba(40,80,200,.7),rgba(100,180,255,.85));border-color:rgba(120,180,255,.5)}
-.sl-seg.active{background:linear-gradient(90deg,rgba(40,80,180,.4),rgba(80,140,255,.55));border-color:rgba(100,160,255,.35);animation:slSegActive .7s ease-in-out infinite;will-change:opacity}
-#sl-node-lbls{display:flex;gap:3px;margin-bottom:11px}
-.sl-nlbl{flex:1;font-size:7px;letter-spacing:1.5px;color:rgba(80,120,220,.3);text-align:center;transition:color .3s;font-family:'IBM Plex Mono','Prompt',monospace}
+#sl-progress-fill{
+  height:100%;width:0%;border-radius:5px;
+  background:linear-gradient(90deg,rgba(40,80,200,.8),rgba(100,180,255,.9));
+  transition:width .55s cubic-bezier(.4,0,.2,1);
+  box-shadow:0 0 8px rgba(100,160,255,.5);
+  position:relative;overflow:hidden;
+}
+#sl-progress-fill::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.3) 50%,transparent 100%);
+  animation:slShimmer 1.4s ease-in-out infinite;
+}
+@keyframes slShimmer{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
+.sl-seg{display:none} /* hide old segments if any */
+#sl-node-lbls{display:flex;justify-content:space-between;margin-bottom:11px}
+.sl-nlbl{font-size:7px;letter-spacing:1.5px;color:rgba(80,120,220,.3);text-align:center;transition:color .3s;font-family:'IBM Plex Mono','Prompt',monospace}
 .sl-nlbl.done{color:#7ab0ff}.sl-nlbl.active{color:#a0c8ff}
 #sl-sync-detail{font-size:8.5px;letter-spacing:2px;color:rgba(80,120,200,.4);font-family:'IBM Plex Mono','Prompt',monospace}
 /* title fonts */
@@ -6340,10 +6357,7 @@ body.cam-open #page-catalog{
         <div id="sl-sync-pct">0%</div>
       </div>
       <div id="sl-seg-track">
-        <div class="sl-seg" id="ag-seg-0"></div>
-        <div class="sl-seg" id="ag-seg-1"></div>
-        <div class="sl-seg" id="ag-seg-2"></div>
-        <div class="sl-seg" id="ag-seg-3"></div>
+        <div id="sl-progress-fill"></div>
       </div>
       <div id="sl-node-lbls">
         <div class="sl-nlbl" id="ag-lbl-0">SHELVES</div>
@@ -9044,6 +9058,13 @@ try {
   // ต้อง login ก่อนถึงใช้แอปได้ ทุกครั้งที่เปิดแอป (เซสชันจะถูกจำไว้โดย Firebase Auth เอง
   // ผ่าน IndexedDB ของเบราว์เซอร์ — ไม่ต้อง login ใหม่ทุกครั้งถ้ายังไม่ได้ logout/เคลียร์ข้อมูล)
   window._authGateSignIn = function(){
+    // Fullscreen API — ต้องเรียกจาก user gesture (click) เท่านั้น จึงใส่ไว้ที่นี่
+    // Android Chrome: fullscreen จริง ซ่อน status bar / nav bar ได้
+    // iOS Safari (browser): ไม่รองรับ Fullscreen API — ต้อง "Add to Home Screen" แทน
+    const _reqFS = document.documentElement.requestFullscreen
+      || document.documentElement.webkitRequestFullscreen
+      || document.documentElement.mozRequestFullScreen;
+    if (_reqFS) _reqFS.call(document.documentElement, {navigationUI:'hide'}).catch(()=>{});
     const statusEl = document.getElementById('auth-gate-status');
     if (statusEl) statusEl.textContent = '';
     const provider = new firebase.auth.GoogleAuthProvider();
@@ -9223,39 +9244,48 @@ function _authGateSyncProgress(doneTasks, lastTask){
   const detail = document.getElementById('sl-sync-detail');
   const label  = document.getElementById('sl-sync-label');
   const pct    = document.getElementById('sl-sync-pct');
+  const fill   = document.getElementById('sl-progress-fill');
+  // node labels (ยังใช้ไว้ให้รู้ว่า task ไหนเสร็จ)
   _SYNC_TASK_ORDER.forEach((task, i) => {
-    const seg = document.getElementById('ag-seg-' + i);
     const lbl = document.getElementById('ag-lbl-' + i);
-    if (!seg) return;
+    if (!lbl) return;
     const taskDone = _shelfSyncBarrier.pending && !_shelfSyncBarrier.pending.has(task);
-    if (taskDone) {
-      seg.className = 'sl-seg done';
-      if (lbl) lbl.className = 'sl-nlbl done';
-    } else if (task === lastTask || (!lastTask && i === doneTasks)) {
-      seg.className = 'sl-seg active';
-      if (lbl) lbl.className = 'sl-nlbl active';
-    }
+    lbl.className = 'sl-nlbl' + (taskDone ? ' done' : (task === lastTask ? ' active' : ''));
   });
   const p = Math.round((doneTasks / 4) * 100);
-  if (pct)    pct.textContent    = p + '%';
+  if (fill)   fill.style.width = p + '%';
+  if (pct)    pct.textContent  = p + '%';
   if (detail) detail.textContent = doneTasks + ' / 4 NODES · LOADING';
   if (label && lastTask) label.innerHTML = 'MAPPING · ' + (_SYNC_TASK_LABELS[lastTask]||lastTask) + ' <span style="animation:slCaret .6s step-end infinite">_</span>';
+  // [FIX] ขยาย safety timeout ทุกครั้งที่มี progress จริง — กัน timeout ยิงกลางคัน
+  // (photos/photoIndex ใช้เวลานานถ้ามีรูปจำนวนมาก ต้องรอจริงๆไม่ force-close)
+  if (_shelfSyncBarrier.active) {
+    clearTimeout(_shelfSyncBarrier.timer);
+    _shelfSyncBarrier.timer = setTimeout(()=>_shelfSyncBarrierFinish('timeout-safety'), 8000);
+  }
 }
 function _authGateSyncDone(){
   _SYNC_TASK_ORDER.forEach((t, i) => {
-    const seg = document.getElementById('ag-seg-' + i);
     const lbl = document.getElementById('ag-lbl-' + i);
-    if (seg) seg.className = 'sl-seg done';
     if (lbl) lbl.className = 'sl-nlbl done';
   });
   const detail  = document.getElementById('sl-sync-detail');
   const label   = document.getElementById('sl-sync-label');
   const pct     = document.getElementById('sl-sync-pct');
+  const fill    = document.getElementById('sl-progress-fill');
   const overlay = document.getElementById('auth-gate-overlay');
-  if (pct)    pct.textContent    = '100%';
+  if (fill)   fill.style.width = '100%';
+  if (pct)    pct.textContent  = '100%';
   if (detail) detail.textContent = '4 / 4 NODES · CHARTED';
   if (label)  { label.innerHTML = 'STELLAR LINK READY ✓'; label.style.animation='none'; label.style.color='#a0e8ff'; }
-  setTimeout(() => { if (overlay) overlay.style.display = 'none'; }, 520);
+  // รอให้ bar fill ถึง 100% ก่อนปิด (transition 0.55s) แล้วค่อย fade out
+  setTimeout(() => {
+    if (overlay) {
+      overlay.style.transition = 'opacity .4s ease';
+      overlay.style.opacity = '0';
+      setTimeout(() => { overlay.style.display = 'none'; overlay.style.opacity = ''; overlay.style.transition = ''; }, 420);
+    }
+  }, 600);
 }
 
 const _shelfSyncBarrier = { active:false, pending:null, timer:null, done:0 };
@@ -9266,7 +9296,7 @@ function _shelfSyncBarrierStart(){
   _shelfSyncBarrier.pending = new Set(_SHELF_SYNC_TASKS);
   _shelfSyncBarrier.done = 0;
   clearTimeout(_shelfSyncBarrier.timer);
-  _shelfSyncBarrier.timer = setTimeout(()=>_shelfSyncBarrierFinish('timeout-safety'), 2500);
+  _shelfSyncBarrier.timer = setTimeout(()=>_shelfSyncBarrierFinish('timeout-safety'), 8000);
 }
 function _shelfSyncBarrierMark(task){
   if (!_shelfSyncBarrier.active) {
@@ -9342,11 +9372,16 @@ async function syncFromCloud(){
       _shelfSyncBarrierMark('records'); // ไม่มีอะไรเปลี่ยน — แค่ส่งสัญญาณว่า task นี้ "เสร็จ" แล้ว ไม่ต้อง render
     }
     _shelfSyncBarrierStart(); // เริ่ม barrier ก่อนติด listener (ครั้งแรกของ session เท่านั้น — เรียกซ้ำได้ ไม่มีผล)
+    // [FIX 2026-07-01] seed _photoIndexKnown จากรูปที่มีใน local cache แล้ว ก่อน listener fire
+    // กัน photoIndex listener เห็น 451 key ว่า "ใหม่ทั้งหมด" แล้ว fetch ซ้ำทุก session
+    if(typeof _seedPhotoIndexFromCache==='function') _seedPhotoIndexFromCache();
     _attachCloudListeners();
     // safety: หลัง listeners ติดแล้ว → ดึงรูปอีกครั้ง กัน timing miss
-    setTimeout(()=>{ if(typeof loadProductPhotosFromIDB==='function') loadProductPhotosFromIDB(); }, 1500);
-    // [FEATURE 2026-06-30] ดันรูปที่มีอยู่ในเครื่องนี้ (IDB) แต่ยังไม่เคยขึ้น cloud ให้ครบ —
-    // ทำงานเงียบๆ เบื้องหลัง ไม่บล็อก sync หลัก (กันเคสรูปถ่ายตอนออฟไลน์ค้างอยู่แค่ในเครื่องเดียว)
+    setTimeout(()=>{
+      if(typeof loadProductPhotosFromIDB==='function') loadProductPhotosFromIDB();
+      // seed อีกรอบหลัง IDB โหลดเสร็จ (รูปที่ memcache ว่างตอน attach ก็จะถูก seed ตอนนี้)
+      setTimeout(()=>{ if(typeof _seedPhotoIndexFromCache==='function') _seedPhotoIndexFromCache(); }, 200);
+    }, 1500);
     if (typeof syncLocalPhotosToCloud === 'function') syncLocalPhotosToCloud({silent:true}).catch(()=>{});
   } catch(e) { console.warn("[cloud] syncFromCloud failed", e); _markCloudSyncError('syncFromCloud: '+(e&&e.code||e&&e.message||e)); }
   finally {
@@ -9455,6 +9490,26 @@ function _attachCloudListeners(){
 // photoIndex snapshot มี {barcode: bytes, shelf_shelfId: bytes}
 // เมื่อ key ใหม่เข้ามา → fetch รูปจริงมาเก็บ IDB + render
 let _photoIndexKnown = {}; // key -> bytes ที่รู้อยู่แล้ว
+
+// [FIX 2026-07-01] seed _photoIndexKnown จากรูปที่มีใน local cache แล้ว ก่อนที่ listener จะ fire
+// เดิม: {} ทุก session → listener เห็น 451 key ทั้งหมดว่า "เปลี่ยน" → ดึง 451 รูปใหม่ทุกครั้ง
+//        แม้รูปเหล่านั้นจะอยู่ใน IDB ครบแล้วก็ตาม
+// แก้: ใส่ key ที่รู้อยู่แล้วเข้าไปก่อน ด้วยค่า bytes=1 (sentinel) ซึ่งพอสำหรับการเช็คว่า
+//       "มีอยู่แล้วหรือเปล่า" — ถ้า cloud มีรูปใหม่กว่า bytes บน cloud จะต่างออกไป listener จะ fetch
+//       แต่ถ้า bytes เท่ากัน (หรือ key นี้ถูก seed ไว้แล้ว) จะข้ามไป ไม่ fetch ซ้ำ
+function _seedPhotoIndexFromCache(){
+  // product photos ที่โหลดเข้า memcache แล้ว (populate โดย loadProductPhotosFromIDB)
+  Object.keys(_productPhotoMemCache || {}).forEach(bc=>{
+    if(!_photoIndexKnown[bc]) _photoIndexKnown[bc] = 1; // sentinel: "รู้อยู่แล้วว่ามี"
+  });
+  // shelf photos ที่อยู่ใน shelves array แล้ว
+  if(typeof shelves !== 'undefined'){
+    shelves.forEach(s=>{
+      if((s.photo || s.thumb) && !_photoIndexKnown['shelf_'+s.id])
+        _photoIndexKnown['shelf_'+s.id] = 1;
+    });
+  }
+}
 function _attachPhotoIndexListener(){
   if(!_cloudReady) return;
   _cloudRef('photoIndex').on('value', async snap=>{

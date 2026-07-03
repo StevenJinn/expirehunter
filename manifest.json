@@ -6,10 +6,10 @@
   "dir": "ltr",
   "start_url": "/expirehunter/",
   "scope": "/expirehunter/",
-  "display": "standalone",
+  "display": "fullscreen",
   "orientation": "portrait-primary",
-  "background_color": "#0a0e1a",
-  "theme_color": "#0a0e1a",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "categories": ["business", "productivity"],
   "icons": [
     { "src": "/expirehunter/icons/icon-72.png",  "sizes": "72x72",   "type": "image/png", "purpose": "any" },
