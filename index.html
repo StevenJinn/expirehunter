@@ -10436,14 +10436,14 @@ function renderDashboard() {
     const _shelfPhoto=_shelfObj?(_shelfObj.thumb||_shelfObj.photo||null):null;
     const prodThumbHtml=_prodPhoto
       ? `<img src="${_prodPhoto}" style="width:100%;height:100%;object-fit:cover;display:block" />`
-      : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:.6">📦</div>`;
+      : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:24px;opacity:.6">📦</div>`;
     const shelfThumbHtml=_shelfPhoto
       ? `<img src="${_shelfPhoto}" style="width:100%;height:100%;object-fit:cover;display:block" />`
-      : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:9px;opacity:.5">🗄️</div>`;
+      : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;opacity:.5">🗄️</div>`;
     const thumbCluster=`
-      <div style="position:relative;flex-shrink:0;width:42px;height:42px;margin-right:2px">
-        <div id="${_thumbUid}" data-prod-thumb="${a.barcode||''}" style="width:42px;height:42px;border-radius:9px;overflow:hidden;border:1.5px solid ${c}55;background:#0d0f1a;box-shadow:0 0 6px ${c}22">${prodThumbHtml}</div>
-        ${a.shelf?`<div style="position:absolute;bottom:-5px;right:-5px;width:20px;height:20px;border-radius:6px;overflow:hidden;border:1.5px solid #0a0b12;box-shadow:0 0 0 1.5px ${c}88;background:#0d0f1a" title="${a.shelf}${a.pos?' · '+a.pos:''}">${shelfThumbHtml}</div>`:""}
+      <div style="position:relative;flex-shrink:0;width:64px;height:84px;margin-right:2px">
+        <div id="${_thumbUid}" data-prod-thumb="${a.barcode||''}" style="width:64px;height:84px;border-radius:10px;overflow:hidden;border:1.5px solid ${c}55;background:#0d0f1a;box-shadow:0 0 8px ${c}22">${prodThumbHtml}</div>
+        ${a.shelf?`<div style="position:absolute;bottom:-6px;right:-6px;width:26px;height:26px;border-radius:7px;overflow:hidden;border:1.5px solid #0a0b12;box-shadow:0 0 0 1.5px ${c}88;background:#0d0f1a" title="${a.shelf}${a.pos?' · '+a.pos:''}">${shelfThumbHtml}</div>`:""}
       </div>`;
     const daysNum=a.d!==null&&a.d!==undefined?Math.abs(a.d):null;
     const isOver=a.d!==null&&a.d!==undefined&&a.d<=0;
