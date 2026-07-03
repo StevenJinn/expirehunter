@@ -11069,20 +11069,25 @@ function renderRecords() {
   // Apply sort with direction
   const sd = (currentSortDir === 'asc') ? 1 : -1;
   if (currentSort === 'recent') {
-    // [FIX] เลือก representative lot ตาม direction:
-    //   desc (ล่าสุดก่อน) → เลือก lot ที่ addedAt สูงสุดของแต่ละ group
-    //   asc  (เก่าสุดก่อน) → เลือก lot ที่ addedAt ต่ำสุดของแต่ละ group
-    const repPerGroup = {};
-    shown.forEach(r => {
-      const k = _barcodeGroupKey(r.barcode);
-      const cur = repPerGroup[k];
-      const pick = !cur
-        || (currentSortDir === 'desc' ? (r.addedAt||0) > (cur.addedAt||0)
-                                      : (r.addedAt||0) < (cur.addedAt||0));
-      if (pick) repPerGroup[k] = r;
-    });
-    shown = Object.values(repPerGroup);
-    shown.sort((a,b) => sd * ((a.addedAt||0) - (b.addedAt||0)));
+    if (search) {
+      // [FIX] กำลังค้นหา → แสดงทุก lot ที่ตรงเงื่อนไข ไม่ group/ยุบเหลือ 1 lot ต่อบาร์โค้ด
+      shown.sort((a,b) => sd * ((a.addedAt||0) - (b.addedAt||0)));
+    } else {
+      // [FIX] เลือก representative lot ตาม direction:
+      //   desc (ล่าสุดก่อน) → เลือก lot ที่ addedAt สูงสุดของแต่ละ group
+      //   asc  (เก่าสุดก่อน) → เลือก lot ที่ addedAt ต่ำสุดของแต่ละ group
+      const repPerGroup = {};
+      shown.forEach(r => {
+        const k = _barcodeGroupKey(r.barcode);
+        const cur = repPerGroup[k];
+        const pick = !cur
+          || (currentSortDir === 'desc' ? (r.addedAt||0) > (cur.addedAt||0)
+                                        : (r.addedAt||0) < (cur.addedAt||0));
+        if (pick) repPerGroup[k] = r;
+      });
+      shown = Object.values(repPerGroup);
+      shown.sort((a,b) => sd * ((a.addedAt||0) - (b.addedAt||0)));
+    }
   } else if (currentSort === 'expiry') {
     const expSd = currentFilter==='warn' ? 1 : sd;
     shown.sort((a,b)=> expSd * (new Date(a.expDate||'9999') - new Date(b.expDate||'9999')));
@@ -16209,7 +16214,7 @@ function _renderShelfProductList(filterVal){
   list.innerHTML = groups.map((g,gi)=>{
     g.lots.sort((a,b)=>new Date(a.expDate)-new Date(b.expDate));
 
-    // กรองเฉพาะ lot ที่ยังไม่วาง
+    // กรองเฉพาะ lot ที่ยังไม่วาง (ยังไม่ถูกเพิ่มเข้าเชลฟ์ไหนเลย) — แสดงทุกตัว
     const availableLots = g.lots.filter(r=>!shelves.some(sh=>sh.items.some(i=>i.key==='rec__'+r.id)));
     // ถ้าทุก lot วางแล้ว → ซ่อนทั้ง group
     if(!availableLots.length) return '';
