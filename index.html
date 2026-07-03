@@ -6293,39 +6293,51 @@ body.cam-open #page-catalog{
 #auth-gate-status{margin-top:11px;font-size:10px;color:#ff8080;min-height:14px;letter-spacing:.5px}
 
 /* ── sync progress view ── */
-#auth-gate-sync-view{display:none;padding-top:6px}
-#sl-sync-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-#sl-sync-label{font-size:9px;letter-spacing:2px;color:#7ab0ff;font-family:'IBM Plex Mono','Prompt',monospace;animation:slWarn 1.2s ease-in-out infinite;will-change:opacity}
-#sl-sync-pct{font-size:14px;letter-spacing:0;color:#a0c8ff;font-family:'IBM Plex Mono','Prompt',monospace}
-#am-seg-track,#am-seg-track~*{display:none!important}
-/* single continuous progress bar */
+#auth-gate-sync-view{display:none;padding-top:6px;width:100%}
+/* single bar with text inside */
 #sl-seg-track{
-  height:9px;border-radius:5px;overflow:hidden;margin-bottom:8px;
-  background:rgba(60,80,160,.15);border:1px solid rgba(100,140,255,.14);
-  position:relative;
+  height:28px;border-radius:5px;overflow:hidden;margin-bottom:8px;
+  background:rgba(40,55,120,.2);border:1px solid rgba(100,140,255,.2);
+  position:relative;display:flex;align-items:center;
 }
 #sl-progress-fill{
-  height:100%;width:0%;border-radius:5px;
-  background:linear-gradient(90deg,rgba(40,80,200,.8),rgba(100,180,255,.9));
+  position:absolute;left:0;top:0;bottom:0;width:0%;
+  border-radius:4px;
+  background:linear-gradient(90deg,rgba(30,60,180,.85),rgba(80,160,255,.9));
   transition:width .55s cubic-bezier(.4,0,.2,1);
-  box-shadow:0 0 8px rgba(100,160,255,.5);
-  position:relative;overflow:hidden;
+  box-shadow:0 0 10px rgba(100,160,255,.4);
+  overflow:hidden;
 }
 #sl-progress-fill::after{
   content:'';position:absolute;inset:0;
-  background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.3) 50%,transparent 100%);
+  background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.2) 50%,transparent 100%);
   animation:slShimmer 1.4s ease-in-out infinite;
 }
-@keyframes slShimmer{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
-.sl-seg{display:none} /* hide old segments if any */
-#sl-node-lbls{display:flex;justify-content:space-between;margin-bottom:11px}
-.sl-nlbl{font-size:7px;letter-spacing:1.5px;color:rgba(80,120,220,.3);text-align:center;transition:color .3s;font-family:'IBM Plex Mono','Prompt',monospace}
-.sl-nlbl.done{color:#7ab0ff}.sl-nlbl.active{color:#a0c8ff}
-#sl-sync-detail{font-size:8.5px;letter-spacing:2px;color:rgba(80,120,200,.4);font-family:'IBM Plex Mono','Prompt',monospace}
-/* title fonts */
-#sl-title-th{font-family:'Prompt',sans-serif}
-#sl-title-en{font-family:'IBM Plex Mono','Prompt',monospace}
-#auth-gate-status{font-family:'Prompt',sans-serif}
+@keyframes slShimmer{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+#sl-bar-label{
+  position:relative;z-index:1;flex:1;
+  font-family:'IBM Plex Mono','Prompt',monospace;
+  font-size:8.5px;letter-spacing:2px;color:rgba(180,210,255,.85);
+  padding-left:12px;
+  animation:slWarn 1.2s ease-in-out infinite;
+}
+#sl-bar-pct{
+  position:relative;z-index:1;
+  font-family:'IBM Plex Mono','Prompt',monospace;
+  font-size:11px;font-weight:700;letter-spacing:0;
+  color:#a0c8ff;padding-right:12px;
+}
+.sl-seg{display:none}
+.sl-nlbl{display:none}
+#sl-sync-label{display:none}
+#sl-sync-pct{display:none}
+#sl-sync-detail{
+  font-size:8px;letter-spacing:2px;
+  color:rgba(80,120,200,.5);
+  font-family:'IBM Plex Mono','Prompt',monospace;
+  text-align:center;
+}
+#sl-sync-hdr{display:none}
 </style>
 
 <!-- ═══════════════════════════════════════════════════════════════════
@@ -6352,18 +6364,10 @@ body.cam-open #page-catalog{
 
     <!-- sync progress -->
     <div id="auth-gate-sync-view">
-      <div id="sl-sync-hdr">
-        <div id="sl-sync-label">LOADING · STAR CHARTS <span style="animation:slCaret .6s step-end infinite">_</span></div>
-        <div id="sl-sync-pct">0%</div>
-      </div>
       <div id="sl-seg-track">
         <div id="sl-progress-fill"></div>
-      </div>
-      <div id="sl-node-lbls">
-        <div class="sl-nlbl" id="ag-lbl-0">SHELVES</div>
-        <div class="sl-nlbl" id="ag-lbl-1">RECORDS</div>
-        <div class="sl-nlbl" id="ag-lbl-2">PHOTOS</div>
-        <div class="sl-nlbl" id="ag-lbl-3">INDEX</div>
+        <div id="sl-bar-label">INITIALIZING_</div>
+        <div id="sl-bar-pct">0%</div>
       </div>
       <div id="sl-sync-detail">0 / 4 NODES · STANDBY</div>
     </div>
@@ -9080,21 +9084,20 @@ try {
   firebase.auth().onAuthStateChanged(function(user){
     const overlay = document.getElementById('auth-gate-overlay');
     if (user) {
-      // ล็อกอินสำเร็จ — สลับ overlay มาแสดง sync-progress view แทนซ่อนทันที
-      // (ซ่อนจริงจะเกิดใน _shelfSyncBarrierFinish หลัง first-sync ครบทุก task)
+      _cloudReady = true;
+      _markCloudConnecting('node linked · loading');
       const btnEl  = document.getElementById('auth-gate-google-btn');
       const statEl = document.getElementById('auth-gate-status');
       const syncEl = document.getElementById('auth-gate-sync-view');
-      if (btnEl)  btnEl.style.display  = 'none';
-      if (statEl) statEl.style.display = 'none';
-      if (syncEl) syncEl.style.display = 'block';
-      _authGateSyncProgress(0);
-      _cloudReady = true;
-      _markCloudConnecting('node linked · loading');
-      // [FIX 2026-07-01] initApp() เดิมรันทันทีตอน DOM โหลดเสร็จ โดยไม่รอ auth state —
-      // แปลว่า dashboard/records/shelf UI render ทั้งหมดก่อนที่จะรู้ว่า user login อยู่หรือเปล่า
-      // แก้โดยให้ initApp() รันครั้งแรกได้ต่อเมื่อ Firebase ยืนยันแล้วว่า user != null เท่านั้น
-      // (Firebase persist session ไว้ใน IndexedDB เอง callback มาภายใน ~300ms โดยไม่ต้องรอ network)
+      if (btnEl)  btnEl.style.display = 'none';
+      // แสดง "● AUTHENTICATED" สั้นๆ ก่อน switch ไป sync view
+      // กรณี session เก่ายังอยู่ → user เห็นว่าระบบ auth แล้ว ไม่งงว่าข้ามหน้า login ไปทำไม
+      if (statEl){ statEl.style.cssText='color:#00d4aa;font-size:11px;letter-spacing:2px;'; statEl.textContent='● AUTHENTICATED'; }
+      setTimeout(()=>{
+        if (statEl) statEl.style.display = 'none';
+        if (syncEl) syncEl.style.display = 'block';
+        _authGateSyncProgress(0);
+      }, 700);
       if (!_appInitialized) {
         _appInitialized = true;
         if (document.readyState === 'loading') {
@@ -9106,15 +9109,13 @@ try {
       if (_localDataReady) syncFromCloud();
       else _pendingCloudSync = true;
     } else {
-      // ยังไม่ login (หรือเพิ่ง logout) — overlay บัง UI อยู่แล้วตั้งแต่ต้น (display:flex ใน CSS)
-      // ไม่ต้องทำอะไร นอกจากแน่ใจว่า overlay ยังแสดงอยู่ และปุ่ม login ยังโชว์
       _cloudReady = false;
       if (overlay) overlay.style.display = 'flex';
       const btnEl  = document.getElementById('auth-gate-google-btn');
       const statEl = document.getElementById('auth-gate-status');
       const syncEl = document.getElementById('auth-gate-sync-view');
       if (btnEl)  btnEl.style.display  = '';
-      if (statEl) statEl.style.display = '';
+      if (statEl){ statEl.style.cssText=''; statEl.textContent=''; }
       if (syncEl) syncEl.style.display = 'none';
     }
   });
@@ -9241,49 +9242,36 @@ const _SYNC_TASK_LABELS = {
 const _SYNC_TASK_ORDER = ['shelves','records','photos','photoIndex'];
 
 function _authGateSyncProgress(doneTasks, lastTask){
-  const detail = document.getElementById('sl-sync-detail');
-  const label  = document.getElementById('sl-sync-label');
-  const pct    = document.getElementById('sl-sync-pct');
   const fill   = document.getElementById('sl-progress-fill');
-  // node labels (ยังใช้ไว้ให้รู้ว่า task ไหนเสร็จ)
-  _SYNC_TASK_ORDER.forEach((task, i) => {
-    const lbl = document.getElementById('ag-lbl-' + i);
-    if (!lbl) return;
-    const taskDone = _shelfSyncBarrier.pending && !_shelfSyncBarrier.pending.has(task);
-    lbl.className = 'sl-nlbl' + (taskDone ? ' done' : (task === lastTask ? ' active' : ''));
-  });
+  const barLbl = document.getElementById('sl-bar-label');
+  const barPct = document.getElementById('sl-bar-pct');
+  const detail = document.getElementById('sl-sync-detail');
   const p = Math.round((doneTasks / 4) * 100);
   if (fill)   fill.style.width = p + '%';
-  if (pct)    pct.textContent  = p + '%';
+  if (barPct) barPct.textContent = p + '%';
+  if (barLbl && lastTask) barLbl.textContent = (_SYNC_TASK_LABELS[lastTask]||lastTask) + ' ···';
   if (detail) detail.textContent = doneTasks + ' / 4 NODES · LOADING';
-  if (label && lastTask) label.innerHTML = 'MAPPING · ' + (_SYNC_TASK_LABELS[lastTask]||lastTask) + ' <span style="animation:slCaret .6s step-end infinite">_</span>';
-  // [FIX] ขยาย safety timeout ทุกครั้งที่มี progress จริง — กัน timeout ยิงกลางคัน
-  // (photos/photoIndex ใช้เวลานานถ้ามีรูปจำนวนมาก ต้องรอจริงๆไม่ force-close)
+  // ขยาย safety timeout ทุกครั้งที่มี progress จริง
   if (_shelfSyncBarrier.active) {
     clearTimeout(_shelfSyncBarrier.timer);
     _shelfSyncBarrier.timer = setTimeout(()=>_shelfSyncBarrierFinish('timeout-safety'), 8000);
   }
 }
 function _authGateSyncDone(){
-  _SYNC_TASK_ORDER.forEach((t, i) => {
-    const lbl = document.getElementById('ag-lbl-' + i);
-    if (lbl) lbl.className = 'sl-nlbl done';
-  });
-  const detail  = document.getElementById('sl-sync-detail');
-  const label   = document.getElementById('sl-sync-label');
-  const pct     = document.getElementById('sl-sync-pct');
-  const fill    = document.getElementById('sl-progress-fill');
+  const fill   = document.getElementById('sl-progress-fill');
+  const barLbl = document.getElementById('sl-bar-label');
+  const barPct = document.getElementById('sl-bar-pct');
+  const detail = document.getElementById('sl-sync-detail');
   const overlay = document.getElementById('auth-gate-overlay');
   if (fill)   fill.style.width = '100%';
-  if (pct)    pct.textContent  = '100%';
+  if (barPct) barPct.textContent = '100%';
+  if (barLbl) { barLbl.textContent = 'READY ✓'; barLbl.style.animation='none'; barLbl.style.color='#a0e8ff'; }
   if (detail) detail.textContent = '4 / 4 NODES · CHARTED';
-  if (label)  { label.innerHTML = 'STELLAR LINK READY ✓'; label.style.animation='none'; label.style.color='#a0e8ff'; }
-  // รอให้ bar fill ถึง 100% ก่อนปิด (transition 0.55s) แล้วค่อย fade out
   setTimeout(() => {
     if (overlay) {
       overlay.style.transition = 'opacity .4s ease';
       overlay.style.opacity = '0';
-      setTimeout(() => { overlay.style.display = 'none'; overlay.style.opacity = ''; overlay.style.transition = ''; }, 420);
+      setTimeout(() => { overlay.style.display='none'; overlay.style.opacity=''; overlay.style.transition=''; }, 420);
     }
   }, 600);
 }
