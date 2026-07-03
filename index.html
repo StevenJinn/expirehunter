@@ -10340,10 +10340,10 @@ function renderDashboard() {
       const lot=_getLot(i);
       // ถ้า qty=0 หมดแล้ว ไม่ต้องแจ้งเตือนเรื่อง expired/soon
       if(qty>0){
-        if(d!==null&&d<=0) actions.push({type:"expired",name:i.name,barcode:i.barcode,lot,shelf:s.name,pos:posLabel,expDate:earliest,qty:qty,d,actionFn:`dashGoToShelfById('${s.id}')`});
-        else if(d!==null&&d<=7) actions.push({type:"soon",name:i.name,barcode:i.barcode,lot,shelf:s.name,pos:posLabel,expDate:earliest,qty:qty,d,actionFn:`dashGoToShelfById('${s.id}')`});
+        if(d!==null&&d<=0) actions.push({type:"expired",name:i.name,barcode:i.barcode,lot,shelf:s.name,shelfId:s.id,pos:posLabel,expDate:earliest,qty:qty,d,actionFn:`dashGoToShelfById('${s.id}')`});
+        else if(d!==null&&d<=7) actions.push({type:"soon",name:i.name,barcode:i.barcode,lot,shelf:s.name,shelfId:s.id,pos:posLabel,expDate:earliest,qty:qty,d,actionFn:`dashGoToShelfById('${s.id}')`});
         // ── unplaced: อยู่ใน s.items แต่ยังไม่ได้วางบน grid ──
-        else if(!posLabel) actions.push({type:"unplaced",name:i.name,barcode:i.barcode,lot,shelf:s.name,pos:null,expDate:earliest,qty:qty,d,actionFn:`dashGoToShelfById('${s.id}')`});
+        else if(!posLabel) actions.push({type:"unplaced",name:i.name,barcode:i.barcode,lot,shelf:s.name,shelfId:s.id,pos:null,expDate:earliest,qty:qty,d,actionFn:`dashGoToShelfById('${s.id}')`});
       }
     });
   });
@@ -10424,8 +10424,27 @@ function renderDashboard() {
     return `${String(d2).padStart(2,"0")}/${String(m).padStart(2,"0")}/${y}`;
   }
   const icons={expired:"🚨",soon:"⚠️",empty:"📦",noShelf:"📋",unplaced:"🔶"};
+  let _actThumbSeq=0;
+  const _actPendingProdFetch=[]; // barcodes needing async IDB/cloud lookup after paint
   el.innerHTML=actions.map(a=>{
     const c=cols[a.type];
+    // ── รูป preview สินค้า + รูปเชลฟ์ที่สินค้ากำลังหมดอายุ ──
+    const _thumbUid='act-thumb-'+(_actThumbSeq++);
+    const _prodPhoto=(typeof loadProductPhoto==='function')?loadProductPhoto(a.barcode):null;
+    if(!_prodPhoto && a.barcode) _actPendingProdFetch.push({uid:_thumbUid,barcode:a.barcode});
+    const _shelfObj=(a.shelfId && typeof shelves!=="undefined")?shelves.find(sh=>sh.id===a.shelfId):null;
+    const _shelfPhoto=_shelfObj?(_shelfObj.thumb||_shelfObj.photo||null):null;
+    const prodThumbHtml=_prodPhoto
+      ? `<img src="${_prodPhoto}" style="width:100%;height:100%;object-fit:cover;display:block" />`
+      : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:.6">📦</div>`;
+    const shelfThumbHtml=_shelfPhoto
+      ? `<img src="${_shelfPhoto}" style="width:100%;height:100%;object-fit:cover;display:block" />`
+      : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:9px;opacity:.5">🗄️</div>`;
+    const thumbCluster=`
+      <div style="position:relative;flex-shrink:0;width:42px;height:42px;margin-right:2px">
+        <div id="${_thumbUid}" data-prod-thumb="${a.barcode||''}" style="width:42px;height:42px;border-radius:9px;overflow:hidden;border:1.5px solid ${c}55;background:#0d0f1a;box-shadow:0 0 6px ${c}22">${prodThumbHtml}</div>
+        ${a.shelf?`<div style="position:absolute;bottom:-5px;right:-5px;width:20px;height:20px;border-radius:6px;overflow:hidden;border:1.5px solid #0a0b12;box-shadow:0 0 0 1.5px ${c}88;background:#0d0f1a" title="${a.shelf}${a.pos?' · '+a.pos:''}">${shelfThumbHtml}</div>`:""}
+      </div>`;
     const daysNum=a.d!==null&&a.d!==undefined?Math.abs(a.d):null;
     const isOver=a.d!==null&&a.d!==undefined&&a.d<=0;
     const daysColor=isOver?"#ff4d4d":c;
@@ -10444,9 +10463,10 @@ function renderDashboard() {
     const actionBadge=`<span style="font-size:9px;font-weight:900;background:${bgCols[a.type]};border:1.5px solid ${c};border-radius:20px;padding:2px 10px;color:${c};letter-spacing:.5px;white-space:nowrap;text-shadow:0 0 8px ${c}80">${labels[a.type]}</span>`;
     return `
     <div onclick="${a.actionFn||''}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #1a1d2a;${a.actionFn?"cursor:pointer;":""}transition:background .15s" onmousedown="this.style.background='rgba(255,255,255,.03)'" ontouchstart="this.style.background='rgba(255,255,255,.03)'" onmouseup="this.style.background=''" ontouchend="this.style.background=''">
+      ${thumbCluster}
       ${a.type==='expired'
-        ? `<div class="act-siren-wrap"><div class="act-siren-em1"></div><div class="act-siren-em2"></div><div class="act-siren-outer-ring"></div><div class="act-siren-ticks"></div><div class="act-siren-beam"></div><div class="act-siren-inner-ring"></div><div class="act-siren-core"></div><div class="act-siren-emoji">🚨</div></div>`
-        : `<div style="font-size:18px;flex-shrink:0;width:28px;text-align:center">${icons[a.type]}</div>`}
+        ? `<div class="act-siren-wrap" style="width:20px"><div class="act-siren-em1"></div><div class="act-siren-em2"></div><div class="act-siren-outer-ring"></div><div class="act-siren-ticks"></div><div class="act-siren-beam"></div><div class="act-siren-inner-ring"></div><div class="act-siren-core"></div><div class="act-siren-emoji">🚨</div></div>`
+        : `<div style="font-size:14px;flex-shrink:0;width:16px;text-align:center;opacity:.85">${icons[a.type]}</div>`}
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:700;color:#e8eaf6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">${a.name}${a.lot?` <span style="font-size:9px;font-weight:800;color:#00d4aa;background:rgba(0,212,170,.12);border:1px solid rgba(0,212,170,.35);border-radius:4px;padding:1px 6px;letter-spacing:.3px;vertical-align:middle">L${a.lot}</span>`:""}</div>
         <div style="font-size:10px;color:#555e7a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:5px;font-family:'Prompt',sans-serif">${a.barcode||""}</div>
@@ -10460,6 +10480,18 @@ function renderDashboard() {
       </div>
     </div>`;
   }).join("");
+  // ── เติมรูป preview สินค้าแบบ async (กรณีไม่มีใน memory cache ต้องไปดึงจาก IndexedDB/cloud) ──
+  // ไม่ re-render ทั้ง panel ใหม่ — แค่แปะรูปเข้า DOM node เดิมเพื่อกันจอกระพริบ/รีเซ็ต scroll
+  if(_actPendingProdFetch.length && typeof getProductPhotoAsync==='function'){
+    _actPendingProdFetch.forEach(({uid,barcode})=>{
+      getProductPhotoAsync(barcode).then(url=>{
+        if(!url) return;
+        const box=document.getElementById(uid);
+        if(!box) return; // panel อาจถูก re-render ทับไปแล้ว
+        box.innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:cover;display:block" />`;
+      }).catch(()=>{});
+    });
+  }
 }
 
 // ── barcode rendering via JsBarcode ──────────────────────
