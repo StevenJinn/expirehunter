@@ -5245,14 +5245,26 @@ body.ues-open-frozen #uesSheet *{animation-play-state:running!important}
   background-size:200% 100%;
   animation:uesBorderFlow 2.5s linear infinite;pointer-events:none;will-change:background-position;
 }
-/* scan sweep — identical technique to #matchCard::after, but transform-based (see uesScanV note above) */
-#uesPanelInner::after{
-  content:'';position:absolute;top:0;left:0;right:0;height:1.5px;z-index:9;
+/* scan sweep — identical technique to #matchCard::after, but transform-based (see uesScanV note above)
+   [FIX 2026-08-01 v5] contain:paint (above, on #uesPanelInner) turned out not to be enough on its
+   own: #uesPanelInner is BOTH the rounded-corner clip box AND the overflow-y:auto scroll container,
+   and on some engines (seen on mobile Safari) a transform-animated absolute pseudo-element still
+   gets counted into that container's scrollable-overflow region once it nears the bottom of its
+   translateY() travel, so the vertical scrollbar flickers in/out and the whole window nudges
+   sideways by the scrollbar-gutter width every cycle. Fix: stop attaching the beam directly to the
+   scroll container. Give it its own non-scrolling wrapper (#ues-scanfx) that is inset:0 + its own
+   overflow:hidden — that wrapper's box is always exactly the panel's visible frame (never bigger),
+   so it can never itself contribute overflow to the parent, no matter what its animated child does. */
+#ues-scanfx{
+  position:absolute;inset:0;z-index:9;
+  overflow:hidden;border-radius:inherit;pointer-events:none;
+}
+#ues-scanfx::after{
+  content:'';position:absolute;top:0;left:0;right:0;height:1.5px;
   background:linear-gradient(90deg,transparent,rgba(255,210,0,.4),rgba(255,255,180,.6),rgba(255,210,0,.4),transparent);
   box-shadow:0 0 10px rgba(255,210,0,.5);
   animation:uesScanV 5s ease-in-out infinite;
   will-change:transform,opacity;
-  pointer-events:none;
 }
 
 /* grid bg — same density/opacity as .mc-grid */
@@ -20430,6 +20442,7 @@ function _shelfPhotoMode(hasPhoto) {
 
       <!-- decorations -->
       <div id="ues-grid"></div>
+      <div id="ues-scanfx"></div>
       <div class="ues-cc tl"></div>
       <div class="ues-cc tr"></div>
       <div class="ues-cc bl"></div>
