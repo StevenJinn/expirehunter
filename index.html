@@ -29305,11 +29305,26 @@ if ('serviceWorker' in navigator) {
     var srchWrap = document.getElementById("wc-search-wrap");
     if (srchWrap) srchWrap.classList.remove("wc-has-text");
     document.getElementById("wc-overlay").classList.add("wc-open");
+    // [PERF-FIX 2026-08-01 v3] เจอสาเหตุจริงของกระพริบที่เหลืออยู่: sonar/ECG ของแดชบอร์ดวาดด้วย
+    // canvas+requestAnimationFrame ไม่ใช่ CSS animation จึงไม่โดน animation-play-state freeze ที่ทำไว้
+    // ก่อนหน้า (ดู body.ues-open-frozen) — หน้า record ไม่เจอปัญหานี้เพราะ switchTab('record') หยุด
+    // loop พวกนี้ไปแล้วตั้งแต่ตอนออกจากแท็บแดชบอร์ด (ดู [PERF FIX] หยุด sonar/ECG canvas เมื่อออกจาก
+    // dashboard ใน switchTab) แต่เดินเช็คเป็น overlay ทับหน้าปัจจุบันโดยไม่ผ่าน switchTab เลย loop เลย
+    // ไม่เคยถูกหยุด ยังวาดเฟรมต่อเนื่องอยู่หลังม่านทึบของเดินเช็ค+เบลอของ UES ตลอดเวลาที่เปิดค้างอยู่ —
+    // หยุดด้วยโค้ดเดียวกับที่ switchTab ใช้ แล้ว resume ตอนปิด (ดู closeWalkCheck คู่กัน)
+    if (typeof _sonarRafId !== 'undefined' && _sonarRafId) { cancelAnimationFrame(_sonarRafId); _sonarRafId = null; }
+    if (typeof _ecgRafId !== 'undefined' && _ecgRafId) { cancelAnimationFrame(_ecgRafId); _ecgRafId = null; }
     _wcRender();
     _wcCloudPull();
   };
   window.closeWalkCheck = function () {
     document.getElementById("wc-overlay").classList.remove("wc-open");
+    // [PERF-FIX 2026-08-01 v3] คืน sonar/ECG ให้เล่นต่อ เฉพาะกรณียังอยู่แท็บแดชบอร์ด (เหมือนที่
+    // switchTab ทำตอนกลับมา dashboard)
+    if (typeof currentTab === 'undefined' || currentTab === 'dashboard') {
+      if (typeof drawSonar === 'function' && !_sonarRafId) _sonarRafId = requestAnimationFrame(drawSonar);
+      window.dispatchEvent(new Event('resumeEcg'));
+    }
   };
 
   // ── route editor: กดค้างลากชื่อเชลฟ์เพื่อจัดลำดับเส้นทางเดินเอง ──
