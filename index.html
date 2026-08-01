@@ -22344,7 +22344,18 @@ function _wrDisplayName(r) {
   const vintage = r[3] || '';
   const producer = r[9] || '';
   const region = r[12] || '';
-  if (!producer || !region) return product; // raw product string already carries any size wording
+  // [FIX 2026-08-01] rows without producer/region data used to be returned as-is on the
+  // assumption the raw product string already carried the vintage and size wording — but a
+  // large share are missing the year, the size, or both. Now we only skip adding a piece of
+  // info that's already embedded in the raw text, and fill in whichever is actually missing.
+  const yearRe = /\b(1[5-9]\d{2}|20\d{2})\b/;
+  const sizeRe = /(\d+(?:\.\d+)?)\s*(ml\.?|litre?s?\.?|ltr\.?|l\.?|cl\.?)\b/i;
+  if (!producer || !region) {
+    const isNV = vintage === 'NV' || vintage === 'N/V';
+    const yearPrefix = (vintage && !isNV && !yearRe.test(product)) ? vintage + ' ' : '';
+    const sizeSuffix = sizeRe.test(product) ? '' : ` ${_wrBottleSize(product)}`;
+    return `${yearPrefix}${product}${sizeSuffix}`;
+  }
   const name = producer.replace(/\bChateau\b/g, 'Château'); // word-boundary avoids "Chateauneuf"
   const parent = _wrParentRegion(r);
   const parts = [name, region];
@@ -22514,6 +22525,7 @@ let _wrCountryFilters = new Set(); // e.g. {'France','Italy'} — narrows result
 let _wrVintageFilters = new Set(); // e.g. {'2000','2023'} — narrows results to ANY of these vintages, picked by tapping the year badge on a card
 let _wrRegionFilters = new Set(); // e.g. {'Bordeaux','Rioja'} — narrows results to ANY of these regions; only shown once a single country is selected, since regions only make sense within one country's list
 let _wrTierFilters = new Set(); // e.g. {'firstgrowth','docg'} — narrows results to ANY of these WR_TIER_RULES classification keys, picked from the "ระดับไวน์ · Classification" chip row in the Smart Filter sheet
+let _wrLabelTierFilters = new Set(); // e.g. {'First Label','Second Label'} — narrows results to ANY of these r[10] label-tier values, tappable straight from the badge on a result card (see _wrToggleLabelTierFilter)
 
 // ── Smart Filter sheet state — additive to the filters above, only settable from that sheet ──
 let _wrVintageRangeFrom = null; // e.g. '2018' — string year, or null for no lower bound
@@ -23141,6 +23153,24 @@ function _wrToggleRegionFilter(name) {
 
 function _wrClearRegionFilter() {
   _wrRegionFilters.clear();
+  renderWholesaleResults();
+}
+
+// toggles a producer's label tier (First Label / Second Label / Third Label / Related Cuvee)
+// in/out of the filter set — tapped straight from the badge on a result card, same pattern
+// as type/vintage/grape/country
+function _wrToggleLabelTierFilter(labelTier) {
+  if (_wrLabelTierFilters.has(labelTier)) _wrLabelTierFilters.delete(labelTier);
+  else _wrLabelTierFilters.add(labelTier);
+  renderWholesaleResults();
+}
+
+// tapped from the classification badge on a result card — same underlying _wrTierFilters Set
+// as _wrSfToggleTier (used inside the Smart Filter sheet), but re-renders the results list
+// directly and keeps the sheet's filter-count dot in sync for when it's opened next
+function _wrToggleTierFilter(key) {
+  if (_wrTierFilters.has(key)) _wrTierFilters.delete(key); else _wrTierFilters.add(key);
+  _wrUpdateSmartFilterDot();
   renderWholesaleResults();
 }
 
@@ -24092,7 +24122,7 @@ function _wrSmartFilterActiveCount() {
   const vb = _wrVintageBounds();
   const vintageRangeActive = (_wrVintageRangeFrom != null && parseInt(_wrVintageRangeFrom, 10) !== vb.min)
     || (_wrVintageRangeTo != null && parseInt(_wrVintageRangeTo, 10) !== vb.max);
-  return _wrTypeFilters.size + _wrSparklingLevelFilters.size + _wrCountryFilters.size + _wrGrapeFilters.size + _wrRegionFilters.size + _wrVintageFilters.size + _wrTierFilters.size
+  return _wrTypeFilters.size + _wrSparklingLevelFilters.size + _wrCountryFilters.size + _wrGrapeFilters.size + _wrRegionFilters.size + _wrVintageFilters.size + _wrTierFilters.size + _wrLabelTierFilters.size
     + (vintageRangeActive ? 1 : 0)
     + (_wrPriceRangeMin > 0 || _wrPriceRangeMax != null ? 1 : 0)
     + (_wrSpecialVintageOnly ? 1 : 0);
@@ -24134,6 +24164,7 @@ function _wrSfClearAll() {
   _wrRegionFilters.clear();
   _wrVintageFilters.clear();
   _wrTierFilters.clear();
+  _wrLabelTierFilters.clear();
   _wrVintageRangeFrom = null;
   _wrVintageRangeTo = null;
   _wrPriceRangeMin = 0;
@@ -24214,8 +24245,8 @@ function _wrBuildResultCard(r, i) {
               <div class="rec-card-badge-row">
                 ${type ? `<span class="wr-badge${_wrTypeFilters.has(_wrCanonType(type)) ? ' wr-badge-active' : ''}" onclick="event.stopPropagation();_wrToggleTypeFilter('${_wrCanonType(type).replace(/'/g, "\\'")}')" style="cursor:pointer;color:${tierColor};background:${tierColor}18;border-color:${tierColor}55">${_wrEsc(_wrCanonType(type))}</span>` : ''}
                 ${vintage ? `<span class="wr-badge wr-badge-vt${_wrVintageFilters.has(vintage) ? ' wr-badge-active' : ''}" onclick="event.stopPropagation();_wrToggleVintageFilter('${String(vintage).replace(/'/g, "\\'")}')" style="cursor:pointer">${_wrEsc(vintage)}</span>` : ''}
-                <span class="wr-badge wr-badge-country${_wrCountryFilters.has(country) ? ' wr-badge-active' : ''}" style="${_wrCountryBadgeStyle(country)}">${_wrEsc(country)}</span>
-                ${isFineWineTier ? `<span class="wr-badge wr-badge-finewine${_wrCountryFilters.has('Fine Wine') ? ' wr-badge-active' : ''}">Fine Wine</span>` : ''}
+                <span class="wr-badge wr-badge-country${_wrCountryFilters.has(country) ? ' wr-badge-active' : ''}" onclick="event.stopPropagation();_wrToggleCountryFilter('${country.replace(/'/g, "\\'")}')" style="cursor:pointer;${_wrCountryBadgeStyle(country)}">${_wrEsc(country)}</span>
+                ${isFineWineTier ? `<span class="wr-badge wr-badge-finewine${_wrCountryFilters.has('Fine Wine') ? ' wr-badge-active' : ''}" onclick="event.stopPropagation();_wrToggleCountryFilter('Fine Wine')" style="cursor:pointer">Fine Wine</span>` : ''}
                 ${(() => {
                   const gfSetLower = new Set(Array.from(_wrGrapeFilters).map(x => x.toLowerCase()));
                   return _wrGrapeNames(grapes).map(g => {
@@ -24224,11 +24255,11 @@ function _wrBuildResultCard(r, i) {
                     const style = isActive
                       ? `border-color:${gc.idleColor};background:${gc.activeBackground};color:${gc.activeTextColor};box-shadow:0 0 8px ${gc.glow}`
                       : `border-color:${gc.idleBorder};background:${gc.idleBg};color:${gc.idleColor}`;
-                    return `<span class="wr-badge${isActive ? ' wr-badge-active' : ''}" style="${style}">${_wrEsc(g)}</span>`;
+                    return `<span class="wr-badge${isActive ? ' wr-badge-active' : ''}" onclick="event.stopPropagation();_wrToggleGrapeFilter('${g.replace(/'/g, "\\'")}')" style="cursor:pointer;${style}">${_wrEsc(g)}</span>`;
                   }).join('');
                 })()}
-                ${wineTier ? `<span class="wr-tier-badge ${wineTier.cls}" style="${_wrBadgeAccentStyle(wineTier)}"><span class="wr-tier-dot"></span>${_wrEsc(wineTier.short)}</span>` : ''}
-                ${labelTier ? `<span class="wr-badge ${tierClass}">${_wrEsc(labelTier)}</span>` : ''}
+                ${wineTier ? `<span class="wr-tier-badge ${wineTier.cls}${_wrTierFilters.has(wineTier.key) ? ' wr-badge-active' : ''}" onclick="event.stopPropagation();_wrToggleTierFilter('${wineTier.key.replace(/'/g, "\\'")}')" style="cursor:pointer;${_wrBadgeAccentStyle(wineTier)}"><span class="wr-tier-dot"></span>${_wrEsc(wineTier.short)}</span>` : ''}
+                ${labelTier ? `<span class="wr-badge ${tierClass}${_wrLabelTierFilters.has(labelTier) ? ' wr-badge-active' : ''}" onclick="event.stopPropagation();_wrToggleLabelTierFilter('${labelTier.replace(/'/g, "\\'")}')" style="cursor:pointer">${_wrEsc(labelTier)}</span>` : ''}
               </div>
             </div>
           </div>
@@ -24337,7 +24368,7 @@ function renderWholesaleResults() {
   const hasVintageRange = (_wrVintageRangeFrom != null && parseInt(_wrVintageRangeFrom, 10) !== _wrVb.min)
     || (_wrVintageRangeTo != null && parseInt(_wrVintageRangeTo, 10) !== _wrVb.max);
   const hasPriceRange = _wrPriceRangeMin > 0 || _wrPriceRangeMax != null;
-  if (!query && !_wrTypeFilters.size && !_wrSparklingLevelFilters.size && !_wrGrapeFilters.size && !_wrCountryFilters.size && !_wrVintageFilters.size && !_wrRegionFilters.size && !_wrTierFilters.size && !hasVintageRange && !hasPriceRange && !_wrSpecialVintageOnly) {
+  if (!query && !_wrTypeFilters.size && !_wrSparklingLevelFilters.size && !_wrGrapeFilters.size && !_wrCountryFilters.size && !_wrVintageFilters.size && !_wrRegionFilters.size && !_wrTierFilters.size && !_wrLabelTierFilters.size && !hasVintageRange && !hasPriceRange && !_wrSpecialVintageOnly) {
     _wrReleaseCanvasObservers(list);
     _wrResetResultsPagination();
     _wrLastShown = [];
@@ -24403,6 +24434,10 @@ function renderWholesaleResults() {
       const t = _wrWineTier(r);
       return !!(t && _wrTierFilters.has(t.key));
     });
+  }
+
+  if (_wrLabelTierFilters.size) {
+    matches = matches.filter(r => _wrLabelTierFilters.has(r[10]));
   }
 
   if (_wrRegionFilters.size) {
@@ -24906,14 +24941,14 @@ const WR_TIER_RULES = [
 // shortest in cask (then ages further in bottle), LBV ages longer in cask, and
 // Colheita is the Tawny style that ages longest in cask of the three.
 const WR_TIER_DESCRIPTIONS = {
-  firstgrowth: 'อ่านว่า "ปรอ-มิเยร์ ครู กลา-เซ่" อันดับสูงสุดของ 1855 Bordeaux Classification มีแค่ 5 ชาโต Médoc บวก Haut-Brion จาก Graves คงที่มาตั้งแต่ 1855 (เปลี่ยนแค่ครั้งเดียวคือ Mouton Rothschild เลื่อนขึ้นปี 1973)',
-  segcA: 'อ่านว่า "ปรอ-มิเยร์ กรองด์ ครู กลา-เซ่ อา" อันดับสูงสุดของการจัดอันดับ Saint-Émilion ทบทวนใหม่ทุกๆ ประมาณ 10 ปี ตามคุณภาพ ที่ตั้ง และประวัติ',
-  segcB: 'อ่านว่า "ปรอ-มิเยร์ กรองด์ ครู กลา-เซ่ เบ" อันดับรองจาก Classé A ในการจัดอันดับ Saint-Émilion ชุดเดียวกัน',
-  '2cc': 'อ่านว่า "เดอ-เซียม ครู กลา-เซ่" อันดับที่ 2 ของ 1855 Bordeaux Classification จัดตามชาโต ตายตัวไม่เปลี่ยน',
-  '3cc': 'อ่านว่า "ทรัว-เซียม ครู กลา-เซ่" อันดับที่ 3 ของ 1855 Bordeaux Classification จัดตามชาโต ตายตัวไม่เปลี่ยน',
-  '4cc': 'อ่านว่า "กัทร์-เซียม ครู กลา-เซ่" อันดับที่ 4 ของ 1855 Bordeaux Classification จัดตามชาโต ตายตัวไม่เปลี่ยน',
-  '5cc': 'อ่านว่า "แซงค์-เซียม ครู กลา-เซ่" อันดับที่ 5 ของ 1855 Bordeaux Classification จัดตามชาโต ตายตัวไม่เปลี่ยน',
-  gcc: 'อ่านว่า "กรองด์ ครู กลา-เซ่" อันดับระดับชาโตของ Saint-Émilion ทบทวนเป็นระยะ ไม่ใช่รายชื่อตายตัวแบบ 1855 — สะท้อนชัดจากวิกฤตการจัดอันดับปี 2022 ที่ชาโตระดับ Premier Grand Cru Classé A สามในสี่แห่งจากปี 2012 คือ Angélus, Cheval Blanc และ Ausone ต่างประกาศถอนตัวจากกระบวนการโดยไม่ขึ้นกับระบบการจัดอันดับ และต่อมาชาโต La Gaffelière ซึ่งเป็นแห่งที่สี่ก็ถอนตัวตามไปด้วย ทำให้เหลือ Château Pavie เพียงแห่งเดียวในระดับสูงสุดช่วงหนึ่ง',
+  firstgrowth: 'อ่านว่า "เปรอ-มิเยร์ ครู กลา-เซ่" อันดับสูงสุดของ 1855 Bordeaux Classification มีแค่ 5 ชาโตว์ Médoc บวก Haut-Brion จาก Graves คงที่มาตั้งแต่ 1855 (เปลี่ยนแค่ครั้งเดียวคือ Mouton Rothschild เลื่อนขึ้นปี 1973)',
+  segcA: 'อ่านว่า "เปรอ-มิเยร์ กรองด์ ครู กลา-เซ่ อา" อันดับสูงสุดของการจัดอันดับ Saint-Émilion ทบทวนใหม่ทุกๆ ประมาณ 10 ปี ตามคุณภาพ ที่ตั้ง และประวัติ',
+  segcB: 'อ่านว่า "เปรอ-มิเยร์ กรองด์ ครู กลา-เซ่ เบ" อันดับรองจาก Classé A ในการจัดอันดับ Saint-Émilion ชุดเดียวกัน',
+  '2cc': 'อ่านว่า "เดอ-เซียม ครู กลา-เซ่" อันดับที่ 2 ของ 1855 Bordeaux Classification จัดตามชาโตว์ ตายตัวไม่เปลี่ยน',
+  '3cc': 'อ่านว่า "ทรัว-เซียม ครู กลา-เซ่" อันดับที่ 3 ของ 1855 Bordeaux Classification จัดตามชาโตว์ ตายตัวไม่เปลี่ยน',
+  '4cc': 'อ่านว่า "กัทร์-เซียม ครู กลา-เซ่" อันดับที่ 4 ของ 1855 Bordeaux Classification จัดตามชาโตว์ ตายตัวไม่เปลี่ยน',
+  '5cc': 'อ่านว่า "แซงค์-เซียม ครู กลา-เซ่" อันดับที่ 5 ของ 1855 Bordeaux Classification จัดตามชาโตว์ ตายตัวไม่เปลี่ยน',
+  gcc: 'อ่านว่า "กรองด์ ครู กลา-เซ่" อันดับระดับชาโตว์ของ Saint-Émilion ทบทวนเป็นระยะ ไม่ใช่รายชื่อตายตัวแบบ 1855 — สะท้อนชัดจากวิกฤตการจัดอันดับปี 2022 ที่ชาโตว์ระดับ Premier Grand Cru Classé A สามในสี่แห่งจากปี 2012 คือ Angélus, Cheval Blanc และ Ausone ต่างประกาศถอนตัวจากกระบวนการโดยไม่ขึ้นกับระบบการจัดอันดับ และต่อมาชาโตว์ La Gaffelière ซึ่งเป็นแห่งที่สี่ก็ถอนตัวตามไปด้วย ทำให้เหลือ Château Pavie เพียงแห่งเดียวในระดับสูงสุดช่วงหนึ่ง',
   tba: 'อ่านว่า "ทรอค-เคิน-เบ-เริน-เอาส์-เล-เซอะ" องุ่นที่โดน botrytis จนแห้งกรอด เก็บด้วยมือ ต้องมี must weight สูงสุดในระดับ Prädikat (เพร-ดี-คาท) ทั้งหมด หวานมาก ผลผลิตน้อยมาก',
   eiswein: 'อ่านว่า "ไอส์-ไวน์" เก็บและบีบองุ่นตอนแช่แข็ง (ต่ำกว่า -7°C) น้ำตาล/กรดเข้มข้นขึ้น ขึ้นกับสภาพอากาศ ผลผลิตน้อย',
   ba: 'อ่านว่า "เบ-เริน-เอาส์-เล-เซอะ" คัดผลองุ่นสุกเกิน/ติด botrytis ด้วยมือ ต่ำกว่า Trockenbeerenauslese หนึ่งระดับ',
@@ -24922,7 +24957,7 @@ const WR_TIER_DESCRIPTIONS = {
   cbex: 'อ่านว่า "ครู บูร์-ชวา เอ็ก-เซ็ป-ซี-โอ-แนล" ระดับสูงสุดของ Cru Bourgeois จัดอันดับใหม่ทุก 5 ปี (ตั้งแต่ปฏิรูประบบปี 2020) ไม่ใช่รายชื่อถาวรแบบ 1855',
   granreserva: 'อ่านว่า "กรัน เร-เซร์-บา" เอจนานสุดของสเปน ขั้นต่ำรวม 5 ปี บ่มในไม้โอ๊ค 18 เดือนขึ้นไป ทำเฉพาะปีที่ผลผลิตดีเยี่ยม',
   vintageport: 'อ่านว่า "วิน-เทจ พอร์ต" ประกาศเฉพาะปีที่ดีที่สุด จากการเก็บเกี่ยวครั้งเดียว บรรจุขวดตอนอายุน้อย (2–3 ปี) ออกแบบมาให้บ่มในขวดได้อีกหลายสิบปี',
-  '1ercru': 'อ่านว่า "ปรอ-มิเยร์ ครู" ไร่ที่มีชื่อ กำหนดตามกฎหมาย รองจาก Grand Cru',
+  '1ercru': 'อ่านว่า "เปรอ-มิเยร์ ครู" ไร่ที่มีชื่อ กำหนดตามกฎหมาย รองจาก Grand Cru',
   auslese: 'อ่านว่า "เอาส์-เล-เซอะ" พวงองุ่นสุกเต็มที่ คัดลูกไม่สุกออกด้วยมือ อาจแห้งหรือหวาน สูงกว่า Spätlese หนึ่งระดับ',
   cb: 'อ่านว่า "ครู บูร์-ชวา" ระดับ Médoc อยู่ต่ำกว่าระบบจัดอันดับ 1855 Cru Classé จัดอันดับใหม่ทุก 5 ปี (ตั้งแต่ปฏิรูประบบปี 2020)',
   gransel: 'อ่านว่า "เกียน-ติ คลาส-ซี-โก กราน เซ-เล-ซี-โอ-เน" ระดับสูงสุดของ Chianti Classico บ่มขั้นต่ำ 30 เดือน องุ่นจากเอสเตทเดียว ผ่านคณะชิมที่เข้มกว่า Riserva',
@@ -24958,7 +24993,7 @@ const WR_TIER_DESCRIPTIONS = {
 // (Lafite, Latour, Margaux, Mouton Rothschild, Haut-Brion). `test` matches are checked in
 // order — 'mouton' before 'lafite' since both contain "rothschild".
 const WR_NAME_TIPS = [
-  { key: 'mouton', pronun: 'ชาโต มูตง ร็อดชิลด์', short: 'FIRST GROWTH (PREMIER CRU)',
+  { key: 'mouton', pronun: 'ชาโตว์ มูตง ร็อดชิลด์', short: 'FIRST GROWTH (PREMIER CRU)',
     desc: [
       'หนึ่งใน 5 ปราสาทที่ได้ระดับสูงสุดของ 1855 Bordeaux Classification เดิมทีถูกจัดเป็น Second Growth ตั้งแต่ปี 1855 แต่หลังจากบารอน Philippe de Rothschild ต่อสู้เรียกร้องมานานหลายสิบปี ในที่สุดก็ได้รับการเลื่อนขึ้นเป็น First Growth อย่างเป็นทางการในปี 1973 — เป็นการเปลี่ยนแปลงครั้งเดียวในประวัติศาสตร์ของระบบจัดอันดับปี 1855 พร้อมคำขวัญประจำตระกูลที่เปลี่ยนจาก "Premier ne puis, second ne daigne, Mouton suis" (First I cannot be, second I do not deign to be, Mouton I am) เป็น "Premier je suis, second je fus, Mouton ne change" (First I am, second I was, Mouton does not change)',
       'Terroir อยู่ติดกับ Château Lafite Rothschild ทางเหนือของ Pauillac บนเนินกรวดลึกเช่นเดียวกัน แต่มีสัดส่วนทรายผสมมากกว่าเล็กน้อย ปลูก Cabernet Sauvignon เป็นหลัก (~80%) สไตล์เข้มข้น หรูหรา มีกลิ่นหอมของผลไม้สุกและเครื่องเทศที่โดดเด่น ขึ้นชื่อเรื่องศิลปะบนฉลากขวด — ว่าจ้างศิลปินชื่อดังระดับโลก (เช่น Picasso, Dalí, Warhol) มาออกแบบฉลากใหม่ทุกปีตั้งแต่ปี 1945',
@@ -24968,7 +25003,7 @@ const WR_NAME_TIPS = [
     // n.includes('mouton') also matched unrelated budget-tier products like "Mouton Cadet",
     // which is not this château's grand vin at all.
     test: n => /\bchateau\s+mouton\b/.test(n) },
-  { key: 'lafite', pronun: 'ชาโต ลาฟิต ร็อดชิลด์', short: 'FIRST GROWTH (PREMIER CRU)',
+  { key: 'lafite', pronun: 'ชาโตว์ ลาฟิต ร็อดชิลด์', short: 'FIRST GROWTH (PREMIER CRU)',
     desc: [
       'หนึ่งใน 5 ปราสาทที่ได้ระดับสูงสุดของ 1855 Bordeaux Classification — Premier Cru Classé คือชั้นสูงสุดของระบบจัดอันดับที่ฝรั่งเศสวางไว้ตั้งแต่ปี 1855 มีเพียง 5 ปราสาทเท่านั้นที่ได้ระดับนี้ (Lafite, Latour, Margaux, Haut-Brion และ Mouton Rothschild ที่เลื่อนขึ้นมาทีหลังในปี 1973)',
       'ตระกูล Rothschild สาขาฝรั่งเศส นำโดย Baron James de Rothschild เข้าซื้อกิจการในปี 1868 และตระกูลถือครองต่อเนื่องมาจนถึงปัจจุบัน (รุ่นที่ 6 นำโดย Saskia de Rothschild ตั้งแต่ปี 2018)',
@@ -24976,7 +25011,7 @@ const WR_NAME_TIPS = [
       'ชื่อ "Lafite" มาจากคำ Gascon ว่า "la hite" แปลว่า "เนินเขาเล็กๆ" ปราสาทมีประวัติย้อนไปถึงปี 1234 และเคยได้ฉายาว่า "The King\'s Wine" ในสมัย Marquis Nicolas-Alexandre de Ségur (ต้นศตวรรษที่ 18) มีลูกค้าคนดังอย่าง Thomas Jefferson ที่หลงใหลไวน์นี้ตั้งแต่ก่อนตระกูล Rothschild เข้าซื้อกิจการเสียอีก น่าเศร้าที่ Baron James de Rothschild เสียชีวิตเพียง 3 เดือนหลังปิดดีลซื้อปราสาทในปี 1868 ทำให้ลูกชายทั้งสาม Alphonse, Gustave และ Edmond ต้องรับช่วงดูแลกิจการต่อ ปัจจุบัน Lafite เป็นหนึ่งในไม่กี่ Château ที่มีโรงทำถังไม้โอ๊ค (cooperage) เป็นของตัวเอง'
     ],
     test: n => /\bchateau\s+lafite\b/.test(n) },
-  { key: 'latour', pronun: 'ชาโต ลาตูร์', short: 'FIRST GROWTH (PREMIER CRU)',
+  { key: 'latour', pronun: 'ชาโตว์ ลาตูร์', short: 'FIRST GROWTH (PREMIER CRU)',
     desc: [
       'หนึ่งใน 5 ปราสาทที่ได้ระดับสูงสุดของ 1855 Bordeaux Classification — First Growth คือชั้นหนึ่งของระบบจัดอันดับที่ฝรั่งเศสวางไว้ตั้งแต่ปี 1855 มีเพียง 5 ปราสาทเท่านั้นที่ได้ระดับนี้ (Lafite, Latour, Margaux, Haut-Brion และ Mouton Rothschild ที่เลื่อนขึ้นมาทีหลังในปี 1973)',
       'ชื่อมาจากหอคอยเก่า (tour) ที่เคยตั้งอยู่ในไร่ตั้งแต่ศตวรรษที่ 14 เพื่อป้องกันการโจมตีในสมัยสงคราม Hundred Years\' War แต่ถูกทำลายไปตั้งแต่กลางศตวรรษที่ 15 หอคอยทรงกลมที่เห็นอยู่ในไร่และบนฉลากขวดทุกวันนี้ เป็นหอคอยที่สร้างขึ้นใหม่ในภายหลัง (ราวปี 1620)',
@@ -24984,10 +25019,10 @@ const WR_NAME_TIPS = [
       'ปี 1993 François Pinault (เจ้าของกลุ่ม Kering ซึ่งเป็นเจ้าของ Gucci และเจ้าของ Christie\'s) ซื้อกิจการมา ทำให้ปราสาทกลับมาเป็นของฝรั่งเศสอีกครั้งหลังตกอยู่ในมือบริษัทอังกฤษ (Pearson Group แล้วต่อด้วย Allied Lyons) มานานเกือบ 30 ปี ปี 2012 Latour สร้างความฮือฮาด้วยการเป็น First Growth ตัวเดียวที่ประกาศถอนตัวจากระบบ en primeur (ขายไวน์ล่วงหน้าตั้งแต่ยังอยู่ในถัง) — รุ่นปี 2011 เป็นรุ่นสุดท้ายที่ยังขายแบบ en primeur ก่อนที่การถอนตัวจะมีผลตั้งแต่รุ่นปี 2012 เป็นต้นไป เลือกที่จะเก็บไวน์ไว้บ่มในปราสาทจนกว่าจะพร้อมดื่มก่อนค่อยวางขาย'
     ],
     test: n => /\bchateau\s+latour\b/.test(n) },
-  { key: 'margaux', pronun: 'ชาโต มาร์โกซ์', short: 'FIRST GROWTH (PREMIER CRU)',
+  { key: 'margaux', pronun: 'ชาโตว์ มาร์โกซ์', short: 'FIRST GROWTH (PREMIER CRU)',
     desc: [
       'หนึ่งใน 5 ปราสาทที่ได้ระดับสูงสุดของ 1855 Bordeaux Classification — First Growth คือชั้นหนึ่งของระบบจัดอันดับที่ฝรั่งเศสวางไว้ตั้งแต่ปี 1855 มีเพียง 5 ปราสาทเท่านั้นที่ได้ระดับนี้ (Lafite, Latour, Margaux, Haut-Brion และ Mouton Rothschild ที่เลื่อนขึ้นมาทีหลังในปี 1973)',
-      'ตัวปราสาทเป็นอาคารสไตล์ Neo-Palladian สร้างขึ้นในปี 1810 โดยสถาปนิก Louis Combes ได้รับฉายาว่า "Versailles of the Médoc" ถือเป็นหนึ่งในสถาปัตยกรรมชาโตที่งดงามที่สุดของ Médoc',
+      'ตัวปราสาทเป็นอาคารสไตล์ Neo-Palladian สร้างขึ้นในปี 1810 โดยสถาปนิก Louis Combes ได้รับฉายาว่า "Versailles of the Médoc" ถือเป็นหนึ่งในสถาปัตยกรรมชาโตว์ที่งดงามที่สุดของ Médoc',
       'Terroir เป็นแปลงกรวดตื้นและระบายน้ำดีเยี่ยม มีสัดส่วนดินเหนียวต่ำกว่า Pauillac และ Saint-Estèphe ทำให้องุ่นสุกเร็วกว่าคอมมูนอื่นในเมด็อกราว 3-5 วัน แปลงไร่ในเขต Margaux ยังกระจัดกระจายสลับเจ้าของกันมากกว่าคอมมูนอื่น ทำให้สไตล์ไวน์แต่ละปราสาทมีความหลากหลายสูง',
       'ปลูก Cabernet Sauvignon เป็นหลัก เบลนด์กับ Merlot, Cabernet Franc และ Petit Verdot สไตล์ขึ้นชื่อเรื่องความ "หรูหรา" (elegance) กลิ่นดอกไม้และเครื่องเทศที่ละเอียดอ่อน มักถูกเรียกว่าเป็น First Growth ที่ "สง่างาม" ที่สุดในบรรดาทั้ง 5 ตัว',
       'ตระกูล Mentzelopoulos (เชื้อสายกรีก) เข้าซื้อกิจการในปี 1977 โดย André Mentzelopoulos และส่งต่อให้ลูกสาว Corinne ดูแลต่อหลังท่านเสียชีวิตกะทันหันในปี 1980 ปี 2015 มีการปรับปรุงห้องเก็บไวน์และสร้างอาคารผลิตไวน์ใหม่ครั้งใหญ่ที่สุดในรอบ 200 ปี โดยสถาปนิกรางวัล Pritzker Prize อย่าง Lord Norman Foster เป็นผู้ออกแบบ นอกจากนี้ Château Margaux ยังเป็นปราสาทแรกของบอร์กโดซ์ที่เริ่มยิงเลเซอร์สลักขวด (laser-etching) ตั้งแต่ปี 1989 เพื่อป้องกันไวน์ปลอม'
@@ -24997,13 +25032,29 @@ const WR_NAME_TIPS = [
     // wrongly showing this château's tip on an unrelated producer. Requiring "chateau margaux"
     // adjacency matches only the actual château name.
     test: n => /\bchateau\s+margaux\b/.test(n) },
-  { key: 'hautbrion', pronun: 'ชาโต โอต์บรียง', short: 'FIRST GROWTH (PREMIER CRU)',
+  { key: 'hautbrion', pronun: 'ชาโตว์ โอต์บรียง', short: 'FIRST GROWTH (PREMIER CRU)',
     desc: [
       'หนึ่งใน 5 ปราสาทที่ได้ระดับสูงสุดของ 1855 Bordeaux Classification และเป็นปราสาทเดียวที่ไม่ได้อยู่ในเขต Médoc — ตอนจัดอันดับปี 1855 นายหน้าค้าไวน์บอร์กโดซ์ยกให้ Haut-Brion ติดอันดับ First Growth ร่วมด้วยเพราะชื่อเสียงและราคาที่สูงมาโดยตลอด ทั้งที่ไร่อยู่ในเขต Pessac-Léognan (Graves) ไม่ใช่ Médoc เหมือนอีก 4 ตัว ถือเป็นปราสาทที่มีประวัติเก่าแก่ที่สุดในบรรดา First Growth ทั้งหมด — ผลิตไวน์ต่อเนื่องมาตั้งแต่ศตวรรษที่ 16',
       'Terroir เป็นเนินกรวดหนาที่ระบายน้ำดีเยี่ยม อยู่ใกล้เมือง Bordeaux มากที่สุดในบรรดา First Growth (เกือบอยู่ในเขตเมือง) ดินมีส่วนผสมของทรายมากกว่า Médoc ทำให้เก็บความร้อนได้ดี องุ่นสุกเร็วกว่า ปลูก Cabernet Sauvignon เบลนด์กับ Merlot สัดส่วนค่อนข้างสูง (มากกว่า First Growth ตัวอื่น) สไตล์ขึ้นชื่อเรื่องกลิ่นดิน มินเนอรัล และควันไฟที่เป็นเอกลักษณ์เฉพาะตัว เข้มข้นแต่นุ่มนวลกว่า Latour',
       'Samuel Pepys ข้าราชการกองทัพเรือและนักเขียนบันทึกชื่อดังชาวอังกฤษ เขียนถึงไวน์นี้ในไดอารีของเขาเมื่อวันที่ 10 เมษายน 1663 ว่าได้ลิ้มรส "Ho Bryan" ที่มีรสชาติพิเศษไม่เหมือนใคร ถือเป็นบันทึกรีวิวไวน์ที่มีชื่อผู้ผลิตระบุชัดเจนฉบับแรกๆ ของโลก ปี 1935 นักการเงินชาวอเมริกัน Clarence Dillon ซื้อกิจการมา และยังคงอยู่ในความดูแลของทายาทตระกูล Dillon มาจนถึงปัจจุบัน (ปัจจุบันบริหารโดย Prince Robert of Luxembourg เหลนของ Clarence) ทำให้เป็นปราสาทบอร์กโดซ์ที่ตระกูลอเมริกันถือครองต่อเนื่องยาวนานที่สุด'
     ],
     test: n => /\bchateau\s+haut[\s-]?brion\b/.test(n) },
+  { key: 'clercmilon', pronun: 'ชาโตว์ แกลร์ก มิยง', short: 'FIFTH GROWTH (CINQUIÈME CRU CLASSÉ)',
+    desc: [
+      'ได้รับการจัดอันดับเป็น Cinquième Cru Classé (Fifth Growth) ในการจัดอันดับ 1855 Bordeaux Classification ตั้งอยู่ที่หมู่บ้าน Pauillac เขต Médoc ตรงข้ามกับ Château Lafite Rothschild และอยู่ไม่ไกลจาก Château Mouton Rothschild ชื่อ "Clerc Milon" มาจากสองส่วน — Clerc คือนามสกุลตระกูลเจ้าของดั้งเดิม และ Milon คือชื่อหมู่บ้านเล็กๆ ใน Pauillac',
+      'หลังสงครามโลกครั้งที่ 2 ชาโตว์เสื่อมโทรมลงอย่างมากจนเกือบถูกลืม กระทั่งปี 1970 Baron Philippe de Rothschild เข้าซื้อกิจการเพราะเชื่อมั่นใน terroir และเริ่มปรับปรุงทั้งไร่องุ่น โรงบ่ม และมาตรฐานการผลิต ทำให้ Clerc Milon "ฟื้นคืนชีพ" กลับมาเป็นหนึ่งใน Fifth Growth ที่โดดเด่นที่สุด ต่อมา Baroness Philippine de Rothschild สร้างโรงหมักไวน์ใหม่ (2007) และห้องบ่มถังโอ๊ก (2011) ปัจจุบันบริหารโดยทายาทรุ่นที่สามของตระกูล Rothschild',
+      'ปลูก Cabernet Sauvignon เป็นสัดส่วนหลัก เบลนด์กับ Merlot, Cabernet Franc, Petit Verdot และ Carménère — ซึ่งเป็นหนึ่งในไม่กี่ชาโตว์ระดับ Grand Cru ที่ยังคงใช้องุ่นพันธุ์นี้ ทำให้ไวน์มีมิติเครื่องเทศและความซับซ้อนที่แตกต่างจาก Pauillac หลายแห่ง สไตล์ชัดเจนแบบ Pauillac คือกลิ่น blackcurrant (cassis), cedar, graphite, ซิการ์และยาสูบ, มิ้นต์ และดินกรวด โครงสร้างแน่นแต่สง่างาม บ่มได้นาน 20–30 ปีหรือมากกว่านั้นในปีที่ดี',
+      'เอกลักษณ์บนฉลากคือรูปนักเต้นทองคำสองคน ซึ่งได้แรงบันดาลใจจากเครื่องประดับทองคำโบราณสไตล์ศตวรรษที่ 17 สื่อถึงศิลปะการแสดงที่ตระกูล Rothschild ให้ความสำคัญ จนกลายเป็นตราประจำชาโตว์ ปัจจุบันได้รับการยกย่องว่าเป็นหนึ่งใน "Best Value Fifth Growth" ของ Pauillac เพราะให้คุณภาพใกล้เคียงไวน์ระดับสูงกว่าในราคาที่เข้าถึงได้มากกว่า First Growth หลายเท่า'
+    ],
+    test: n => /\bchateau\s+clerc\s+milon\b/.test(n) },
+  { key: 'armailhac', pronun: 'ชาโตว์ ดาร์มายัก', short: 'FIFTH GROWTH (CINQUIÈME CRU CLASSÉ)',
+    desc: [
+      'ร่องรอยของไร่องุ่นแห่งนี้ย้อนกลับไปถึงศตวรรษที่ 14 โดยเดิมเป็นส่วนหนึ่งของ Seigneurie de Mouton ซึ่งเป็นที่ดินขนาดใหญ่กว่า 2,000 เฮกตาร์ ก่อนที่ในปี 1660 ที่ดินจะตกเป็นของตระกูล d\'Armailhacq และตั้งชื่อชาโตว์ตามตระกูล ในปี 1855 ได้รับการจัดอันดับเป็น Cinquième Cru Classé (Fifth Growth) ในการจัดอันดับไวน์บอร์กโดซ์อย่างเป็นทางการ และยังคงรักษาสถานะนี้มาจนถึงปัจจุบัน',
+      'ปี 1933 Baron Philippe de Rothschild ซื้อชาโตว์แห่งนี้เพราะเชื่อมั่นในศักยภาพของ terroir ของ Pauillac ซึ่งเป็นปีเดียวกับที่ Baroness Philippine de Rothschild ถือกำเนิดพอดี หลังจากนั้นชาโตว์ถูกเปลี่ยนชื่อหลายครั้ง — Château Mouton d\'Armailhacq, Château Mouton Baron Philippe, Château Mouton Baronne Philippe — จนในปี 1989 Baroness Philippine ตัดสินใจคืนชื่อดั้งเดิม Château d\'Armailhac เพื่อให้เกียรติประวัติศาสตร์ของชาโตว์',
+      'ไร่องุ่นมีพื้นที่กว่า 80 เฮกตาร์ อยู่ติดกับ Château Mouton Rothschild บนดินกรวดอันเลื่องชื่อของ Pauillac ให้กลิ่น cassis (blackcurrant), cedar, graphite, tobacco และเครื่องเทศ แทนนินแน่นแต่ละเอียด ไวน์มักให้ความรู้สึกสง่างาม (elegant) มากกว่าทรงพลัง และสามารถบ่มได้ 20–30 ปีหรือมากกว่าในวินเทจชั้นเยี่ยม',
+      'ฉลากเป็นภาพรูปปั้นแก้วเป่า (spun-glass figurine) จาก Museum of Wine in Art ของ Château Mouton Rothschild สื่อถึงความเชื่อมโยงระหว่างศิลปะและไวน์ตามปรัชญาของตระกูล Rothschild หลายคนเรียกชาโตว์นี้ว่าเป็น "Hidden Gem of Pauillac" เพราะแม้เป็นเพียง Fifth Growth แต่คุณภาพในหลายวินเทจเทียบเคียงไวน์ระดับสูงกว่าได้ โดยเฉพาะหลังการลงทุนครั้งใหญ่ในโรงหมักและห้องบ่มไวน์แห่งใหม่ซึ่งเริ่มใช้งานกับวินเทจ 2021 เป็นต้นมา'
+    ],
+    test: n => /\bchateau\s+d['’]?armailhac\b/.test(n) },
 ];
 
 // [NEW 2026-07-29] "why this vintage is special" — the growing-season/weather story behind
@@ -25014,7 +25065,7 @@ const WR_NAME_TIPS = [
 const WR_VINTAGE_YEAR_WHY = {
   '1982': 'ฤดูร้อนที่ร้อนและแห้งผิดปกติตลอดทั้งฤดูปลูก ทำให้องุ่นสุกเต็มที่แบบที่ไม่ค่อยเกิดขึ้นในรอบหลายปีก่อนหน้า ได้ไวน์ที่เข้มข้น หวานเมล็ด (แทนนินนุ่ม) และเปี่ยมผลไม้อย่างที่บอร์กโดซ์ยุคนั้นไม่คุ้นเคย ปีนี้จึงพลิกภาพลักษณ์ไวน์บอร์กโดซ์จากที่ต้องรอหลายสิบปีกว่าจะดื่มได้ มาเป็นไวน์ที่ดื่มอร่อยได้ตั้งแต่ยังหนุ่มและเก็บได้ยาวไปพร้อมกัน และเป็นปีที่ทำให้นักวิจารณ์หน้าใหม่ในตอนนั้นอย่าง Robert Parker ให้คะแนนสูงกว่าสำนักอื่นอย่างเห็นได้ชัด จนระบบคะแนน 100 คะแนนของเขากลายเป็นมาตรฐานของวงการในเวลาต่อมา',
   '2000': 'ฤดูกาลปลูกที่เกือบสมบูรณ์แบบ — ฝนตกพอดีช่วงต้นฤดูแล้วแห้งยาวต่อเนื่องช่วงเก็บเกี่ยว ทำให้องุ่นทั้งฝั่ง Left Bank และ Right Bank สุกพร้อมกันในสภาพดีเยี่ยมทั่วแทบทุกแปลง ซึ่งไม่ได้เกิดขึ้นบ่อยนัก บวกกับความหมายเชิงสัญลักษณ์ของการเป็น "ปีสหัสวรรษ" (millennium vintage) ทำให้ไวน์ปีนี้ถูกซื้อเก็บและเก็งกำไรตั้งแต่ตอนขายล่วงหน้า (en primeur) มากเป็นพิเศษ ราคาจึงสูงกว่าค่าเฉลี่ยของทศวรรษนั้นไปมาก',
-  '2009': 'ฤดูร้อนที่ร้อนและแห้งที่สุดปีหนึ่งในรอบหลายสิบปี แทบไม่มีฝนรบกวนช่วงเก็บเกี่ยวเลย องุ่นจึงสุกเต็มที่แบบไม่มีอะไรมาขัดจังหวะ ได้ไวน์ที่แอลกอฮอล์สูง เนื้อแน่น และแทนนินนุ่มมาตั้งแต่ยังหนุ่ม (ต่างจากปีทั่วไปที่มักต้องรอหลายปีกว่าแทนนินจะนุ่มลง) นักวิจารณ์หลายสำนักให้คะแนนสูงสุดเป็นประวัติการณ์พร้อมกันแทบทุกชาโตในปีนี้ จนถูกเรียกว่าเป็น "ปีที่สมบูรณ์แบบ"',
+  '2009': 'ฤดูร้อนที่ร้อนและแห้งที่สุดปีหนึ่งในรอบหลายสิบปี แทบไม่มีฝนรบกวนช่วงเก็บเกี่ยวเลย องุ่นจึงสุกเต็มที่แบบไม่มีอะไรมาขัดจังหวะ ได้ไวน์ที่แอลกอฮอล์สูง เนื้อแน่น และแทนนินนุ่มมาตั้งแต่ยังหนุ่ม (ต่างจากปีทั่วไปที่มักต้องรอหลายปีกว่าแทนนินจะนุ่มลง) นักวิจารณ์หลายสำนักให้คะแนนสูงสุดเป็นประวัติการณ์พร้อมกันแทบทุกชาโตว์ในปีนี้ จนถูกเรียกว่าเป็น "ปีที่สมบูรณ์แบบ"',
   '2010': 'สภาพอากาศคล้ายปี 2009 คือร้อนและแห้ง แต่กลางคืนเย็นกว่า ทำให้องุ่นสุกช้าลงเล็กน้อยและรักษาความสดชื่นตามธรรมชาติไว้ได้ดีกว่า ผลคือได้ไวน์ที่มีโครงสร้างแน่นและศักยภาพเก็บอายุยาวกว่าปี 2009 แม้ความอลังการหรูหราจะน้อยกว่าเล็กน้อย นักวิจารณ์จึงมักเปรียบสองปีนี้เป็นคู่แฝดที่ตรงข้ามกัน — 2009 คือความอลังการ (opulence) ส่วน 2010 คือความแม่นยำและโครงสร้าง (precision)',
   '1945': 'ปีสุดท้ายของสงครามโลกครั้งที่ 2 ในยุโรป ไร่องุ่นขาดแคลนแรงงานและวัสดุอย่างหนักจากภาวะสงคราม ทำให้ผลผลิตน้อยมากเป็นพิเศษ แต่ฤดูร้อนที่ร้อนและแห้งทำให้องุ่นที่เหลือรอดสุกเข้มข้นผิดปกติ กลายเป็นสัญลักษณ์ของการเฉลิมฉลองชัยชนะและจุดเริ่มต้นยุคใหม่ของบอร์กโดซ์หลังสงคราม',
   '1961': 'ฤดูกาลปลูกเกือบสมบูรณ์แบบตั้งแต่ต้นจนจบ มีน้ำค้างแข็งรุนแรงช่วงต้นฤดูที่ทำให้ผลผลิตลดลงมาก แต่นั่นกลับยิ่งทำให้ผลองุ่นที่เหลือรอดเข้มข้นเป็นพิเศษ ตามด้วยฤดูร้อนที่อบอุ่นสม่ำเสมอ นักวิจารณ์หลายคนยกให้เป็นปีที่ยิ่งใหญ่ที่สุดของบอร์กโดซ์นับตั้งแต่ปี 1900',
@@ -25035,7 +25086,7 @@ const WR_VINTAGE_TIPS = {
     '2000': 'Robert Parker ให้ 97+ คะแนน สไตล์เข้มข้นแน่น ยังปิดตัว (backward) ตอนออกใหม่ แทนนินหนาและกลิ่นไม้โอ๊คชัดเจน',
     '2009': 'Robert Parker ให้ 99+ คะแนน หรูหราและนุ่มลึก (opulent) ถือเป็นหนึ่งในปีที่ดีที่สุดของทศวรรษ',
     '2010': 'Robert Parker ให้ 97-100 คะแนน โครงสร้างแน่น บริสุทธิ์ พร้อมความแม่นยำของแทนนินที่โดดเด่น',
-    '1945': 'Robert Parker ให้ 100 คะแนนเต็มหลายครั้ง ถือเป็นไวน์แห่งปีที่มีชื่อเสียงที่สุดของชาโต ฉลากปีนี้มีตัวอักษร "V" (Victory) เฉลิมฉลองการสิ้นสุดสงครามโลกครั้งที่ 2 และเป็นจุดเริ่มต้นของธรรมเนียมให้ศิลปินออกแบบฉลากใหม่ทุกปี',
+    '1945': 'Robert Parker ให้ 100 คะแนนเต็มหลายครั้ง ถือเป็นไวน์แห่งปีที่มีชื่อเสียงที่สุดของชาโตว์ ฉลากปีนี้มีตัวอักษร "V" (Victory) เฉลิมฉลองการสิ้นสุดสงครามโลกครั้งที่ 2 และเป็นจุดเริ่มต้นของธรรมเนียมให้ศิลปินออกแบบฉลากใหม่ทุกปี',
     '1961': 'แม้จะไม่ได้คะแนนเต็มเหมือนปี 1945 แต่นักชิมหลายคนยกให้เป็นหนึ่งใน Mouton ที่ดีที่สุดเท่าที่เคยชิม เข้มข้น หรูหรา กลิ่นซีดาร์และคาสสิสเด่นชัด',
     '1990': 'อยู่ในกลุ่มปีเด่นของทศวรรษ แม้จะไม่โดดเด่นเท่า Margaux ปีเดียวกัน แต่ยังคงความเข้มข้นและโครงสร้างที่ดีของ Mouton ไว้ครบ',
     '2005': 'ได้รับการยกย่องเป็นหนึ่งในปีที่โครงสร้างแน่นและมีศักยภาพเก็บอายุยาวที่สุดของทศวรรษ 2000s',
@@ -25043,18 +25094,18 @@ const WR_VINTAGE_TIPS = {
   },
   lafite: {
     '1982': 'Robert Parker ให้ 98 คะแนนตอนชิมช่วงกลางทศวรรษ 1990 ก่อนจะปรับขึ้นเป็น 100 คะแนนเต็มในการชิมย้อนหลังปี 2000 ถือเป็นปีตำนานที่วางรากฐานชื่อเสียงของนักวิจารณ์ไวน์คนนี้เอง ไวน์มีความสง่างามและสมดุลที่หาตัวจับยาก',
-    '2000': 'Robert Parker ให้ 100 คะแนนเต็มครั้งแรกในเดือนเมษายน 2003 ก่อนจะปรับลดลงมาเหลือ 98+ คะแนนในการชิมซ้ำเดือนมิถุนายน 2010 โดย Parker เองยอมรับตรงๆ ว่าถือเป็นการปรับลดคะแนน แต่ยังคงเป็นหนึ่งในไวน์แห่ง "ปีสหัสวรรษ" ที่ถูกจับตาและเก็งกำไรมากที่สุดของชาโต',
-    '2009': 'Robert Parker ให้ 99+ คะแนน อยู่ในกลุ่มไวน์คะแนนสูงสุดของปี 2009 ซึ่งเขายกให้เป็นปีบอร์กโดซ์ที่ยิ่งใหญ่ที่สุดเท่าที่เคยชิมมา ได้รับคำชมเรื่องความสมบูรณ์และศักยภาพในการเก็บรักษา ถือเป็นหนึ่งในปีร่วมสมัยที่ดีที่สุดของชาโต',
+    '2000': 'Robert Parker ให้ 100 คะแนนเต็มครั้งแรกในเดือนเมษายน 2003 ก่อนจะปรับลดลงมาเหลือ 98+ คะแนนในการชิมซ้ำเดือนมิถุนายน 2010 โดย Parker เองยอมรับตรงๆ ว่าถือเป็นการปรับลดคะแนน แต่ยังคงเป็นหนึ่งในไวน์แห่ง "ปีสหัสวรรษ" ที่ถูกจับตาและเก็งกำไรมากที่สุดของชาโตว์',
+    '2009': 'Robert Parker ให้ 99+ คะแนน อยู่ในกลุ่มไวน์คะแนนสูงสุดของปี 2009 ซึ่งเขายกให้เป็นปีบอร์กโดซ์ที่ยิ่งใหญ่ที่สุดเท่าที่เคยชิมมา ได้รับคำชมเรื่องความสมบูรณ์และศักยภาพในการเก็บรักษา ถือเป็นหนึ่งในปีร่วมสมัยที่ดีที่สุดของชาโตว์',
     '2010': 'Robert Parker ให้ 100 คะแนนเต็ม จัดให้เทียบเท่าปี 1982 และ 1990 ในแง่ความยิ่งใหญ่ ได้รับการยกย่องเรื่องความแม่นยำและโครงสร้างที่หายาก',
     '1945': 'ไม่มีบันทึกคะแนนเต็มจาก Parker ชัดเจนเหมือน Mouton หรือ Haut-Brion ปีนี้ แต่ถือเป็นหนึ่งในไวน์ประวัติศาสตร์ที่หายากและเป็นที่ต้องการสูงในวงการสะสม เนื่องจากผลผลิตน้อยมากจากภาวะสงคราม',
-    '1961': 'ถือเป็นปีที่ดีของ Lafite แต่โครงสร้างแทนนินค่อนข้างแข็งกระด้างในวัยหนุ่มมากกว่าชาโตอื่นในกลุ่ม First Growth ปีเดียวกัน ต้องใช้เวลาบ่มนานกว่าจะเข้าที่',
+    '1961': 'ถือเป็นปีที่ดีของ Lafite แต่โครงสร้างแทนนินค่อนข้างแข็งกระด้างในวัยหนุ่มมากกว่าชาโตว์อื่นในกลุ่ม First Growth ปีเดียวกัน ต้องใช้เวลาบ่มนานกว่าจะเข้าที่',
     '1990': 'คะแนนไม่เท่ากับปี 1982 หรือ 2000 แต่มีพัฒนาการที่น่าประทับใจเมื่อบ่มนาน จากการชิมย้อนหลัง Parker ให้ราว 96 คะแนน',
     '2005': 'อยู่ในกลุ่มไวน์ยอดเยี่ยมของทศวรรษ 2000s ที่นักวิจารณ์หลายสำนักให้คะแนนสูงเกือบเต็ม',
     '2016': 'Robert Parker ให้ 99 คะแนน (นักวิจารณ์บางสำนักให้เต็ม 100) ถือเป็นหนึ่งในปีที่ยอดเยี่ยมที่สุดของทศวรรษ 2010s',
   },
   latour: {
     '1982': 'Robert Parker ให้ 100 คะแนน ยกให้เป็นหนึ่งใน 3-4 ไวน์ที่ยิ่งใหญ่ที่สุดของทั้งบอร์กโดซ์ในปีนั้น',
-    '2000': 'Robert Parker ให้คะแนนไม่นิ่งในหลายรอบชิม อยู่ระหว่าง 93-98 คะแนน (ไม่เคยแตะ 100 เต็มเหมือนปี 1982/2009/2010 ของชาโตนี้) แต่ยังคงเป็นหนึ่งใน Left Bank ที่โดดเด่นที่สุดของปีสหัสวรรษ โครงสร้างแน่น เข้มข้น เก็บได้อีกหลายสิบปี',
+    '2000': 'Robert Parker ให้คะแนนไม่นิ่งในหลายรอบชิม อยู่ระหว่าง 93-98 คะแนน (ไม่เคยแตะ 100 เต็มเหมือนปี 1982/2009/2010 ของชาโตว์นี้) แต่ยังคงเป็นหนึ่งใน Left Bank ที่โดดเด่นที่สุดของปีสหัสวรรษ โครงสร้างแน่น เข้มข้น เก็บได้อีกหลายสิบปี',
     '2009': 'Robert Parker ให้ 100 คะแนนเต็ม หนึ่งใน 19 ไวน์ที่ได้คะแนนเต็มจากปีนี้ (มากที่สุดในประวัติศาสตร์การให้คะแนนของเขาปีเดียว) เข้มข้นและสมบูรณ์เป็นพิเศษ',
     '2010': 'Robert Parker ให้ 100 คะแนนเต็ม (Wine Advocate ฉบับที่ 194 พฤษภาคม 2011) ต่อเนื่องจากปี 2009 ถือเป็นหนึ่งใน First Growth ที่ได้รับรางวัลมากที่สุดของยุคใหม่',
     '1945': 'ไม่ติดอยู่ในรายชื่อไวน์ 100 คะแนนของ Parker สำหรับปีนี้ (ต่างจาก Mouton และ Haut-Brion) แต่ยังคงเป็นหนึ่งในไวน์ประวัติศาสตร์ที่เก็บสะสมกันอย่างกว้างขวาง',
@@ -25064,9 +25115,9 @@ const WR_VINTAGE_TIPS = {
     '2016': 'Robert Parker ให้ 100 คะแนนเต็ม ถือเป็นหนึ่งในปีที่ยิ่งใหญ่ที่สุดของ Latour ในยุคปัจจุบัน',
   },
   margaux: {
-    '1982': 'Robert Parker ให้ 98-100 คะแนน ทรงพลังแต่สง่างาม แม้บางเสียงวิจารณ์จะมองว่ายังไม่เข้มข้นเท่าปีอื่นของชาโตนี้',
+    '1982': 'Robert Parker ให้ 98-100 คะแนน ทรงพลังแต่สง่างาม แม้บางเสียงวิจารณ์จะมองว่ายังไม่เข้มข้นเท่าปีอื่นของชาโตว์นี้',
     '2000': 'Robert Parker ให้ 100 คะแนนเต็ม โดดเด่นเรื่องความสมดุลและโครงสร้างที่หายาก',
-    '2009': 'Robert Parker ให้คะแนนอยู่ในกลุ่ม 98-99 คะแนน — ปีที่มีไวน์ได้ 100 เต็มมากถึง 19 ตัวทั่วบอร์โดซ์ แต่ Margaux ปีนี้ยังไม่ถึงคะแนนเต็มเหมือน Latour และ Haut-Brion ปีเดียวกัน ถือเป็นหนึ่งในปีที่ยิ่งใหญ่ที่สุดของชาโต ผลองุ่นเข้มข้น สดชื่น และสมดุลเป็นพิเศษ',
+    '2009': 'Robert Parker ให้คะแนนอยู่ในกลุ่ม 98-99 คะแนน — ปีที่มีไวน์ได้ 100 เต็มมากถึง 19 ตัวทั่วบอร์โดซ์ แต่ Margaux ปีนี้ยังไม่ถึงคะแนนเต็มเหมือน Latour และ Haut-Brion ปีเดียวกัน ถือเป็นหนึ่งในปีที่ยิ่งใหญ่ที่สุดของชาโตว์ ผลองุ่นเข้มข้น สดชื่น และสมดุลเป็นพิเศษ',
     '2010': 'Robert Parker ให้ 100 คะแนนเต็ม บรรยายว่าเปี่ยมด้วยความสง่างามชั้นสูง สีม่วงเข้ม พลังมหาศาล',
     '1945': 'ผลผลิตน้อยจากภาวะสงคราม แต่ยังคงเป็นหนึ่งในไวน์ประวัติศาสตร์ที่หายากของปีนี้',
     '1961': 'แม้ปี 1961 จะโดดเด่นเป็นพิเศษสำหรับ Latour, Mouton และ Haut-Brion แต่ Margaux ปีนี้ถือว่าดีแต่ไม่โดดเด่นเท่า นักชิมบางคนให้ราว 94-96 คะแนน',
@@ -25077,13 +25128,13 @@ const WR_VINTAGE_TIPS = {
   hautbrion: {
     '1982': 'แม้ปี 1982 จะเป็นปีตำนานของบอร์กโดซ์ แต่ Haut-Brion กลับเป็นน้องเล็กสุดในกลุ่ม First Growth ปีนี้ — Parker ให้เพียงราว 95 คะแนน สไตล์สง่างามแต่พลังน้อยกว่าตัวอื่น',
     '2000': 'Robert Parker ให้ 96-98 คะแนนตอนชิมจากถังในช่วงปี 2001-2002 ก่อนจะขยับขึ้นเป็น 98-99 คะแนนในการชิมขวดจริงภายหลัง ยกให้เป็นหนึ่งใน 3-4 ไวน์ที่โดดเด่นที่สุดของทั้งปีสหัสวรรษนี้',
-    '2009': 'Robert Parker ให้ 100 คะแนนเต็ม เข้มข้นที่สุดเท่าที่ชาโตเคยทำมา ระดับแอลกอฮอล์สูงสุดในประวัติศาสตร์ของชาโต',
+    '2009': 'Robert Parker ให้ 100 คะแนนเต็ม เข้มข้นที่สุดเท่าที่ชาโตว์เคยทำมา ระดับแอลกอฮอล์สูงสุดในประวัติศาสตร์ของชาโตว์',
     '2010': 'Robert Parker ให้ 98-100 คะแนน ต่อเนื่องจากปี 2009 บรรยายว่าเป็นไวน์ที่สมบูรณ์แบบ',
-    '1945': 'Robert Parker ให้ 100 คะแนนเต็ม หนึ่งในไวน์ประวัติศาสตร์ที่ยิ่งใหญ่ที่สุดของชาโต จากปีที่ผลผลิตน้อยมากเพราะสงคราม',
+    '1945': 'Robert Parker ให้ 100 คะแนนเต็ม หนึ่งในไวน์ประวัติศาสตร์ที่ยิ่งใหญ่ที่สุดของชาโตว์ จากปีที่ผลผลิตน้อยมากเพราะสงคราม',
     '1961': 'Robert Parker ให้ 100 คะแนนเต็ม ถือเป็นหนึ่งในปีทรงพลังที่สุดของ Haut-Brion ในประวัติศาสตร์',
     '1990': 'อยู่ในกลุ่มไวน์ยอดเยี่ยมของปีนี้ แต่ไม่ได้รับคะแนนเต็มเหมือน Margaux ปีเดียวกัน',
     '2005': 'Robert Parker ให้ 100 คะแนนเต็ม ถือเป็นหนึ่งในปีที่สมบูรณ์แบบที่สุดของ Haut-Brion',
-    '2016': 'Robert Parker ให้ 100 คะแนนเต็ม (เช่นเดียวกับ Decanter และ James Suckling) นักวิจารณ์หลายสำนักยกให้เป็นไวน์ที่ดีที่สุดเท่าที่ชาโตเคยผลิตมา',
+    '2016': 'Robert Parker ให้ 100 คะแนนเต็ม (เช่นเดียวกับ Decanter และ James Suckling) นักวิจารณ์หลายสำนักยกให้เป็นไวน์ที่ดีที่สุดเท่าที่ชาโตว์เคยผลิตมา',
   },
 };
 
