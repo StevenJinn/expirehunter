@@ -7187,6 +7187,21 @@ body.cam-open #page-catalog{
 
 .wc-close{box-shadow:0 0 0 1px rgba(0,212,170,.15),0 0 10px -3px rgba(0,212,170,.4)}
 
+/* [PERF-FIX 2026-08-01] เปิด UES (Universal Edit Sheet) ทับหน้าเดินเช็ค — UES มี backdrop-filter:
+   blur(16px) เต็มจอ ซึ่งต้องคำนวณ blur ใหม่ทุกครั้งที่อะไรก็ตามด้านหลัง "เปลี่ยน" แม้จะมองไม่เห็นแล้ว
+   เพราะโดนบังอยู่ หน้าเดินเช็คมี animation infinite พร้อมกันหลายตัว (จุดกระพริบหัวข้อ, มุมเล็ง HUD
+   4 มุม, แถบ progress shine, jump-chip ที่ active) ทำให้ browser repaint ต่อเนื่องไม่มีวันหยุดอยู่หลัง
+   ม่านเบลอ กลายเป็นกระตุก/กระพริบเห็นชัด (ต่างจากหน้า record ซึ่งพื้นหลังนิ่ง ไม่มี animation ต่อเนื่อง
+   แบบนี้ซ้อนกันหลายจุด) — เมื่อ UES เปิดคลุมอยู่ ให้หยุด animation พวกนี้ชั่วคราว (ผู้ใช้มองไม่เห็น
+   อยู่แล้ว) แล้วค่อยกลับมาเล่นต่อตอนปิด UES */
+#wc-overlay.wc-frozen .wc-title::before,
+#wc-overlay.wc-frozen .wc-progress-fill::after,
+#wc-overlay.wc-frozen .wc-jump-chip.wc-jump-active,
+#wc-overlay.wc-frozen .wc-hud-corner,
+#wc-overlay.wc-frozen .wc-search-wrap::before{
+  animation-play-state:paused!important;
+}
+
 @media (prefers-reduced-motion:reduce){
   .wc-title::before,.wc-title,.wc-jump-chip.wc-jump-active,.wc-progress-fill::after,.wc-hud-corner,.wc-search-wrap::before{animation:none}
 }
@@ -13758,6 +13773,12 @@ function openUES(id) {
   const sheet = document.getElementById('uesSheet');
   const panel = document.getElementById('uesPanel');
   sheet.style.display = 'flex';
+  // [PERF-FIX 2026-08-01] ถ้า UES เปิดทับหน้าเดินเช็คอยู่ (wc-overlay.wc-open) ให้หยุด animation
+  // infinite ต่างๆ ของหน้าเดินเช็คชั่วคราว — ผู้ใช้มองไม่เห็นมันอยู่แล้ว (โดน backdrop-filter blur
+  // เต็มจอของ UES บังอยู่) แต่ตัว browser ยังต้อง repaint/re-blur ทุกเฟรมถ้าปล่อยให้เล่นต่อ ทำให้
+  // กระตุก/กระพริบ — ดู CSS #wc-overlay.wc-frozen ที่คู่กัน
+  const _wcOverlayEl = document.getElementById('wc-overlay');
+  if (_wcOverlayEl && _wcOverlayEl.classList.contains('wc-open')) _wcOverlayEl.classList.add('wc-frozen');
   // lock body scroll — ใช้ position:fixed + top เพื่อป้องกัน viewport shift บน Android Chrome
   const _scrollY = window.scrollY;
   document.body.style.overflow = 'hidden';
@@ -13781,6 +13802,9 @@ function openUES(id) {
 function closeUES() {
   const panel = document.getElementById('uesPanel');
   const sheet = document.getElementById('uesSheet');
+  // [PERF-FIX 2026-08-01] คืน animation ของหน้าเดินเช็คให้เล่นต่อตอน UES ปิดแล้ว (คู่กับตอนเปิด)
+  const _wcOverlayEl = document.getElementById('wc-overlay');
+  if (_wcOverlayEl) _wcOverlayEl.classList.remove('wc-frozen');
   // blur focus ก่อนเพื่อปิด keyboard (ป้องกัน visualViewport resize ยิงหลัง close)
   if (document.activeElement && document.activeElement !== document.body) {
     document.activeElement.blur();
