@@ -7712,6 +7712,13 @@ document.body.style.overflow = 'hidden';
     if(document.hidden){_bgRafId=null;return;} // หยุดจริงเมื่อแท็บซ่อน
     // [PERF FIX] หยุดวาดตอนโดน camera overlay บังเต็มจอ — ไม่มีใครเห็นอยู่แล้ว
     if(document.body.classList.contains('cam-open')){_bgRafId=requestAnimationFrame(loop);return;}
+    // [FIX 2026-08-01 v7] หยุดวาดตอน UES เปิดอยู่ — canvas นี้เป็น requestAnimationFrame ของ JS
+    // ล้วนๆ ไม่ใช่ CSS animation จึงไม่โดน body.ues-open-frozen{animation-play-state:paused} หยุด
+    // แม้แต่นิดเดียว ยังคงวาดต่อ 20fps อยู่หลัง backdrop-filter:blur(16px) เต็มจอของ #uesSheet
+    // ซึ่งต้องคำนวณ blur ใหม่ทุกครั้งที่พื้นหลังเปลี่ยนแม้มองไม่เห็นเพราะโดนบังอยู่ — เห็นเป็นกระพริบ
+    // ชัดสุดตรงขอบ/เส้นของ badge ในพาเนล (ตำแหน่งเชลฟ์, ล็อตอื่นๆ) ที่ contrast กับพื้นหลังเบลอมากกว่า
+    // พื้นเรียบๆ — ยังคง schedule เฟรมถัดไปไว้ (ไม่ cancel loop) เพื่อกลับมาวาดต่อทันทีที่ปิด UES
+    if(document.body.classList.contains('ues-open-frozen')){_bgRafId=requestAnimationFrame(loop);return;}
     if(now-_bgLast<50){_bgRafId=requestAnimationFrame(loop);return;} // cap 20fps
     _bgLast=now;
     ctx.fillStyle='rgba(10,14,12,0.55)';
