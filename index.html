@@ -5202,7 +5202,7 @@ body.cam-open #page-catalog{
      ทางแก้: ตัด backdrop-filter ออก เพราะ background ทึบ .88 อยู่แล้วแทบไม่เห็นผลต่างของ blur
      ต่อสายตา แต่ต้นทุน GPU สูงมากและเป็นตัวการกระพริบทั้งหมด — ดันความทึบขึ้นเป็น .94 ชดเชย
      ความคมของขอบพาเนลที่ไม่มี blur ช่วยกลบอีกทีนึง */
-  background:rgba(0,0,0,.94);
+  background:#05060a;
   align-items:flex-end;justify-content:center;
   touch-action:none;overscroll-behavior:none;
 }
@@ -7767,6 +7767,12 @@ document.body.style.overflow = 'hidden';
   function tick(){
     const el=document.getElementById('hdr-time');
     if(!el) return;
+    // [FIX 2026-08-01 v11] setInterval ธรรมดา ไม่ใช่ CSS animation เลยไม่โดน
+    // animation-play-state:paused ตอน freeze หน้า (ues-open-frozen/wc-frozen) — ยังอัปเดตทุก 1s
+    // ต่อเนื่องอยู่หลังฉากแม้ overlay เต็มจอบังอยู่ ไม่จำเป็นต้องเสียงานตรงนี้เปล่าๆ ระหว่างที่คนมองไม่เห็นอยู่แล้ว
+    if (document.body.classList.contains('ues-open-frozen')) return;
+    const _wc = document.getElementById('wc-overlay');
+    if (_wc && _wc.classList.contains('wc-frozen')) return;
     const n=new Date();
     el.textContent=[n.getHours(),n.getMinutes(),n.getSeconds()].map(x=>String(x).padStart(2,'0')).join(':');
   }
@@ -8107,6 +8113,8 @@ document.body.style.overflow = 'hidden';
       var _sonarLast=0,_sonarRafId=null;
       function drawSonar(){
         if(document.hidden){_sonarRafId=null;_sonarLast=0;return;} // หยุดจริงเมื่อซ่อน
+        // [FIX 2026-08-01 v12] เช็คเพิ่มเหมือน ECG loop — เดิมไม่เช็ค ues-open-frozen เลย
+        if(document.body.classList.contains('ues-open-frozen')){_sonarRafId=requestAnimationFrame(drawSonar);return;}
         var _sNow=performance.now();
         var _dt=_sonarLast?Math.min(_sNow-_sonarLast,50):16.667;
         _sonarLast=_sNow;
@@ -8272,6 +8280,14 @@ document.body.style.overflow = 'hidden';
 
       function frame(now){
         if(document.hidden){_ecgRafId=null;last=null;return;} // หยุด+reset dt เมื่อซ่อน
+        // [FIX 2026-08-01 v12] เจอสาเหตุจริงของกระพริบทุก ~1s: ECG canvas loop นี้เช็คแค่
+        // document.hidden ไม่เช็ค ues-open-frozen/wc-frozen เลย — ตอน UES เปิดทับอยู่ (ผู้ใช้มองไม่เห็น
+        // ECG เพราะโดน overlay ทึบบัง) มันยังคง requestAnimationFrame ต่อเนื่อง "และ" ยิง flashBpm()
+        // ทุกจังหวะหัวใจเต้น (msPerBeat ~820ms ตอนปกติ ≈ เกือบ 1s เป๊ะ) ซึ่งข้างในมี
+        // `void el.offsetWidth` บังคับ synchronous reflow ทุกครั้ง — reflow ที่มองไม่เห็นผลลัพธ์แต่
+        // เกิดขึ้นจริงทุก ~1s นี้เองที่ไปกวน compositor บน Android จนเห็นเป็นกระพริบเป็นจังหวะ
+        // ทั้งที่ตัว ECG เองไม่ได้อยู่ในเฟรมที่มองเห็นด้วยซ้ำ — พักลูปนี้ไปพร้อมกับหน้าที่เหลือ */
+        if(document.body.classList.contains('ues-open-frozen')){_ecgRafId=requestAnimationFrame(frame);return;}
         if(!last){ last = now; _ecgRafId=requestAnimationFrame(frame); return; }
         var dt = Math.min(now - last, 40);
         last = now;
@@ -12306,6 +12322,7 @@ function renderRecords() {
       var _hexLast=0;
       function frameFast(){
         if(document.hidden){window._nxHexRaf=null;return;} // หยุดจริง ไม่ re-queue
+        if(document.body.classList.contains('ues-open-frozen')){window._nxHexRaf=requestAnimationFrame(frameFast);return;}
         var _hNow=performance.now();
         if(_hNow-_hexLast<50){window._nxHexRaf=requestAnimationFrame(frameFast);return;} // cap 20fps
         _hexLast=_hNow;
@@ -12361,6 +12378,7 @@ function renderRecords() {
     function frame(ts){
       // หยุด RAF จริงเมื่อ page ซ่อนอยู่ (tab เปลี่ยน / screen ดับ)
       if(document.hidden){ window._nxHexRaf=null; return; }
+      if(document.body.classList.contains('ues-open-frozen')){ window._nxHexRaf=requestAnimationFrame(frame); return; }
       const now=performance.now();
       if(now-_hexFullLast<50){window._nxHexRaf=requestAnimationFrame(frame);return;} // cap 20fps
       _hexFullLast=now;
