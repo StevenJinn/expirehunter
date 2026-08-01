@@ -5238,12 +5238,20 @@ body.ues-open-frozen #uesSheet *{animation-play-state:running!important}
      scrollable overflow ของ container นี้ โดยไม่ต้องแก้โครงสร้าง DOM */
   contain:paint;
 }
-/* animated top border */
+/* animated top border
+   [FIX 2026-08-01 v6] #uesPanelInner is one composited layer (will-change:transform + contain:paint,
+   see above). Animating background-position here repaints this pseudo-element every frame — and
+   without its own layer, that repaint could get bundled into a repaint of the whole #uesPanelInner
+   layer, which visually reads as flicker on unrelated static content sitting in that same box (the
+   shelf-location and multi-lot badges under #ues-shelf-locs / #ues-existing-lots have borders/
+   gradients that make repaint dithering more visible than on flat background). translateZ(0) forces
+   this pseudo-element onto its own layer so its animation stops touching the rest of the panel. */
 #uesPanelInner::before{
   content:'';position:absolute;top:0;left:0;right:0;height:2px;z-index:10;
   background:linear-gradient(90deg,transparent,rgba(255,210,0,.0) 5%,rgba(255,200,80,1) 25%,rgba(255,255,180,1) 50%,rgba(255,200,80,1) 75%,rgba(255,210,0,.0) 95%,transparent);
   background-size:200% 100%;
-  animation:uesBorderFlow 2.5s linear infinite;pointer-events:none;will-change:background-position;
+  animation:uesBorderFlow 2.5s linear infinite;pointer-events:none;
+  will-change:background-position,transform;transform:translateZ(0);
 }
 /* scan sweep — identical technique to #matchCard::after, but transform-based (see uesScanV note above)
    [FIX 2026-08-01 v5] contain:paint (above, on #uesPanelInner) turned out not to be enough on its
@@ -5254,10 +5262,14 @@ body.ues-open-frozen #uesSheet *{animation-play-state:running!important}
    sideways by the scrollbar-gutter width every cycle. Fix: stop attaching the beam directly to the
    scroll container. Give it its own non-scrolling wrapper (#ues-scanfx) that is inset:0 + its own
    overflow:hidden — that wrapper's box is always exactly the panel's visible frame (never bigger),
-   so it can never itself contribute overflow to the parent, no matter what its animated child does. */
+   so it can never itself contribute overflow to the parent, no matter what its animated child does.
+   [FIX 2026-08-01 v6] Also promote #ues-scanfx to its own compositing layer (same reasoning as the
+   border-flow fix directly above) — isolation:isolate + translateZ(0) — so the beam's per-frame
+   animation can't drag the shelf-locs/existing-lots badges into a shared-layer repaint either. */
 #ues-scanfx{
   position:absolute;inset:0;z-index:9;
   overflow:hidden;border-radius:inherit;pointer-events:none;
+  isolation:isolate;transform:translateZ(0);
 }
 #ues-scanfx::after{
   content:'';position:absolute;top:0;left:0;right:0;height:1.5px;
