@@ -5331,7 +5331,12 @@ body.ues-open-frozen #uesSheet *{animation-play-state:running!important}
   background:linear-gradient(135deg,rgba(255,210,0,.08),transparent 60%);
   pointer-events:none;
 }
-#ues-name{font-size:14px;font-weight:800;color:#f0f2ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 20px rgba(255,210,0,.15);animation:mcHeaderGlitch 9s ease-in-out infinite}
+/* [FIX 2026-08-01 v9] #ues-name เป็นตัวเดียวใน UES ที่ animate (mcHeaderGlitch: transform+opacity)
+   แต่ไม่เคยถูกแยก layer เหมือนจุดอื่น (border-flow/scan/dot/corner ด้านบนโดน translateZ(0) หมดแล้ว)
+   ผลคือทุก 9s ที่ glitch ขยับ ต้อง repaint ร่วม layer กับ #ues-hdr ทั้งก้อน ลากเอา shelf-locs chip
+   กับ existing-lots rows ที่อยู่ติดกันด้านล่าง (คนละ element แต่ raster ทับซ้อนกัน) กระพริบตามไปด้วย
+   — แยก layer ของ #ues-name เองด้วย will-change+translateZ(0) เหมือนจุดอื่นที่แก้ไปแล้ว */
+#ues-name{font-size:14px;font-weight:800;color:#f0f2ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 20px rgba(255,210,0,.15);animation:mcHeaderGlitch 9s ease-in-out infinite;will-change:transform,opacity;transform:translateZ(0)}
 #ues-barcode{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#00d4aa;letter-spacing:.5px;background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.2);border-radius:4px;padding:1px 6px}
 #ues-meta{font-size:9px;color:#555e7a;margin-top:3px}
 
