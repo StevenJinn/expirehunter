@@ -5287,8 +5287,11 @@ body.ues-open-frozen #uesSheet *{animation-play-state:running!important}
     linear-gradient(90deg,rgba(255,210,0,.025) 1px,transparent 1px);
   background-size:22px 22px;
 }
-/* corner brackets — same size/offset/opacity as .mc-corner (all 4) */
-.ues-cc{position:absolute;width:12px;height:12px;z-index:11;pointer-events:none;}
+/* corner brackets — same size/offset/opacity as .mc-corner (all 4)
+   [FIX 2026-08-01 v8] filter:drop-shadow (see @keyframes uesCorner) is also not GPU-composited —
+   same repaint-bleed risk as the live-dot's box-shadow above, and the top two corners sit directly
+   in the header region. Isolated onto their own layers for the same reason. */
+.ues-cc{position:absolute;width:12px;height:12px;z-index:11;pointer-events:none;will-change:filter,opacity;transform:translateZ(0);}
 .ues-cc.tl{top:6px;left:6px;border-top:2px solid rgba(255,210,0,.7);border-left:2px solid rgba(255,210,0,.7);animation:uesCorner 2.4s ease-in-out infinite}
 .ues-cc.tr{top:6px;right:6px;border-top:2px solid rgba(255,210,0,.7);border-right:2px solid rgba(255,210,0,.7);animation:uesCorner 2.4s ease-in-out .3s infinite}
 .ues-cc.bl{bottom:6px;left:6px;border-bottom:2px solid rgba(255,210,0,.35);border-left:2px solid rgba(255,210,0,.35);animation:uesCorner 2.4s ease-in-out .6s infinite}
@@ -5301,7 +5304,12 @@ body.ues-open-frozen #uesSheet *{animation-play-state:running!important}
 /* sys row */
 #ues-sysrow{display:flex;align-items:center;justify-content:space-between;padding:0 18px 10px;position:relative;z-index:5}
 .ues-live-badge{display:flex;align-items:center;gap:6px}
-.ues-live-dot{width:6px;height:6px;border-radius:50%;background:#ffd200;animation:uesDot 1.4s ease-in-out infinite;flex-shrink:0}
+/* [FIX 2026-08-01 v8] box-shadow ไม่ใช่ GPU-composited property — เส้นนี้ต้อง repaint จริงทุกเฟรม
+   ตลอดเวลาที่วน infinite (ไม่ใช่แค่ตอน beam/border flow เท่านั้น) ถ้าไม่มี layer ของตัวเอง repaint
+   เล็กๆ ของจุดนี้จะลากเอา layer รวมของ #uesPanelInner (ซึ่งมี badge ตำแหน่งเชลฟ์/ล็อตอื่นๆ อยู่ด้วย)
+   ไปด้วย เพราะจุดนี้อยู่บนสุดของพาเนลและ animate ตลอดไม่มีหยุด — แยก layer ด้วย translateZ(0) กัน
+   ไม่ให้ repaint ของจุดนี้ไปแตะพื้นที่อื่นของพาเนล */
+.ues-live-dot{width:6px;height:6px;border-radius:50%;background:#ffd200;animation:uesDot 1.4s ease-in-out infinite;flex-shrink:0;will-change:box-shadow,opacity;transform:translateZ(0);}
 .ues-live-lbl{font-family:'IBM Plex Mono',monospace;font-size:8px;color:rgba(255,210,0,.65);letter-spacing:2.5px;text-transform:uppercase;font-weight:700}
 .ues-sysid{font-family:'IBM Plex Mono',monospace;font-size:7px;color:rgba(255,210,0,.25);letter-spacing:2px}
 
