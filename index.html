@@ -13769,6 +13769,11 @@ function openUES(id) {
     panel.style.transform = 'translateY(0)';
     const inner = document.getElementById('uesPanelInner');
     if (inner) inner.style.setProperty('--ues-h', inner.clientHeight + 'px');
+    // [FIX] mcDateSyncAll('ues') ที่เรียกไปก่อนหน้านี้ (ตอน sheet ยัง display:none) เซ็ต
+    // scrollTop ของ reel ไม่ติด เพราะ column ที่ถูกซ่อนอยู่มี scrollHeight เป็น 0 — ทำให้ดรัมไม่
+    // เลื่อนไปวันที่เดิมของ record (ค้างที่ตำแหน่งเก่า/0) ทั้งจากหน้าเดินเช็คและหน้า record
+    // ต้อง sync ซ้ำตอนนี้ที่ sheet โชว์แล้วจริง (display:flex + เลย์เอาต์คำนวณแล้ว) ถึงจะเลื่อนติด
+    mcDateSyncAll('ues');
   }));
   window._lastModalClose = null;
 }
