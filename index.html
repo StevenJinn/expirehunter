@@ -7558,6 +7558,14 @@ document.body.style.overflow = 'hidden';
 
   let frame=0, lastW=0, lastH=0;
   function draw(){
+    // [FIX 2026-08-01 v13] เจอตัวการใหญ่จริง: draw() นี้ไม่มี guard อะไรเลยแม้แต่ document.hidden —
+    // วาดดาว 280 ดวง+เนบิวลา (สร้าง gradient ใหม่ทุกเฟรมสำหรับ Milky Way band) เต็ม 60fps ตลอดเวลา
+    // ไม่เคยหยุด ไม่ว่า UES จะเปิดทับอยู่หรือไม่ก็ตาม — นี่คือภาระ GPU/CPU ต่อเนื่องที่ไปแย่งเฟรมกับ
+    // UES ทำให้เกิดจังหวะสะดุด/กระพริบเป็นระยะบน Android (พบจากการ log requestAnimationFrame จริง
+    // ของแอปเต็ม พบว่า draw() ตัวนี้ยังยิงเต็มอัตราแม้ตอน body.ues-open-frozen ติดอยู่)
+    if(document.hidden || document.body.classList.contains('ues-open-frozen')){
+      requestAnimationFrame(draw); return;
+    }
     const W=cv.width, H=cv.height;
     if(W!==lastW||H!==lastH||!nebulaCache){ nebulaCache=buildNebula(W,H); lastW=W; lastH=H; }
 
@@ -27968,6 +27976,9 @@ const nxZoomSteps=[1,1.5,2,3,4,6,8];
   let _pRaf=null;
   function draw(){
     if(document.hidden){_pRaf=requestAnimationFrame(draw);return;}
+    // [FIX 2026-08-01 v13] เหมือนกับ #sl-canvas — เดิมเช็คแค่ document.hidden ไม่เช็ค
+    // ues-open-frozen เลย แคนวาสนี้เต็มจอ (W=innerWidth,H=innerHeight) วาดทุกเฟรมตลอดเวลา
+    if(document.body.classList.contains('ues-open-frozen')){_pRaf=requestAnimationFrame(draw);return;}
     cx.clearRect(0,0,W,H);
     const t=Date.now()*.001;
     for(const p of pts){
