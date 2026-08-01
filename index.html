@@ -5322,8 +5322,21 @@ body.ues-open-frozen #uesSheet *{animation-play-state:running!important}
 .ues-live-lbl{font-family:'IBM Plex Mono',monospace;font-size:8px;color:rgba(255,210,0,.65);letter-spacing:2.5px;text-transform:uppercase;font-weight:700}
 .ues-sysid{font-family:'IBM Plex Mono',monospace;font-size:7px;color:rgba(255,210,0,.25);letter-spacing:2px}
 
-/* product header — same box treatment as #mc-product-header (full-width, bottom-border-only, same gradient/padding) */
-#ues-hdr{margin:0;padding:14px 14px 12px;position:relative;z-index:5;background:linear-gradient(180deg,rgba(255,210,0,.07) 0%,rgba(255,210,0,.02) 100%);border-bottom:1px solid rgba(255,210,0,.15)}
+/* product header — same box treatment as #mc-product-header (full-width, bottom-border-only, same gradient/padding)
+   [FIX 2026-08-01 v14] v9 tried to isolate #ues-name's own glitch animation with its own
+   will-change+translateZ(0) layer, same recipe used successfully on .ues-cc/.ues-live-dot/
+   #ues-scanfx/#uesPanelInner::before. But those are 6 separate tiny promoted layers all packed
+   into the same ~90px header region — on Android Chrome, once too many small layers sit this close
+   together the compositor "squashes" them back into one shared backing store to stay under its
+   layer-memory budget (this is a real, documented Chromium behavior, not a one-off). Squashing
+   silently undoes every one of those per-element isolation fixes at once, which is why the glitch's
+   repaint was still visibly bleeding into the shelf-locs/existing-lots badges even after v9.
+   Fix: stop trying to isolate #ues-name individually. Instead promote the whole header block
+   (#ues-hdr) to ONE layer that already contains the name, badges, shelf-locs and lots together —
+   the glitch repaints inside a layer that already owns its neighbors, so there's nothing left to
+   bleed into. This also *reduces* total layer count instead of adding to it, so it won't trip the
+   same squashing threshold again. */
+#ues-hdr{margin:0;padding:14px 14px 12px;position:relative;z-index:5;background:linear-gradient(180deg,rgba(255,210,0,.07) 0%,rgba(255,210,0,.02) 100%);border-bottom:1px solid rgba(255,210,0,.15);isolation:isolate;transform:translateZ(0);will-change:transform}
 #ues-hdr-body{padding-left:0}
 /* icon frame — identical to #matchIcon */
 .ues-match-icon{
@@ -5340,12 +5353,19 @@ body.ues-open-frozen #uesSheet *{animation-play-state:running!important}
   background:linear-gradient(135deg,rgba(255,210,0,.08),transparent 60%);
   pointer-events:none;
 }
-/* [FIX 2026-08-01 v9] #ues-name เป็นตัวเดียวใน UES ที่ animate (mcHeaderGlitch: transform+opacity)
-   แต่ไม่เคยถูกแยก layer เหมือนจุดอื่น (border-flow/scan/dot/corner ด้านบนโดน translateZ(0) หมดแล้ว)
-   ผลคือทุก 9s ที่ glitch ขยับ ต้อง repaint ร่วม layer กับ #ues-hdr ทั้งก้อน ลากเอา shelf-locs chip
-   กับ existing-lots rows ที่อยู่ติดกันด้านล่าง (คนละ element แต่ raster ทับซ้อนกัน) กระพริบตามไปด้วย
-   — แยก layer ของ #ues-name เองด้วย will-change+translateZ(0) เหมือนจุดอื่นที่แก้ไปแล้ว */
-#ues-name{font-size:14px;font-weight:800;color:#f0f2ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 20px rgba(255,210,0,.15);animation:mcHeaderGlitch 9s ease-in-out infinite;will-change:transform,opacity;transform:translateZ(0)}
+/* [FIX 2026-08-01 v9 — SUPERSEDED BY v14, see #ues-hdr above] v9 gave #ues-name its own
+   will-change+translateZ(0) layer to stop its 9s glitch from repainting the shelf-locs/lots
+   badges below it. That didn't actually hold on Android (too many small promoted layers in one
+   small area get squashed back together by the compositor). v14 removed #ues-name's own
+   promotion and instead promoted the whole #ues-hdr block as one layer. Do not re-add
+   will-change/translateZ(0) here without removing it from #ues-hdr first — stacking both is
+   the exact squashing setup that caused the bug. */
+#ues-name{font-size:14px;font-weight:800;color:#f0f2ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 20px rgba(255,210,0,.15);animation:mcHeaderGlitch 9s ease-in-out infinite}
+/* [FIX 2026-08-01 v14b] Belt-and-suspenders on top of the #ues-hdr layer-consolidation fix above:
+   flat-out kill the glitch animation on Android, where the flicker was actually observed, instead
+   of only trusting compositor layer behavior we can't fully control or verify. See <html> class
+   set in the inline script right after <body>. */
+.is-android #ues-name{animation:none}
 #ues-barcode{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#00d4aa;letter-spacing:.5px;background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.2);border-radius:4px;padding:1px 6px}
 #ues-meta{font-size:9px;color:#555e7a;margin-top:3px}
 
@@ -7289,6 +7309,16 @@ body.ues-open-frozen #uesSheet *{animation-play-state:running!important}
 </style>
 </head>
 <body>
+<script>
+/* [FIX 2026-08-01 v14b] The header-glitch flicker (see #ues-hdr / #ues-name v14 fix below) traces
+   back to Chrome-on-Android's compositor layer-squashing — a heuristic that can change between
+   Chrome versions/GPU drivers and was never something we could fully verify without a matching
+   device. Rather than keep guessing at layer counts (v9 already tried and silently failed), add a
+   deterministic fallback: detect Android up front and flag it on <html>, so we can flat-out disable
+   the purely-decorative glitch animation there instead of hoping the compositor cooperates. iOS/
+   desktop keep the effect since the bug has only ever reproduced on Android Chrome. */
+if (/Android/i.test(navigator.userAgent)) document.documentElement.classList.add('is-android');
+</script>
 <style>
 /* ══════════════════════════════════════════════════════════════════════
    ล่าหมดอายุ — AUTH GATE v5  "PURE STARFIELD & NEBULA"  2026-07-02
