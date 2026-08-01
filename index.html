@@ -5193,7 +5193,16 @@ body.cam-open #page-catalog{
      แล้วไม่เห็นอะไรเลย (ถูกบังอยู่หลัง) ต้องปิดหน้าเดินเช็คก่อนถึงจะเห็น UES โผล่มา — ยกขึ้นมาอยู่
      เหนือ overlay ของเดินเช็คทั้งหมด (8800/8900/9200) แต่ยังต่ำกว่า toast/modal ระดับบนสุดของแอป */
   display:none;position:fixed;inset:0;z-index:9300;
-  background:rgba(0,0,0,.88);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  /* [FIX 2026-08-01 v10] เจอสาเหตุจริงของกระพริบเป็นจังหวะ (ทุก ~2.5-5s ตรงกับ border-flow/
+     corner/scan-beam) บน Android Chrome: backdrop-filter:blur() ที่นี่บังคับให้ Chrome ต้อง
+     re-sample พื้นที่ backdrop ใหม่ทุกครั้งที่ "layer ไหนก็ตาม" ในซีนเดียวกันขยับ — แม้ layer ลูก
+     จะถูกแยกด้วย translateZ(0)/isolation:isolate ไปแล้วก็ตาม (isolation กัน repaint ระหว่าง
+     ลูกด้วยกันเองได้ แต่ไม่กัน backdrop-filter ของแม่ต้อง re-sample ใหม่) เป็นบั๊กที่รู้จักของ
+     Chromium บน Android GPU driver บางรุ่น ไม่เกิดปัญหานี้บน iOS Safari เพราะ compositor คนละตัว
+     ทางแก้: ตัด backdrop-filter ออก เพราะ background ทึบ .88 อยู่แล้วแทบไม่เห็นผลต่างของ blur
+     ต่อสายตา แต่ต้นทุน GPU สูงมากและเป็นตัวการกระพริบทั้งหมด — ดันความทึบขึ้นเป็น .94 ชดเชย
+     ความคมของขอบพาเนลที่ไม่มี blur ช่วยกลบอีกทีนึง */
+  background:rgba(0,0,0,.94);
   align-items:flex-end;justify-content:center;
   touch-action:none;overscroll-behavior:none;
 }
