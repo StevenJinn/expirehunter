@@ -5228,6 +5228,15 @@ body.ues-open-frozen #uesSheet *{animation-play-state:running!important}
   max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
   overscroll-behavior:contain;
   will-change:transform;transform:translateZ(0);isolation:isolate;
+  /* [FIX 2026-08-01 v4] เจอสาเหตุจริงของกระพริบ: element นี้เป็นทั้งกล่องมุมโค้ง (ต้องการ overflow
+     คลิป) และ scroll container ของฟอร์ม (overflow-y:auto) พร้อมกัน — เส้นสแกน ::after ด้านล่างเป็น
+     position:absolute + transform:translateY() วิ่งขึ้นลง เพราะ element นี้เป็น containing block ของ
+     มันและตั้ง overflow-y:auto (ไม่ใช่ hidden) กล่องของเส้นสแกนตอน transform เลยขอบล่างแม้เสี้ยว px ก็
+     ถูกนับเป็น scrollable overflow ทำให้ scrollbar โผล่ขึ้นมาตอนเส้นสแกนวิ่งใกล้ถึงจุดล่างสุดของ
+     animation แล้วหายไปตอนวิ่งขึ้น วนแบบนี้ทุกรอบ (เหมือนกับ #ai-scan-modal .ai-qcard ที่เคยเจอปัญหา
+     สายพันธุ์เดียวกันมาก่อน) — contain:paint บังคับไม่ให้ descendant ที่วาดเกินขอบถูกนับเข้า
+     scrollable overflow ของ container นี้ โดยไม่ต้องแก้โครงสร้าง DOM */
+  contain:paint;
 }
 /* animated top border */
 #uesPanelInner::before{
