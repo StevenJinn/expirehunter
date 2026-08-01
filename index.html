@@ -5172,6 +5172,21 @@ body.cam-open #page-catalog{
 @keyframes uesCorner{0%,100%{opacity:.5;filter:drop-shadow(0 0 2px #ffd200)}50%{opacity:1;filter:drop-shadow(0 0 8px #ffd200)}}
 @keyframes uesDot{0%,100%{opacity:1;box-shadow:0 0 5px rgba(255,210,0,1)}50%{opacity:.2;box-shadow:0 0 0px rgba(255,210,0,0)}}
 @keyframes uesShelfIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+/* [PERF-FIX 2026-08-01] เดิม #uesPanelInner::after ใช้ mcScanH ซึ่ง animate property "top"
+   ตรงๆ — top เป็น layout property ทุกครั้งที่ browser ขยับเส้นสแกน (ทุกเฟรม 60fps ตลอดที่ UES
+   เปิดอยู่) ต้อง reflow+repaint ทั้ง panel ใหม่ ไม่ใช่แค่ composite เฉยๆ พอมาซ้อนกับ backdrop-filter
+   blur(16px) เต็มจอของ UES เอง (ไม่ใช่ของหน้าเดินเช็ค) เลยเห็นกระพริบ/กระตุกทุกรอบที่เส้นวิ่งจากบนลง
+   ล่าง — เกิดทุกครั้งที่เปิด UES จริงๆ (ทั้งจากหน้า record และเดินเช็ค) เปลี่ยนมาใช้ transform:
+   translateY() แทน (GPU compositor เฉยๆ ไม่ต้อง reflow) โดยอิงความสูงจริงจากตัวแปร --ues-h ที่
+   คำนวณไว้อยู่แล้วตอนเปิด sheet (มี fallback ให้เผื่อเฟรมแรกก่อน --ues-h ถูกเซ็ต) */
+@keyframes uesScanV{
+  0%{transform:translateY(-2px);opacity:0}
+  5%{opacity:1}
+  48%{opacity:.8}
+  50%{transform:translateY(var(--ues-h,600px));opacity:.4}
+  51%{opacity:0;transform:translateY(var(--ues-h,600px))}
+  100%{transform:translateY(-2px);opacity:0}
+}
 
 #uesSheet{
   /* [FIX 2026-07-31] เดิม z-index:5200 ต่ำกว่า #wc-overlay (8800) ทำให้เปิด UES จากหน้าเดินเช็ค
@@ -5211,12 +5226,13 @@ body.cam-open #page-catalog{
   background-size:200% 100%;
   animation:uesBorderFlow 2.5s linear infinite;pointer-events:none;will-change:background-position;
 }
-/* scan sweep — identical technique to #matchCard::after */
+/* scan sweep — identical technique to #matchCard::after, but transform-based (see uesScanV note above) */
 #uesPanelInner::after{
-  content:'';position:absolute;left:0;right:0;height:1.5px;z-index:9;
+  content:'';position:absolute;top:0;left:0;right:0;height:1.5px;z-index:9;
   background:linear-gradient(90deg,transparent,rgba(255,210,0,.4),rgba(255,255,180,.6),rgba(255,210,0,.4),transparent);
   box-shadow:0 0 10px rgba(255,210,0,.5);
-  animation:mcScanH 5s ease-in-out infinite;
+  animation:uesScanV 5s ease-in-out infinite;
+  will-change:transform,opacity;
   pointer-events:none;
 }
 
