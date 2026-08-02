@@ -22513,11 +22513,18 @@ function _wrWholesaleDiscountLabel(retail, wholesale6) {
 }
 
 // ป้ายส่วนลดแบบ pill วางต่อท้ายราคาส่งโดยตรง — ดีไซน์ badge มืออาชีพ แทนข้อความล้วนในบรรทัด label เดิม
-function _wrWholesaleDiscountBadgeHTML(retail, wholesale6) {
+// [FIX] สีของ badge อิงตาม accentColor/accentRgb เดียวกับตัวเลขราคาส่ง (สีตามประเภทไวน์) แทนสีส้ม
+// ตายตัวเดิม — ให้ badge กับราคาส่งดูเป็นชุดเดียวกันเสมอไม่ว่าไวน์ชนิดไหน
+function _wrWholesaleDiscountBadgeHTML(retail, wholesale6, accentColor, accentRgb) {
   const parts = _wrWholesaleDiscountParts(retail, wholesale6);
   if (!parts) return '';
   const isActiveSort = _wrSortMode === 'discount_desc';
-  return `<span class="wr-discount-badge${isActiveSort ? ' wr-discount-badge-active' : ''}" onclick="event.stopPropagation();_wrSortByDiscountDesc()" title="ประหยัด ${parts.baht.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} บาท/ขวด เทียบราคาปลีก — แตะเพื่อเรียงลำดับส่วนลด สูง→ต่ำ"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1.3" fill="currentColor" stroke="none"/></svg>-${parts.pct}%</span>`;
+  const color = accentColor || '#ffb454';
+  const rgb = accentRgb || '255,180,84';
+  const style = isActiveSort
+    ? `color:#0b0e14;background:linear-gradient(135deg,${color},${color});border-color:${color};box-shadow:0 0 14px rgba(${rgb},.55),inset 0 1px 0 rgba(255,255,255,.3);`
+    : `color:${color};background:linear-gradient(135deg,rgba(${rgb},.24),rgba(${rgb},.12));border-color:rgba(${rgb},.5);box-shadow:0 0 10px rgba(${rgb},.28),inset 0 1px 0 rgba(255,255,255,.1);`;
+  return `<span class="wr-discount-badge${isActiveSort ? ' wr-discount-badge-active' : ''}" style="${style}" onclick="event.stopPropagation();_wrSortByDiscountDesc()" title="ประหยัด ${parts.baht.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} บาท/ขวด เทียบราคาปลีก — แตะเพื่อเรียงลำดับส่วนลด สูง→ต่ำ"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1.3" fill="currentColor" stroke="none"/></svg>-${parts.pct}%</span>`;
 }
 
 // ข้อความ "บาท/ขวด · ประหยัด ฿xx" ใช้แทนบรรทัดหน่วยเดิมของช่องราคาส่ง เมื่อมีส่วนลด
@@ -24516,7 +24523,7 @@ function _wrBuildResultCard(r, i) {
                 <div style="position:absolute;top:3px;right:3px;width:8px;height:8px;border-top:2px solid rgba(${tierRgb},.7);border-right:2px solid rgba(${tierRgb},.7);z-index:3;pointer-events:none"></div>
                 <div style="position:absolute;bottom:3px;left:3px;width:8px;height:8px;border-bottom:2px solid rgba(${tierRgb},.5);border-left:2px solid rgba(${tierRgb},.5);z-index:3;pointer-events:none"></div>
                 <div style="position:absolute;bottom:3px;right:3px;width:8px;height:8px;border-bottom:2px solid rgba(${tierRgb},.5);border-right:2px solid rgba(${tierRgb},.5);z-index:3;pointer-events:none"></div>
-                <canvas data-barcode="${_wrPad13(barcode)}" data-bc-large="md" style="max-width:100%;height:auto;display:block;border-radius:2px;position:relative;z-index:1"></canvas>
+                <canvas data-barcode="${_wrPad13(barcode)}" data-bc-large="md" style="width:100%;height:44px;object-fit:contain;display:block;border-radius:2px;position:relative;z-index:1"></canvas>
                 <div style="position:absolute;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:2px 4px;background:rgba(255,255,255,.85);z-index:4">
                   <div style="display:flex;align-items:center;gap:4px">
                     <div style="width:3px;height:3px;border-radius:50%;background:${tierColor};box-shadow:0 0 5px ${tierColor}"></div>
@@ -24541,7 +24548,7 @@ function _wrBuildResultCard(r, i) {
         </div>
         <div class="rec-data-cell">
           <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+</div>
-          <div class="rec-data-cell-val" style="color:${accentColor};text-shadow:0 0 10px rgba(${accentRgb},.5);display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">${_wrFmtPrice(wholesale6)}${_wrWholesaleDiscountBadgeHTML(retail, wholesale6)}</div>
+          <div class="rec-data-cell-val" style="color:${accentColor};text-shadow:0 0 10px rgba(${accentRgb},.5);display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">${_wrFmtPrice(wholesale6)}${_wrWholesaleDiscountBadgeHTML(retail, wholesale6, accentColor, accentRgb)}</div>
           <div class="rec-data-cell-unit${_wrWholesaleDiscountParts(retail, wholesale6) ? ' rec-data-cell-unit-save' : ''}">${_wrWholesaleSavingsUnit(retail, wholesale6)}</div>
         </div>
       </div>
@@ -25831,7 +25838,7 @@ function _wrBuildDetailHTML(i) {
       <div style="position:absolute;top:3px;right:3px;width:8px;height:8px;border-top:2px solid rgba(${tierRgb},.7);border-right:2px solid rgba(${tierRgb},.7);z-index:3;pointer-events:none"></div>
       <div style="position:absolute;bottom:3px;left:3px;width:8px;height:8px;border-bottom:2px solid rgba(${tierRgb},.5);border-left:2px solid rgba(${tierRgb},.5);z-index:3;pointer-events:none"></div>
       <div style="position:absolute;bottom:3px;right:3px;width:8px;height:8px;border-bottom:2px solid rgba(${tierRgb},.5);border-right:2px solid rgba(${tierRgb},.5);z-index:3;pointer-events:none"></div>
-      <canvas data-barcode="${_wrPad13(barcode)}" data-bc-large="md" style="max-width:100%;height:auto;display:block;border-radius:2px;position:relative;z-index:1"></canvas>
+      <canvas data-barcode="${_wrPad13(barcode)}" data-bc-large="md" style="width:100%;height:44px;object-fit:contain;display:block;border-radius:2px;position:relative;z-index:1"></canvas>
       <div style="position:absolute;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:2px 4px;background:rgba(255,255,255,.85);z-index:4">
         <div style="display:flex;align-items:center;gap:4px">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="${tierColor}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path class="wr-check-draw" d="M4 12l5 5L20 6"/></svg>
@@ -25849,7 +25856,7 @@ function _wrBuildDetailHTML(i) {
       </div>
       <div class="rec-data-cell">
         <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+</div>
-        <div class="rec-data-cell-val" style="color:${accentColor};font-size:15px;text-shadow:0 0 10px rgba(${accentRgb},.5);display:flex;align-items:baseline;gap:6px;flex-wrap:wrap"><span class="wr-count-up" data-target="${wholesale6 == null ? '' : Number(wholesale6)}">${fmtPrice(wholesale6)}</span>${_wrWholesaleDiscountBadgeHTML(retail, wholesale6)}</div>
+        <div class="rec-data-cell-val" style="color:${accentColor};font-size:15px;text-shadow:0 0 10px rgba(${accentRgb},.5);display:flex;align-items:baseline;gap:6px;flex-wrap:wrap"><span class="wr-count-up" data-target="${wholesale6 == null ? '' : Number(wholesale6)}">${fmtPrice(wholesale6)}</span>${_wrWholesaleDiscountBadgeHTML(retail, wholesale6, accentColor, accentRgb)}</div>
         <div class="rec-data-cell-unit${_wrWholesaleDiscountParts(retail, wholesale6) ? ' rec-data-cell-unit-save' : ''}">${_wrWholesaleSavingsUnit(retail, wholesale6)}</div>
       </div>
     </div>
