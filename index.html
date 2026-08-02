@@ -7861,7 +7861,7 @@ document.body.style.overflow = 'hidden';
   const c=document.getElementById("bgCanvas");
   const ctx=c.getContext("2d");
   let W,H,rainCols=[];
-  const RAIN_FONT=14,TRAIL=18;
+  const RAIN_FONT=14,TRAIL=13; // [PERF FIX] ลดจาก 18 → 13 ตัวอักษรต่อคอลัมน์ ลดจำนวน fillText ต่อเฟรม
   const RAIN_CHARS='アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン01';
 
   function rand(a,b){return a+Math.random()*(b-a);}
@@ -7912,7 +7912,10 @@ document.body.style.overflow = 'hidden';
     // guard ต่อไว้เพราะเสียงาน GPU/battery เปล่าๆ วาดสิ่งที่มองไม่เห็นอยู่ดี ไม่ใช่เพื่อกันกระพริบแล้ว
     // — ยังคง schedule เฟรมถัดไปไว้ (ไม่ cancel loop) เพื่อกลับมาวาดต่อทันทีที่ปิด UES
     if(document.body.classList.contains('ues-open-frozen')){_bgRafId=requestAnimationFrame(loop);return;}
-    if(now-_bgLast<50){_bgRafId=requestAnimationFrame(loop);return;} // cap 20fps
+    // [PERF FIX] ลด fps จาก 20 → 12 — canvas นี้วาดเต็มจอตลอดเวลาที่แอปเปิดอยู่ (ยกเว้นตอนแท็บซ่อน/
+    // กล้องเปิด/UES เปิด) เป็นตัวกินซีพียู/แบตเตอรี่หลักที่ทำให้เครื่องร้อน ลด fps ลงยังคงเอฟเฟกต์ฝนไว้
+    // แต่ลดงานวาดต่อวินาทีลงเกือบ 40%
+    if(now-_bgLast<83){_bgRafId=requestAnimationFrame(loop);return;} // cap 12fps (was 20fps)
     _bgLast=now;
     ctx.fillStyle='rgba(10,14,12,0.55)';
     ctx.fillRect(0,0,W,H);
@@ -12806,7 +12809,7 @@ function renderRecords() {
               : `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;opacity:.35;pointer-events:none"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span style="font-family:'IBM Plex Mono',monospace;font-size:5px;letter-spacing:1px;color:${accentColor};font-weight:700">PHOTO</span></div>`
             }
             <button type="button" onclick="event.stopPropagation();_openRecordPhotoMenu('${r.barcode}')"
-              style="position:absolute;bottom:4px;right:4px;width:24px;height:24px;border-radius:8px;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);border:1px solid rgba(${accentRgb},.4);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2">
+              style="position:absolute;bottom:4px;right:4px;width:24px;height:24px;border-radius:8px;background:rgba(0,0,0,.82);border:1px solid rgba(${accentRgb},.4);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
             </button>
           </div>
@@ -24491,7 +24494,7 @@ function _wrBuildResultCard(r, i) {
             : `<svg width="26" height="30" viewBox="0 0 24 28" fill="none" stroke="${tierColor}" stroke-width="1.3" style="opacity:.55;pointer-events:none"><path d="M9 1h6v5l2.4 3.6c.4.6.6 1.3.6 2V25a2 2 0 01-2 2H8a2 2 0 01-2-2V11.6c0-.7.2-1.4.6-2L9 6V1z"/><line x1="8.5" y1="10" x2="15.5" y2="10"/></svg>`
           }
           <button type="button" onclick="event.stopPropagation();_openRecordPhotoMenu('${barcode}')"
-            style="position:absolute;bottom:4px;right:4px;width:24px;height:24px;border-radius:8px;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);border:1px solid rgba(${tierRgb},.4);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2">
+            style="position:absolute;bottom:4px;right:4px;width:24px;height:24px;border-radius:8px;background:rgba(0,0,0,.82);border:1px solid rgba(${tierRgb},.4);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
           </button>
         </div>
@@ -25868,7 +25871,7 @@ function _wrBuildDetailHTML(i) {
         <div style="position:absolute;top:5px;right:5px;width:8px;height:8px;border-top:2px solid rgba(${tierRgb},.4);border-right:2px solid rgba(${tierRgb},.4);pointer-events:none"></div>
         <div style="position:absolute;bottom:5px;left:5px;width:8px;height:8px;border-bottom:2px solid rgba(${tierRgb},.3);border-left:2px solid rgba(${tierRgb},.3);pointer-events:none"></div>
         <button type="button" onclick="event.stopPropagation();_openRecordPhotoMenu('${barcode}')"
-          style="position:absolute;bottom:5px;right:5px;width:26px;height:26px;border-radius:8px;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);border:1px solid rgba(${tierRgb},.4);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2">
+          style="position:absolute;bottom:5px;right:5px;width:26px;height:26px;border-radius:8px;background:rgba(0,0,0,.82);border:1px solid rgba(${tierRgb},.4);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
         </button>
       </div>
