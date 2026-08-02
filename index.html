@@ -21337,23 +21337,37 @@ function _shelfPhotoMode(hasPhoto) {
   .wr-sf-year-reel-item{ height:40px;line-height:40px;text-align:center;font-family:'Prompt',sans-serif;font-weight:800;font-size:14.5px;color:rgba(255,255,255,.3);scroll-snap-align:center;scroll-snap-stop:always;user-select:none;transition:color .12s linear;transform-style:preserve-3d;backface-visibility:hidden;will-change:transform,opacity,filter }
   .wr-sf-year-reel-item.active{ color:#4bcffa;text-shadow:0 0 8px rgba(75,207,250,.6) }
   .wr-sf-year-reel-pad{ height:40px;scroll-snap-align:none }
-  .wr-sf-price-switch{ position:relative;display:flex;background:rgba(75,207,250,.05);border:1px solid rgba(75,207,250,.25);border-radius:10px;padding:3px;margin-bottom:12px }
-  .wr-sf-price-switch-thumb{ position:absolute;top:3px;bottom:3px;width:calc(50% - 4.5px);border-radius:8px;background:linear-gradient(135deg,#4bcffa,#2a9fd6);box-shadow:0 0 12px rgba(75,207,250,.45);transition:left .25s cubic-bezier(.34,1.56,.64,1);z-index:0 }
-  .wr-sf-price-mode-btn{ position:relative;z-index:1;flex:1;font-family:'Prompt',sans-serif;font-size:11px;font-weight:700;letter-spacing:.2px;padding:8px 9px;border-radius:8px;border:none;background:transparent;color:rgba(255,255,255,.5);cursor:pointer;white-space:nowrap;text-align:center;transition:color .2s }
-  .wr-sf-price-mode-btn.active{ color:#04121a }
-  .wr-sf-price-readout{ display:flex;align-items:baseline;justify-content:center;gap:6px;font-family:'Prompt',sans-serif;background:rgba(75,207,250,.06);border:1px solid rgba(75,207,250,.3);border-radius:9px;padding:8px 12px;margin:0 auto 8px;width:fit-content }
-  .wr-sf-price-readout span:first-child{ font-size:16px;font-weight:800;color:#4bcffa;text-shadow:0 0 9px rgba(75,207,250,.55);font-variant-numeric:tabular-nums;letter-spacing:.3px }
-  .wr-sf-price-readout-unit{ font-size:10px;font-weight:700;color:rgba(75,207,250,.55);letter-spacing:1px }
+  .wr-sf-price-toggle{ position:relative;display:inline-flex;align-items:center;flex-shrink:0;background:linear-gradient(160deg,rgba(75,207,250,.09),rgba(75,207,250,.03));border:1px solid rgba(75,207,250,.4);border-radius:14px;padding:2px;box-shadow:inset 0 0 6px rgba(75,207,250,.18),0 0 9px rgba(75,207,250,.14) }
+  .wr-sf-price-toggle::before,.wr-sf-price-toggle::after{ content:'';position:absolute;width:5px;height:5px;pointer-events:none;opacity:.8 }
+  .wr-sf-price-toggle::before{ top:-1px;left:-1px;border-top:1.5px solid #4bcffa;border-left:1.5px solid #4bcffa }
+  .wr-sf-price-toggle::after{ bottom:-1px;right:-1px;border-bottom:1.5px solid #4bcffa;border-right:1.5px solid #4bcffa }
+  .wr-sf-price-switch-thumb{ position:absolute;top:2px;bottom:2px;width:calc(50% - 3px);border-radius:11px;background:linear-gradient(135deg,#4bcffa,#2a9fd6);box-shadow:0 0 10px rgba(75,207,250,.6),inset 0 0 4px rgba(255,255,255,.4);transition:left .22s cubic-bezier(.34,1.56,.64,1);z-index:0 }
+  .wr-sf-price-mode-btn{ position:relative;z-index:1;font-family:'Prompt',sans-serif;font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:5px 9px;border-radius:11px;border:none;background:transparent;color:rgba(207,233,255,.5);cursor:pointer;white-space:nowrap;text-align:center;transition:color .2s }
+  .wr-sf-price-mode-btn.active{ color:#04121a;text-shadow:none }
+  /* ── redesigned price-range controls: preset chips + editable min/max fields ── */
+  .wr-sf-price-presets{ display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px }
+  .wr-sf-price-chip{ flex-shrink:0;padding:6px 12px;border-radius:16px;font-family:'Prompt',sans-serif;font-size:11px;font-weight:600;white-space:nowrap;cursor:pointer;border:1.5px solid rgba(75,207,250,.28);background:rgba(75,207,250,.05);color:rgba(207,233,255,.75);transition:background .15s,border-color .15s,color .15s,box-shadow .15s }
+  .wr-sf-price-chip.active{ font-weight:700;border-color:#4bcffa;background:#4bcffa;color:#0b0f1d;box-shadow:0 0 10px rgba(75,207,250,.5) }
+  .wr-sf-price-inputs{ display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px }
+  .wr-sf-price-input-box{ display:flex;flex-direction:column;align-items:center;gap:4px;background:rgba(75,207,250,.06);border:1.5px solid rgba(75,207,250,.28);border-radius:9px;padding:6px 8px;flex:1;max-width:126px;transition:border-color .15s,box-shadow .15s }
+  .wr-sf-price-input-box:focus-within{ border-color:#4bcffa;box-shadow:0 0 10px rgba(75,207,250,.35) }
+  .wr-sf-price-input-lbl{ font-family:'Prompt',sans-serif;font-size:8px;font-weight:700;letter-spacing:1.2px;color:rgba(75,207,250,.55);text-transform:uppercase }
+  .wr-sf-price-input-row{ display:flex;align-items:baseline;gap:3px }
+  .wr-sf-price-input{ width:66px;background:transparent;border:none;outline:none;text-align:center;font-family:'Prompt',sans-serif;font-size:15px;font-weight:800;color:#4bcffa;text-shadow:0 0 8px rgba(75,207,250,.5);font-variant-numeric:tabular-nums }
+  .wr-sf-price-input::placeholder{ color:rgba(75,207,250,.4);font-weight:700;text-shadow:none }
+  .wr-sf-price-input-unit{ font-size:10px;font-weight:700;color:rgba(75,207,250,.5) }
+  .wr-sf-price-input-sep{ color:rgba(75,207,250,.4);font-size:12px;font-weight:700;flex-shrink:0 }
   .wr-sf-range-ticks{ position:absolute;left:0;right:0;top:50%;pointer-events:none }
-  .wr-sf-range-ticks span{ position:absolute;top:0;width:1px;height:7px;background:rgba(75,207,250,.28);transform:translate(-50%,-50%) }
-  .wr-sf-range-ticks span:nth-child(1){ left:25% }
-  .wr-sf-range-ticks span:nth-child(2){ left:50% }
-  .wr-sf-range-ticks span:nth-child(3){ left:75% }
-  .wr-sf-range-wrap{ position:relative;height:30px;margin:6px auto 0;touch-action:none;width:76%;max-width:250px }
-  .wr-sf-range-track{ position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:3px;background:rgba(75,207,250,.15);border-radius:2px }
-  .wr-sf-range-fill{ position:absolute;top:50%;transform:translateY(-50%);height:3px;background:#4bcffa;border-radius:2px;box-shadow:0 0 6px rgba(75,207,250,.5) }
-  .wr-sf-thumb{ position:absolute;top:50%;left:0;width:22px;height:22px;margin-left:-11px;transform:translateY(-50%);border-radius:50%;background:#4bcffa;box-shadow:0 0 8px rgba(75,207,250,.7),0 0 0 3px #04080a;cursor:pointer;touch-action:none;z-index:2 }
-  .wr-sf-thumb:active{ box-shadow:0 0 12px rgba(75,207,250,.9),0 0 0 3px #04080a;transform:translateY(-50%) scale(1.12) }
+  .wr-sf-range-tick{ position:absolute;top:0;width:1px;height:7px;background:rgba(75,207,250,.28);transform:translate(-50%,-50%) }
+  .wr-sf-range-tick-lbl{ position:absolute;top:15px;font-size:8px;font-family:'Prompt',sans-serif;font-weight:600;color:rgba(255,255,255,.32);transform:translateX(-50%);white-space:nowrap }
+  .wr-sf-range-wrap{ position:relative;height:38px;margin:6px auto 0;touch-action:none;width:76%;max-width:250px }
+  .wr-sf-range-track{ position:absolute;left:0;right:0;top:11px;height:3px;background:rgba(75,207,250,.15);border-radius:2px }
+  .wr-sf-range-fill{ position:absolute;top:11px;height:3px;background:#4bcffa;border-radius:2px;box-shadow:0 0 6px rgba(75,207,250,.5) }
+  .wr-sf-thumb{ position:absolute;top:11px;left:0;width:24px;height:24px;margin-left:-12px;transform:translateY(-50%);border-radius:50%;background:#4bcffa;box-shadow:0 0 8px rgba(75,207,250,.7),0 0 0 3px #04080a;cursor:pointer;touch-action:none;z-index:2 }
+  .wr-sf-thumb:active{ box-shadow:0 0 12px rgba(75,207,250,.9),0 0 0 3px #04080a;transform:translateY(-50%) scale(1.14) }
+  .wr-sf-thumb-tip{ position:absolute;bottom:28px;left:50%;transform:translateX(-50%) scale(.85);background:#0b1622;border:1px solid rgba(75,207,250,.6);border-radius:6px;padding:3px 7px;font-family:'Prompt',sans-serif;font-size:10px;font-weight:800;color:#4bcffa;white-space:nowrap;box-shadow:0 0 10px rgba(75,207,250,.4);opacity:0;transition:opacity .12s,transform .12s;pointer-events:none;z-index:3 }
+  .wr-sf-thumb-tip.show{ opacity:1;transform:translateX(-50%) scale(1) }
+  .wr-sf-price-endpoints{ display:flex;justify-content:space-between;font-family:'Prompt',sans-serif;font-size:10px;color:rgba(255,255,255,.35);margin-top:4px;width:76%;max-width:250px;margin-left:auto;margin-right:auto }
 </style>
 <div id="wr-smartfilter-modal" style="display:none;position:fixed;inset:0;z-index:750;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);align-items:flex-end;justify-content:center;touch-action:none;overscroll-behavior:none" onclick="if(event.target===this){_wrCloseSmartFilter();}">
   <div id="wr-smartfilter-sheet" style="background:linear-gradient(160deg,#04080a 0%,#061019 60%,#03060c 100%);border:1px solid rgba(75,207,250,.28);border-bottom:none;border-radius:18px 18px 0 0;width:100%;max-width:480px;max-height:88vh;max-height:88dvh;display:flex;flex-direction:column;box-shadow:0 -12px 60px rgba(0,0,0,.9);position:relative;overflow:hidden;padding-bottom:env(safe-area-inset-bottom);animation:delHistIn .28s cubic-bezier(.34,1.56,.64,1) both;touch-action:none;overscroll-behavior:none">
@@ -22873,12 +22887,12 @@ function _wrSparklingLevelCounts() {
 // phrases are tested before the shorter generic word they contain, so a name only ever matches
 // the single most specific level it states.
 const WR_SWEETNESS_LEVELS = [
-  { label: 'แห้งพิเศษ · Bone Dry', test: n => /\bbrut nature\b|\bpas dos[ée]\b|\bdosage zero\b|\bzero dosage\b|\bextra brut\b/.test(n) },
-  { label: 'แห้ง · Dry', test: n => /\btrocken\b|\bsecco\b|\bbrut\b|\bsec\b|\bdry\b(?!\s*sweet)/.test(n) },
-  { label: 'กึ่งหวาน · Off-Dry', test: n => /\boff[- ]dry\b|\bfeinherb\b|\bhalbtrocken\b|\bkabinett\b|\bdemi[- ]sec\b|\bsemi[- ]sec(o)?\b|\bmedium dry\b|\bextra dry\b|\bamabile\b/.test(n) },
-  { label: 'หวานปานกลาง · Medium Sweet', test: n => /\bmedium sweet\b|\bsp[aä]tlese\b|\bauslese\b/.test(n) },
-  { label: 'หวาน · Sweet', test: n => /\bsweet\b|\bdolce\b|\bdoux\b|\bmoelleux\b|\bmoscato\b/.test(n) },
-  { label: 'หวานมาก · Dessert', test: n => /\bdessert\b|\beiswein\b|\bice wine\b|\bpassito\b|\btrockenbeerenauslese\b|\bsauternes\b|\bvin santo\b|\btokaji\b|\bnoble\b/.test(n) },
+  { label: 'Bone Dry', test: n => /\bbrut nature\b|\bpas dos[ée]\b|\bdosage zero\b|\bzero dosage\b|\bextra brut\b/.test(n) },
+  { label: 'Dry', test: n => /\btrocken\b|\bsecco\b|\bbrut\b|\bsec\b|\bdry\b(?!\s*sweet)/.test(n) },
+  { label: 'Off-Dry', test: n => /\boff[- ]dry\b|\bfeinherb\b|\bhalbtrocken\b|\bkabinett\b|\bdemi[- ]sec\b|\bsemi[- ]sec(o)?\b|\bmedium dry\b|\bextra dry\b|\bamabile\b/.test(n) },
+  { label: 'Medium Sweet', test: n => /\bmedium sweet\b|\bsp[aä]tlese\b|\bauslese\b/.test(n) },
+  { label: 'Sweet', test: n => /\bsweet\b|\bdolce\b|\bdoux\b|\bmoelleux\b|\bmoscato\b/.test(n) },
+  { label: 'Dessert', test: n => /\bdessert\b|\beiswein\b|\bice wine\b|\bpassito\b|\btrockenbeerenauslese\b|\bsauternes\b|\bvin santo\b|\btokaji\b|\bnoble\b/.test(n) },
 ];
 
 // returns the matched level's label for any wine row, or null if its name states no
@@ -22891,8 +22905,8 @@ function _wrSweetnessLevelOf(r) {
     if (lvl.test(name)) return lvl.label;
   }
   const type = _wrCanonType(r[2]);
-  if (type === 'Dessert Wine') return 'หวานมาก · Dessert';
-  if (type === 'Sweet Wine') return 'หวาน · Sweet';
+  if (type === 'Dessert Wine') return 'Dessert';
+  if (type === 'Sweet Wine') return 'Sweet';
   return null;
 }
 
@@ -24049,6 +24063,65 @@ function _wrInitYearReels(fromVal, toVal, vb) {
   });
 }
 
+// quick-pick price bands shown as chips above the slider — tapping one jumps straight to that
+// range (hi:null means "no upper bound", matching how _wrPriceRangeMax already represents +).
+const _WR_SF_PRICE_PRESETS = [
+  { label: 'ทั้งหมด',        lo: 0,    hi: null },
+  { label: '< ฿500',        lo: 0,    hi: 500   },
+  { label: '฿500–1,000',    lo: 500,  hi: 1000  },
+  { label: '฿1,000–2,000',  lo: 1000, hi: 2000  },
+  { label: '฿2,000–5,000',  lo: 2000, hi: 5000  },
+  { label: '฿5,000+',       lo: 5000, hi: null  }
+];
+function _wrSfPricePresetsHtml() {
+  const curLo = _wrPriceRangeMin || 0;
+  const curHi = _wrPriceRangeMax;
+  return _WR_SF_PRICE_PRESETS.map(p => {
+    const active = curLo === p.lo && ((p.hi == null && curHi == null) || (p.hi != null && curHi === p.hi));
+    return `<button type="button" class="wr-sf-price-chip${active ? ' active' : ''}" data-lo="${p.lo}" data-hi="${p.hi == null ? '' : p.hi}" onclick="_wrApplyPricePreset(${p.lo},${p.hi == null ? 'null' : p.hi})">${p.label}</button>`;
+  }).join('');
+}
+function _wrApplyPricePreset(lo, hi) {
+  _wrPriceRangeMin = lo;
+  _wrPriceRangeMax = hi;
+  _wrUpdatePriceSliderUI();
+}
+
+// user typed an exact value into the min/max fields instead of dragging — clamp to the valid
+// 0.._WR_SF_PRICE_MAX range and keep lo<=hi, same invariants the drag handlers enforce.
+function _wrPriceInputCommit(which, rawValue) {
+  const digits = String(rawValue).replace(/[^\d]/g, '');
+  const max = _WR_SF_PRICE_MAX;
+  if (which === 'lo') {
+    let v = digits === '' ? 0 : parseInt(digits, 10);
+    v = Math.max(0, Math.min(v, max));
+    const curHi = _wrPriceRangeMax == null ? max : _wrPriceRangeMax;
+    if (v > curHi) v = curHi;
+    _wrPriceRangeMin = v;
+  } else {
+    if (digits === '') {
+      _wrPriceRangeMax = null;
+    } else {
+      let v = parseInt(digits, 10);
+      v = Math.max(0, Math.min(v, max));
+      const curLo = _wrPriceRangeMin || 0;
+      if (v < curLo) v = curLo;
+      _wrPriceRangeMax = v >= max ? null : v;
+    }
+  }
+  _wrUpdatePriceSliderUI();
+}
+
+// the 25/50/75% tick labels under the track — computed from the same power-curve mapping the
+// slider itself uses (_wrSfPricePct), so the printed values always match where the tick sits.
+function _wrSfPriceTickValue(pct) {
+  const raw = Math.pow(pct / 100, _WR_SF_PRICE_CURVE) * _WR_SF_PRICE_MAX;
+  return Math.round(raw / _WR_SF_PRICE_STEP) * _WR_SF_PRICE_STEP;
+}
+function _wrSfPriceTicksHtml() {
+  return [25, 50, 75].map(pct => `<span class="wr-sf-range-tick" style="left:${pct}%"></span><span class="wr-sf-range-tick-lbl" style="left:${pct}%">${_wrSfPriceTickValue(pct).toLocaleString('th-TH')}</span>`).join('');
+}
+
 // switches which price field the Smart Filter's range slider filters against. Resets the
 // range on switch — a retail baht value dragged under wholesale6 (or vice versa) would be
 // silently wrong, since the two scales differ, so start the new mode from "no filter".
@@ -24065,11 +24138,10 @@ function _wrSetPriceFieldMode(mode) {
   _wrPriceRangeMin = 0;
   _wrPriceRangeMax = null;
   document.querySelectorAll('.wr-sf-price-mode-btn').forEach(btn => {
-    const isRetail = btn.textContent.trim() === 'ราคาปกติ';
-    btn.classList.toggle('active', (mode === 'retail') === isRetail);
+    btn.classList.toggle('active', btn.dataset.mode === mode);
   });
   const switchThumb = document.getElementById('wr-sf-price-switch-thumb');
-  if (switchThumb) switchThumb.style.left = mode === 'retail' ? '3px' : 'calc(50% + 1.5px)';
+  if (switchThumb) switchThumb.style.left = mode === 'retail' ? '2px' : 'calc(50% + 1px)';
   _wrUpdatePriceSliderUI();
 }
 
@@ -24078,9 +24150,12 @@ function _wrSetPriceFieldMode(mode) {
 // and by _wrSetPriceFieldMode above.
 function _wrUpdatePriceSliderUI() {
   const fill = document.getElementById('wr-sf-price-fill');
-  const label = document.getElementById('wr-sf-price-label');
   const loThumb = document.getElementById('wr-sf-price-thumb-lo');
   const hiThumb = document.getElementById('wr-sf-price-thumb-hi');
+  const loTip = document.getElementById('wr-sf-price-tip-lo');
+  const hiTip = document.getElementById('wr-sf-price-tip-hi');
+  const loInput = document.getElementById('wr-sf-price-input-lo');
+  const hiInput = document.getElementById('wr-sf-price-input-hi');
   const max = _WR_SF_PRICE_MAX;
   const lo = _wrPriceRangeMin || 0;
   const hi = _wrPriceRangeMax == null ? max : _wrPriceRangeMax;
@@ -24088,7 +24163,19 @@ function _wrUpdatePriceSliderUI() {
   if (fill) { fill.style.left = loPct; fill.style.right = (100 - _wrSfPricePct(hi)) + '%'; }
   if (loThumb) loThumb.style.left = loPct;
   if (hiThumb) hiThumb.style.left = hiPct;
-  if (label) label.textContent = `${lo.toLocaleString('th-TH')} — ${hi >= max ? max.toLocaleString('th-TH') + '+' : hi.toLocaleString('th-TH')}`;
+  const loStr = lo.toLocaleString('th-TH');
+  const hiStr = hi >= max ? max.toLocaleString('th-TH') + '+' : hi.toLocaleString('th-TH');
+  if (loTip) loTip.textContent = loStr;
+  if (hiTip) hiTip.textContent = hiStr;
+  // don't clobber a field the user is actively typing into
+  if (loInput && document.activeElement !== loInput) loInput.value = loStr;
+  if (hiInput && document.activeElement !== hiInput) hiInput.value = hi >= max ? '' : hiStr;
+  document.querySelectorAll('.wr-sf-price-chip').forEach(chip => {
+    const chipLo = parseInt(chip.dataset.lo, 10);
+    const chipHi = chip.dataset.hi === '' ? null : parseInt(chip.dataset.hi, 10);
+    const isActive = lo === chipLo && ((chipHi == null && _wrPriceRangeMax == null) || (chipHi != null && _wrPriceRangeMax === chipHi));
+    chip.classList.toggle('active', isActive);
+  });
   _wrUpdateSfFooterStatus();
 }
 
@@ -24116,6 +24203,8 @@ function _wrPriceThumbDown(which, ev) {
   if (thumb && thumb.setPointerCapture && ev.pointerId != null) {
     try { thumb.setPointerCapture(ev.pointerId); } catch (e) {}
   }
+  const tip = document.getElementById('wr-sf-price-tip-' + which);
+  if (tip) tip.classList.add('show');
   document.addEventListener('pointermove', _wrPriceThumbMove);
   document.addEventListener('pointerup', _wrPriceThumbUp);
   document.addEventListener('pointercancel', _wrPriceThumbUp);
@@ -24137,6 +24226,10 @@ function _wrPriceThumbMove(ev) {
 }
 
 function _wrPriceThumbUp() {
+  if (_wrPriceDragThumb) {
+    const tip = document.getElementById('wr-sf-price-tip-' + _wrPriceDragThumb);
+    if (tip) tip.classList.remove('show');
+  }
   _wrPriceDragThumb = null;
   document.removeEventListener('pointermove', _wrPriceThumbMove);
   document.removeEventListener('pointerup', _wrPriceThumbUp);
@@ -24175,11 +24268,6 @@ function _wrRenderSmartFilterSheet() {
       <div class="wr-sf-section-label">ระดับไวน์ · Classification</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px">${_wrSfTierChipsHtml()}</div>
     </div>
-    ${_wrLabelTierCounts().size ? `
-    <div style="margin-bottom:20px">
-      <div class="wr-sf-section-label">ป้ายฉลาก · Label</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">${_wrSfLabelTierChipsHtml()}</div>
-    </div>` : ''}
     <div style="margin-bottom:20px">
       <div class="wr-sf-section-label">พันธุ์องุ่น · Grape Variety</div>
       <div id="wr-sf-grape-chips" style="display:flex;flex-wrap:wrap;gap:6px">${_wrSfGrapeChipsHtml()}</div>
@@ -24204,27 +24292,54 @@ function _wrRenderSmartFilterSheet() {
       </div>
     </div>
     <div>
-      <div class="wr-sf-section-label">ช่วงราคา · Price Range</div>
-      <div class="wr-sf-price-switch" id="wr-sf-price-switch">
-        <div class="wr-sf-price-switch-thumb" id="wr-sf-price-switch-thumb" style="left:${_wrPriceFieldMode === 'retail' ? '3px' : 'calc(50% + 1.5px)'}"></div>
-        <button type="button" class="wr-sf-price-mode-btn${_wrPriceFieldMode === 'retail' ? ' active' : ''}" onclick="_wrSetPriceFieldMode('retail')">ราคาปกติ</button>
-        <button type="button" class="wr-sf-price-mode-btn${_wrPriceFieldMode === 'wholesale6' ? ' active' : ''}" onclick="_wrSetPriceFieldMode('wholesale6')">ราคาส่ง · 6 ขวด+</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="wr-sf-section-label" style="margin-bottom:0">ช่วงราคา · Price Range</div>
+        <div class="wr-sf-price-toggle" id="wr-sf-price-switch">
+          <div class="wr-sf-price-switch-thumb" id="wr-sf-price-switch-thumb" style="left:${_wrPriceFieldMode === 'retail' ? '2px' : 'calc(50% + 1px)'}"></div>
+          <button type="button" class="wr-sf-price-mode-btn${_wrPriceFieldMode === 'retail' ? ' active' : ''}" data-mode="retail" onclick="_wrSetPriceFieldMode('retail')" title="ราคาปกติ">ปลีก</button>
+          <button type="button" class="wr-sf-price-mode-btn${_wrPriceFieldMode === 'wholesale6' ? ' active' : ''}" data-mode="wholesale6" onclick="_wrSetPriceFieldMode('wholesale6')" title="ราคาส่ง · 6 ขวด+">ส่ง</button>
+        </div>
       </div>
-      <div class="wr-sf-price-readout">
-        <span id="wr-sf-price-label">${loVal.toLocaleString('th-TH')} — ${hiVal >= _WR_SF_PRICE_MAX ? _WR_SF_PRICE_MAX.toLocaleString('th-TH') + '+' : hiVal.toLocaleString('th-TH')}</span>
-        <span class="wr-sf-price-readout-unit">฿</span>
+
+      <div class="wr-sf-price-presets" id="wr-sf-price-presets">${_wrSfPricePresetsHtml()}</div>
+
+      <div class="wr-sf-price-inputs">
+        <div class="wr-sf-price-input-box">
+          <span class="wr-sf-price-input-lbl">ต่ำสุด</span>
+          <div class="wr-sf-price-input-row">
+            <span class="wr-sf-price-input-unit">฿</span>
+            <input type="text" inputmode="numeric" class="wr-sf-price-input" id="wr-sf-price-input-lo"
+              value="${loVal.toLocaleString('th-TH')}" onfocus="this.select()"
+              onchange="_wrPriceInputCommit('lo', this.value)">
+          </div>
+        </div>
+        <span class="wr-sf-price-input-sep">—</span>
+        <div class="wr-sf-price-input-box">
+          <span class="wr-sf-price-input-lbl">สูงสุด</span>
+          <div class="wr-sf-price-input-row">
+            <span class="wr-sf-price-input-unit">฿</span>
+            <input type="text" inputmode="numeric" class="wr-sf-price-input" id="wr-sf-price-input-hi"
+              value="${hiVal >= _WR_SF_PRICE_MAX ? '' : hiVal.toLocaleString('th-TH')}" placeholder="ไม่จำกัด"
+              onfocus="this.select()" onchange="_wrPriceInputCommit('hi', this.value)">
+          </div>
+        </div>
       </div>
+
       <div class="wr-sf-range-edgeguard" style="margin:0 -18px;padding:0 26px;touch-action:none">
         <div class="wr-sf-range-wrap" id="wr-sf-range-wrap">
           <div class="wr-sf-range-track"></div>
-          <div class="wr-sf-range-ticks"><span></span><span></span><span></span></div>
+          <div class="wr-sf-range-ticks">${_wrSfPriceTicksHtml()}</div>
           <div id="wr-sf-price-fill" class="wr-sf-range-fill" style="left:${_wrSfPricePct(loVal)}%;right:${100 - _wrSfPricePct(hiVal)}%"></div>
-          <div id="wr-sf-price-thumb-lo" class="wr-sf-thumb" style="left:${_wrSfPricePct(loVal)}%" onpointerdown="_wrPriceThumbDown('lo',event)"></div>
-          <div id="wr-sf-price-thumb-hi" class="wr-sf-thumb" style="left:${_wrSfPricePct(hiVal)}%" onpointerdown="_wrPriceThumbDown('hi',event)"></div>
+          <div id="wr-sf-price-thumb-lo" class="wr-sf-thumb" style="left:${_wrSfPricePct(loVal)}%" onpointerdown="_wrPriceThumbDown('lo',event)">
+            <div class="wr-sf-thumb-tip" id="wr-sf-price-tip-lo">${loVal.toLocaleString('th-TH')}</div>
+          </div>
+          <div id="wr-sf-price-thumb-hi" class="wr-sf-thumb" style="left:${_wrSfPricePct(hiVal)}%" onpointerdown="_wrPriceThumbDown('hi',event)">
+            <div class="wr-sf-thumb-tip" id="wr-sf-price-tip-hi">${hiVal >= _WR_SF_PRICE_MAX ? _WR_SF_PRICE_MAX.toLocaleString('th-TH') + '+' : hiVal.toLocaleString('th-TH')}</div>
+          </div>
         </div>
       </div>
-      <div style="display:flex;justify-content:space-between;font-family:'Prompt',sans-serif;font-size:10px;color:rgba(255,255,255,.35);margin-top:2px;width:76%;max-width:250px;margin-left:auto;margin-right:auto">
-        <span>0</span><span>${_WR_SF_PRICE_MAX.toLocaleString('th-TH')}+</span>
+      <div class="wr-sf-price-endpoints">
+        <span>฿0</span><span>฿${_WR_SF_PRICE_MAX.toLocaleString('th-TH')}+</span>
       </div>
     </div>
 
