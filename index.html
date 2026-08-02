@@ -25054,7 +25054,7 @@ const WR_NAME_TIPS = [
       'ไร่องุ่นมีพื้นที่กว่า 80 เฮกตาร์ อยู่ติดกับ Château Mouton Rothschild บนดินกรวดอันเลื่องชื่อของ Pauillac ให้กลิ่น cassis (blackcurrant), cedar, graphite, tobacco และเครื่องเทศ แทนนินแน่นแต่ละเอียด ไวน์มักให้ความรู้สึกสง่างาม (elegant) มากกว่าทรงพลัง และสามารถบ่มได้ 20–30 ปีหรือมากกว่าในวินเทจชั้นเยี่ยม',
       'ฉลากเป็นภาพรูปปั้นแก้วเป่า (spun-glass figurine) จาก Museum of Wine in Art ของ Château Mouton Rothschild สื่อถึงความเชื่อมโยงระหว่างศิลปะและไวน์ตามปรัชญาของตระกูล Rothschild หลายคนเรียกชาโตว์นี้ว่าเป็น "Hidden Gem of Pauillac" เพราะแม้เป็นเพียง Fifth Growth แต่คุณภาพในหลายวินเทจเทียบเคียงไวน์ระดับสูงกว่าได้ โดยเฉพาะหลังการลงทุนครั้งใหญ่ในโรงหมักและห้องบ่มไวน์แห่งใหม่ซึ่งเริ่มใช้งานกับวินเทจ 2021 เป็นต้นมา'
     ],
-    test: n => /\bchateau\s+d['’]?armailhac\b/.test(n) },
+    test: n => /\bchateau\s+d[\s'’]?armailhac\b/.test(n) },
 ];
 
 // [NEW 2026-07-29] "why this vintage is special" — the growing-season/weather story behind
@@ -25433,7 +25433,7 @@ function _wrBuildDetailHTML(i) {
         <span class="wr-tier-dot"></span>${_wrEsc(wineTier.label)}
         <span style="position:absolute;right:11px;top:50%;transform:translateY(-50%);opacity:.6;font-size:11px;line-height:1">ⓘ</span>
       </div>
-      <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);right:6px;z-index:999;width:min(280px,86vw);box-sizing:border-box;padding:10px 13px;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${tierColor}33, 0 0 22px -2px ${tierColor}55;font-family:'Prompt',sans-serif;font-size:11.5px;line-height:1.55;color:#dce6f5">
+      <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);right:6px;z-index:999;width:min(280px,86vw);box-sizing:border-box;padding:13px 15px;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${tierColor}33, 0 0 22px -2px ${tierColor}55;font-family:'Prompt',sans-serif;font-size:12.5px;line-height:1.75;letter-spacing:.1px;color:#e7edfb">
         <span style="position:absolute;top:-6px;right:10px;width:11px;height:11px;transform:rotate(45deg);background:#0e1220;border-left:1px solid ${tierColor}66;border-top:1px solid ${tierColor}66"></span>
         <span style="position:absolute;top:5px;left:5px;width:8px;height:8px;border-top:1.5px solid ${tierColor}bb;border-left:1.5px solid ${tierColor}bb;pointer-events:none"></span>
         <span style="position:absolute;bottom:5px;right:5px;width:8px;height:8px;border-bottom:1.5px solid ${tierColor}bb;border-right:1.5px solid ${tierColor}bb;pointer-events:none"></span>
@@ -25453,7 +25453,7 @@ function _wrBuildDetailHTML(i) {
         <span class="wr-tier-dot"></span>${_wrEsc(secondaryTag.label)}
         <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);opacity:.6;font-size:10px;line-height:1">ⓘ</span>
       </div>
-      <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);right:6px;z-index:999;width:min(280px,86vw);box-sizing:border-box;padding:10px 13px;border-radius:9px;border:1px solid ${secondaryColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${secondaryColor}33, 0 0 22px -2px ${secondaryColor}55;font-family:'Prompt',sans-serif;font-size:11.5px;line-height:1.55;color:#dce6f5">
+      <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);right:6px;z-index:999;width:min(280px,86vw);box-sizing:border-box;padding:13px 15px;border-radius:9px;border:1px solid ${secondaryColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${secondaryColor}33, 0 0 22px -2px ${secondaryColor}55;font-family:'Prompt',sans-serif;font-size:12.5px;line-height:1.75;letter-spacing:.1px;color:#e7edfb">
         <span style="position:absolute;top:-6px;right:9px;width:11px;height:11px;transform:rotate(45deg);background:#0e1220;border-left:1px solid ${secondaryColor}66;border-top:1px solid ${secondaryColor}66"></span>
         <span style="position:absolute;top:5px;left:5px;width:8px;height:8px;border-top:1.5px solid ${secondaryColor}bb;border-left:1.5px solid ${secondaryColor}bb;pointer-events:none"></span>
         <span style="position:absolute;bottom:5px;right:5px;width:8px;height:8px;border-bottom:1.5px solid ${secondaryColor}bb;border-right:1.5px solid ${secondaryColor}bb;pointer-events:none"></span>
