@@ -3850,33 +3850,62 @@ body.cam-open #page-catalog{
   }
 
   /* ── DISCOUNT BANNER — full-width strip beneath the two price cells ── */
-  @keyframes bannerSheen{0%{background-position:-120% 0}100%{background-position:220% 0}}
+  /* [FIX] sheen เดิมใช้ background-position animate ซึ่งไม่ใช่ compositor-friendly (ต้อง repaint
+     ทุกเฟรม) บนมือถือ/เวลามีหลายการ์ดพร้อมกันมันเลยสะดุดดูไม่ต่อเนื่อง — เปลี่ยนมาใช้ transform:translateX
+     บน pseudo-element แยก (GPU-composited) แทน + timing เป็น linear ให้ความเร็วคงที่ตลอดทั้งรอบ */
+  @keyframes bannerSheen{
+    0%{ transform:translateX(-40%) skewX(-15deg); }
+    100%{ transform:translateX(420%) skewX(-15deg); }
+  }
+  /* พัลส์เรืองแสงสีทอง — ให้แบนเนอร์ส่วนลดดูพรีเมียม/อลังการ แยกจากสีตามประเภทไวน์ */
+  @keyframes wrGoldBannerPulse{
+    0%,100%{ box-shadow:inset 0 0 10px rgba(255,190,80,.22), 0 0 10px rgba(255,175,60,.16); }
+    50%{ box-shadow:inset 0 0 18px rgba(255,208,120,.42), 0 0 20px rgba(255,190,90,.32); }
+  }
+  /* วงแหวนรุ้งหมุนวูบวาบรอบขอบแบนเนอร์ */
+  @keyframes wrRainbowSpin{ to{ transform:rotate(360deg); } }
   .wr-discount-banner{
     position:relative;overflow:hidden;
     display:flex;align-items:center;justify-content:center;gap:8px;
     padding:7px 10px;
     cursor:default;
+    background:linear-gradient(135deg, rgba(255,215,120,.2), rgba(255,168,50,.08));
+    animation:wrGoldBannerPulse 2.6s ease-in-out infinite;
   }
   .wr-discount-banner::before{
-    content:'';position:absolute;inset:0;
-    background:linear-gradient(100deg, transparent 40%, rgba(255,255,255,.12) 50%, transparent 60%);
-    background-size:250% 100%;
-    animation:bannerSheen 3.6s ease-in-out infinite;
+    content:'';position:absolute;top:0;bottom:0;left:0;width:32%;
+    background:linear-gradient(100deg, transparent, rgba(255,244,220,.55), transparent);
+    animation:bannerSheen 3s linear infinite;
     pointer-events:none;
+    will-change:transform;
+    z-index:1;
   }
-  .wr-discount-icon{ flex-shrink:0;position:relative;z-index:1; }
+  .wr-discount-banner::after{
+    content:'';position:absolute;inset:0;
+    padding:1.5px;border-radius:inherit;
+    background:conic-gradient(from 0deg, #ff6b6b, #ffb454, #ffe36b, #6bffa0, #6bd4ff, #b98bff, #ff6b6b);
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;
+    mask-composite:exclude;
+    opacity:.75;
+    animation:wrRainbowSpin 4.5s linear infinite;
+    pointer-events:none;
+    will-change:transform;
+  }
+  .wr-discount-icon{ flex-shrink:0;position:relative;z-index:2; }
   .wr-discount-pct{
-    position:relative;z-index:1;
+    position:relative;z-index:2;
     font-family:'Prompt',sans-serif;font-weight:900;font-size:13px;
     letter-spacing:.2px;line-height:1;white-space:nowrap;
   }
-  .wr-discount-sep{ position:relative;z-index:1;width:1px;height:11px;flex-shrink:0; }
+  .wr-discount-sep{ position:relative;z-index:2;width:1px;height:11px;flex-shrink:0; }
   .wr-discount-baht{
-    position:relative;z-index:1;
+    position:relative;z-index:2;
     font-family:'Prompt',sans-serif;font-weight:600;font-size:10px;
     letter-spacing:.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
   .wr-discount-baht b{ font-weight:800; }
+
 
   /* ── STATUS BAR at bottom of card ── */
   .rec-card-status-bar {
@@ -22573,14 +22602,12 @@ function _wrWholesaleDiscountBannerHTML(retail, wholesale6, accentColor, accentR
   const parts = _wrWholesaleDiscountParts(retail, wholesale6);
   if (!parts) return '';
   const isActiveSort = _wrSortMode === 'discount_desc';
-  const color = accentColor || '#ffb454';
-  const rgb = accentRgb || '255,180,84';
   const bahtStr = parts.baht.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   const clickAttr = clickable ? ` onclick="event.stopPropagation();_wrSortByDiscountDesc()"` : '';
   const cursorStyle = clickable ? 'cursor:pointer;' : '';
-  const activeStyle = isActiveSort ? `box-shadow:inset 0 0 14px rgba(${rgb},.35);` : '';
+  const activeStyle = isActiveSort ? 'box-shadow:inset 0 0 16px rgba(255,208,120,.5), 0 0 16px rgba(255,190,90,.4);' : '';
   const titleAttr = `ประหยัด ${bahtStr} บาท/ขวด เทียบราคาปลีก${clickable ? ' — แตะเพื่อเรียงลำดับส่วนลด สูง→ต่ำ' : ''}`;
-  return `<div class="wr-discount-banner"${clickAttr} title="${titleAttr}" style="border-top:1px solid rgba(${rgb},.22);background:linear-gradient(180deg, rgba(${rgb},.1), rgba(${rgb},.05));${cursorStyle}${activeStyle}"><svg class="wr-discount-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 12 22l-9-9V4a1 1 0 011-1h9l8.59 8.59a2 2 0 010 2.82z"/><circle cx="8" cy="8" r="1.6" fill="${color}" stroke="none"/></svg><span class="wr-discount-pct" style="color:${color};text-shadow:0 0 12px rgba(${rgb},.4)">-${parts.pct}%</span><span class="wr-discount-sep" style="background:rgba(${rgb},.35)"></span><span class="wr-discount-baht" style="color:rgba(${rgb},.9)">ประหยัด <b style="color:${color}">${bahtStr} บาท</b> ต่อขวด</span></div>`;
+  return `<div class="wr-discount-banner"${clickAttr} title="${titleAttr}" style="${cursorStyle}${activeStyle}"><svg class="wr-discount-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffd27a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 12 22l-9-9V4a1 1 0 011-1h9l8.59 8.59a2 2 0 010 2.82z"/><circle cx="8" cy="8" r="1.6" fill="#ffd27a" stroke="none"/></svg><span class="wr-discount-pct" style="color:#ffd27a;text-shadow:0 0 12px rgba(255,190,90,.55)">-${parts.pct}%</span><span class="wr-discount-sep" style="background:rgba(255,210,130,.4)"></span><span class="wr-discount-baht" style="color:rgba(255,225,190,.9)">ประหยัด <b style="color:#ffd27a">${bahtStr} บาท</b> ต่อขวด</span></div>`;
 }
 
 // ข้อความ "บาท/ขวด · ประหยัด ฿xx" ใช้แทนบรรทัดหน่วยเดิมของช่องราคาส่ง เมื่อมีส่วนลด
