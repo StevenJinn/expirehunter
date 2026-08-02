@@ -22514,14 +22514,15 @@ function _wrWholesaleDiscountLabel(retail, wholesale6) {
 }
 
 // ป้ายส่วนลดแบบ pill วางต่อท้ายราคาส่งโดยตรง — ดีไซน์ badge มืออาชีพ แทนข้อความล้วนในบรรทัด label เดิม
-// [FIX] สีของ badge อิงตาม accentColor/accentRgb เดียวกับตัวเลขราคาส่ง (สีตามประเภทไวน์) แทนสีส้ม
-// ตายตัวเดิม — ให้ badge กับราคาส่งดูเป็นชุดเดียวกันเสมอไม่ว่าไวน์ชนิดไหน
-function _wrWholesaleDiscountBadgeHTML(retail, wholesale6, accentColor, accentRgb) {
+// [REVISED 2026-08-02] badge ใช้ tierColor (สีเดียวกับ badge ระดับไวน์/border/glow ของการ์ด) แทน
+// ทั้งสีส้มตายตัวเดิม (ชนกับโทนไวน์แดง/สปาร์คลิงบางใบ) และสีตามชนิดไวน์เดิม (accentColor) — tierColor
+// เป็นสีที่การ์ดทุกใบมีอยู่แล้วและยังคงชัดเจนสดใสในทุกช่วงราคา เพราะมันคือสีเน้นหลักของการ์ดนั้นเอง
+function _wrWholesaleDiscountBadgeHTML(retail, wholesale6, tierColor, tierRgb) {
   const parts = _wrWholesaleDiscountParts(retail, wholesale6);
   if (!parts) return '';
   const isActiveSort = _wrSortMode === 'discount_desc';
-  const color = accentColor || '#ffb454';
-  const rgb = accentRgb || '255,180,84';
+  const color = tierColor || '#4bcffa';
+  const rgb = tierRgb || '75,207,250';
   const style = isActiveSort
     ? `color:#0b0e14;background:linear-gradient(135deg,${color},${color});border-color:${color};box-shadow:0 0 14px rgba(${rgb},.55),inset 0 1px 0 rgba(255,255,255,.3);`
     : `color:${color};background:linear-gradient(135deg,rgba(${rgb},.24),rgba(${rgb},.12));border-color:rgba(${rgb},.5);box-shadow:0 0 10px rgba(${rgb},.28),inset 0 1px 0 rgba(255,255,255,.1);`;
@@ -24449,8 +24450,10 @@ function _wrBuildResultCard(r, i) {
   const producer = r[9] || '', labelTier = r[10] || '', classification = r[11] || '';
   const tierClass = labelTier === 'First Label' ? 'wr-badge-tier-gold' : labelTier === 'Second Label' ? 'wr-badge-tier-silver' : labelTier === 'Third Label' ? 'wr-badge-tier-bronze' : '';
   const wineTier = _wrTierVisual(_wrWineTier(r));
-  // [FIX] accentColor (wine-type color) is reserved for the WHOLESALE price cell only —
-  // every other card accent (border, corners, badges, barcode frame, sysid) uses tierColor.
+  // [REVERTED 2026-08-02] accentColor (wine-type color) is no longer used on the wholesale
+  // price cell — pricing now uses tierColor like the rest of the card. accentColor is used
+  // only on the type badge chip (e.g. "Red Wine"), which is now the one place wine type is
+  // color-coded on the card.
   const accentColor = _wrTypeColor(type, product);
   const accentRgb = _wrHexToRgb(accentColor);
   const tierColor = _wrTierColor(wineTier);
@@ -24504,7 +24507,7 @@ function _wrBuildResultCard(r, i) {
               </div>
               <div class="rec-card-name" onclick="event.stopPropagation();_wrOpenDetail(${i})" style="cursor:pointer">${_wrEsc(_wrDisplayName(r))}</div>
               <div class="rec-card-badge-row">
-                ${type ? `<span class="wr-badge${_wrTypeFilters.has(_wrCanonType(type)) ? ' wr-badge-active' : ''}" onclick="event.stopPropagation();_wrToggleTypeFilter('${_wrCanonType(type).replace(/'/g, "\\'")}')" style="cursor:pointer;color:${tierColor};background:${tierColor}18;border-color:${tierColor}55">${_wrEsc(_wrCanonType(type))}</span>` : ''}
+                ${type ? `<span class="wr-badge${_wrTypeFilters.has(_wrCanonType(type)) ? ' wr-badge-active' : ''}" onclick="event.stopPropagation();_wrToggleTypeFilter('${_wrCanonType(type).replace(/'/g, "\\'")}')" style="cursor:pointer;color:${accentColor};background:${accentColor}18;border-color:${accentColor}55">${_wrEsc(_wrCanonType(type))}</span>` : ''}
                 ${vintage ? `<span class="wr-badge wr-badge-vt${_wrVintageFilters.has(vintage) ? ' wr-badge-active' : ''}" onclick="event.stopPropagation();_wrToggleVintageFilter('${String(vintage).replace(/'/g, "\\'")}')" style="cursor:pointer">${_wrEsc(vintage)}</span>` : ''}
                 <span class="wr-badge wr-badge-country${_wrCountryFilters.has(country) ? ' wr-badge-active' : ''}" onclick="event.stopPropagation();_wrToggleCountryFilter('${country.replace(/'/g, "\\'")}')" style="cursor:pointer;${_wrCountryBadgeStyle(country)}">${_wrEsc(country)}</span>
                 ${isFineWineTier ? `<span class="wr-badge wr-badge-finewine${_wrCountryFilters.has('Fine Wine') ? ' wr-badge-active' : ''}" onclick="event.stopPropagation();_wrToggleCountryFilter('Fine Wine')" style="cursor:pointer">Fine Wine</span>` : ''}
@@ -24549,9 +24552,11 @@ function _wrBuildResultCard(r, i) {
         </div>
       </div>
 
-      <!-- RETAIL + WHOLESALE prices — grouped together. [FIX] Wine-type color (accentColor)
-           is kept ONLY here, on the wholesale price cell — everything else on the card uses
-           the classification-tier color (tierColor) instead. -->
+      <!-- RETAIL + WHOLESALE prices — grouped together. [REVERTED 2026-08-02] wholesale price
+           cell no longer colored by wine type (accentColor) — it now uses the same tierColor
+           as the rest of the card, so pricing is visually consistent regardless of wine type.
+           Wine type is instead indicated by the type badge chip above (recolored with
+           accentColor), which already existed for this purpose. -->
       <div class="rec-card-data" style="--seg-color:${tierColor}">
         <div class="rec-data-cell">
           <div class="rec-data-cell-lbl" style="color:rgba(255,255,255,.5)">RETAIL · ราคาปลีก</div>
@@ -24559,9 +24564,9 @@ function _wrBuildResultCard(r, i) {
           <div class="rec-data-cell-unit">บาท/ขวด</div>
         </div>
         <div class="rec-data-cell">
-          <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+</div>
-          <div class="rec-data-cell-val" style="color:${accentColor};text-shadow:0 0 10px rgba(${accentRgb},.5);display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">${_wrFmtPrice(wholesale6)}${_wrWholesaleDiscountBadgeHTML(retail, wholesale6, accentColor, accentRgb)}</div>
-          <div class="rec-data-cell-unit"${_wrWholesaleDiscountParts(retail, wholesale6) ? ` style="color:${accentColor}"` : ''}>${_wrWholesaleSavingsUnit(retail, wholesale6)}</div>
+          <div class="rec-data-cell-lbl" style="color:${tierColor}">WHOLESALE · 6 ขวด+</div>
+          <div class="rec-data-cell-val" style="color:${tierColor};text-shadow:0 0 10px rgba(${tierRgb},.5);display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">${_wrFmtPrice(wholesale6)}${_wrWholesaleDiscountBadgeHTML(retail, wholesale6, tierColor, tierRgb)}</div>
+          <div class="rec-data-cell-unit"${_wrWholesaleDiscountParts(retail, wholesale6) ? ` style="color:${tierColor}"` : ''}>${_wrWholesaleSavingsUnit(retail, wholesale6)}</div>
         </div>
       </div>
     </div>
@@ -25796,7 +25801,7 @@ function _wrBuildDetailHTML(i) {
     })()}
 
     <div ${boot()}display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;position:relative;z-index:30">
-      ${type ? `<span class="wr-badge" style="color:${tierColor};background:${tierColor}18;border-color:${tierColor}55">${_wrEsc(_wrCanonType(type))}</span>` : ''}
+      ${type ? `<span class="wr-badge" style="color:${accentColor};background:${accentColor}18;border-color:${accentColor}55">${_wrEsc(_wrCanonType(type))}</span>` : ''}
       ${(() => {
         if (!vintage) return '';
         // [NEW 2026-07-29] vintage badge gets the same tap-to-float tooltip as the wine-name
@@ -25860,19 +25865,21 @@ function _wrBuildDetailHTML(i) {
       </div>
     </div>
 
-    <!-- price panel — wine-type color kept ONLY on the wholesale cell; readouts count up on open -->
+    <!-- price panel — [REVERTED 2026-08-02] wholesale cell no longer colored by wine type;
+         it now matches tierColor like the rest of the sheet. Wine type lives on the type
+         badge chip above instead. Readouts count up on open. -->
     <div ${boot('rec-card-data')}--seg-color:${tierColor}">
       <div class="rec-data-cell">
         <div class="rec-data-cell-lbl" style="color:rgba(255,255,255,.5)">RETAIL · ราคาปลีก</div>
         <div class="rec-data-cell-val" style="color:rgba(255,255,255,.9);font-size:15px"><span class="wr-count-up" data-target="${retail == null ? '' : Number(retail)}">${fmtPrice(retail)}</span></div>
       </div>
       <div class="rec-data-cell">
-        <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+</div>
-        <div class="rec-data-cell-val" style="color:${accentColor};font-size:15px;text-shadow:0 0 10px rgba(${accentRgb},.5);position:relative;${_wrWholesaleDiscountParts(retail, wholesale6) ? 'padding-right:48px' : ''}">
+        <div class="rec-data-cell-lbl" style="color:${tierColor}">WHOLESALE · 6 ขวด+</div>
+        <div class="rec-data-cell-val" style="color:${tierColor};font-size:15px;text-shadow:0 0 10px rgba(${tierRgb},.5);position:relative;${_wrWholesaleDiscountParts(retail, wholesale6) ? 'padding-right:48px' : ''}">
           <span class="wr-count-up" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-target="${wholesale6 == null ? '' : Number(wholesale6)}">${fmtPrice(wholesale6)}</span>
-          <span style="position:absolute;right:0;top:50%;transform:translateY(-50%);line-height:1">${_wrWholesaleDiscountBadgeHTML(retail, wholesale6, accentColor, accentRgb)}</span>
+          <span style="position:absolute;right:0;top:50%;transform:translateY(-50%);line-height:1">${_wrWholesaleDiscountBadgeHTML(retail, wholesale6, tierColor, tierRgb)}</span>
         </div>
-        ${_wrWholesaleSavingsUnitDetail(retail, wholesale6) ? `<div class="rec-data-cell-unit" style="color:${accentColor}">${_wrWholesaleSavingsUnitDetail(retail, wholesale6)}</div>` : ''}
+        ${_wrWholesaleSavingsUnitDetail(retail, wholesale6) ? `<div class="rec-data-cell-unit" style="color:${tierColor}">${_wrWholesaleSavingsUnitDetail(retail, wholesale6)}</div>` : ''}
       </div>
     </div>
   `;
