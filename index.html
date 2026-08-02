@@ -3837,6 +3837,7 @@ body.cam-open #page-catalog{
     vertical-align:middle;white-space:nowrap;
     cursor:pointer;transition:transform .12s ease,box-shadow .12s ease,background .12s ease;
   }
+  .wr-discount-badge{ flex-shrink:0; }
   .wr-discount-badge svg{ flex-shrink:0; }
   .wr-discount-badge:active{ transform:scale(.92); }
   .wr-discount-badge-active{
@@ -25856,7 +25857,7 @@ function _wrBuildDetailHTML(i) {
       </div>
       <div class="rec-data-cell">
         <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+</div>
-        <div class="rec-data-cell-val" style="color:${accentColor};font-size:15px;text-shadow:0 0 10px rgba(${accentRgb},.5);display:flex;align-items:baseline;gap:6px;flex-wrap:wrap"><span class="wr-count-up" data-target="${wholesale6 == null ? '' : Number(wholesale6)}">${fmtPrice(wholesale6)}</span>${_wrWholesaleDiscountBadgeHTML(retail, wholesale6, accentColor, accentRgb)}</div>
+        <div class="rec-data-cell-val" style="color:${accentColor};font-size:15px;text-shadow:0 0 10px rgba(${accentRgb},.5);display:flex;align-items:baseline;gap:6px;flex-wrap:nowrap;overflow:hidden"><span class="wr-count-up" style="min-width:0;overflow:hidden;text-overflow:ellipsis" data-target="${wholesale6 == null ? '' : Number(wholesale6)}">${fmtPrice(wholesale6)}</span>${_wrWholesaleDiscountBadgeHTML(retail, wholesale6, accentColor, accentRgb)}</div>
         <div class="rec-data-cell-unit${_wrWholesaleDiscountParts(retail, wholesale6) ? ' rec-data-cell-unit-save' : ''}">${_wrWholesaleSavingsUnit(retail, wholesale6)}</div>
       </div>
     </div>
