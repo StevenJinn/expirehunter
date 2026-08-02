@@ -22474,6 +22474,17 @@ function _wrFmtPrice(v) {
   return v == null ? '-' : Number(v).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
+// ส่วนลดจากราคาปลีก เมื่อซื้อ 6 ขวดขึ้นไป (ราคาส่ง) — คืนสตริงเช่น "-15% · -50 บาท" หรือ '' ถ้าคำนวณไม่ได้/ไม่มีส่วนลด
+function _wrWholesaleDiscountLabel(retail, wholesale6) {
+  const r = Number(retail), w = Number(wholesale6);
+  if (!isFinite(r) || !isFinite(w) || r <= 0 || w <= 0 || w >= r) return '';
+  const pct = Math.round((1 - w / r) * 100);
+  if (pct <= 0) return '';
+  const baht = r - w;
+  const bahtStr = baht.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return `-${pct}% · -${bahtStr} บาท`;
+}
+
 // [FIX 2026-07-26] เติม 0 นำหน้าบาร์โค้ดตัวเลขที่ไม่ครบ 13 หลัก (สำหรับแสดงผลบาร์โค้ดในการ์ดราคาส่ง)
 function _wrPad13(code) {
   const s = String(code == null ? '' : code).trim();
@@ -24472,7 +24483,7 @@ function _wrBuildResultCard(r, i) {
           <div class="rec-data-cell-unit">บาท/ขวด</div>
         </div>
         <div class="rec-data-cell">
-          <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+</div>
+          <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+${_wrWholesaleDiscountLabel(retail, wholesale6) ? ` <span style="color:#ff9f43">(${_wrWholesaleDiscountLabel(retail, wholesale6)})</span>` : ''}</div>
           <div class="rec-data-cell-val" style="color:${accentColor};text-shadow:0 0 10px rgba(${accentRgb},.5)">${_wrFmtPrice(wholesale6)}</div>
           <div class="rec-data-cell-unit">บาท/ขวด</div>
         </div>
@@ -25768,7 +25779,7 @@ function _wrBuildDetailHTML(i) {
         <div class="rec-data-cell-val" style="color:rgba(255,255,255,.9);font-size:15px"><span class="wr-count-up" data-target="${retail == null ? '' : Number(retail)}">${fmtPrice(retail)}</span></div>
       </div>
       <div class="rec-data-cell">
-        <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+</div>
+        <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+${_wrWholesaleDiscountLabel(retail, wholesale6) ? ` <span style="color:#ff9f43">(${_wrWholesaleDiscountLabel(retail, wholesale6)})</span>` : ''}</div>
         <div class="rec-data-cell-val" style="color:${accentColor};font-size:15px;text-shadow:0 0 10px rgba(${accentRgb},.5)"><span class="wr-count-up" data-target="${wholesale6 == null ? '' : Number(wholesale6)}">${fmtPrice(wholesale6)}</span></div>
       </div>
     </div>
