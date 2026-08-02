@@ -3824,6 +3824,26 @@ body.cam-open #page-catalog{
     font-family:'IBM Plex Mono',monospace;letter-spacing:.6px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
+  .rec-data-cell-unit-save { color:#ff9f43; }
+
+  /* ── WHOLESALE DISCOUNT BADGE — pill วางต่อท้ายราคาส่งทันที, แตะเพื่อเรียงลำดับ ── */
+  .wr-discount-badge{
+    display:inline-flex;align-items:center;gap:2px;
+    font-family:'IBM Plex Mono',monospace;font-size:9.5px;font-weight:800;
+    color:#ffb454;background:linear-gradient(135deg,rgba(255,159,67,.24),rgba(255,90,43,.12));
+    border:1px solid rgba(255,159,67,.5);border-radius:20px;
+    padding:1.5px 7px 1.5px 5px;letter-spacing:.2px;line-height:1.6;
+    box-shadow:0 0 10px rgba(255,159,67,.28),inset 0 1px 0 rgba(255,255,255,.1);
+    vertical-align:middle;white-space:nowrap;
+    cursor:pointer;transition:transform .12s ease,box-shadow .12s ease,background .12s ease;
+  }
+  .wr-discount-badge svg{ flex-shrink:0; }
+  .wr-discount-badge:active{ transform:scale(.92); }
+  .wr-discount-badge-active{
+    color:#0b0e14;background:linear-gradient(135deg,#ffb454,#ff7a3d);
+    box-shadow:0 0 14px rgba(255,159,67,.55),inset 0 1px 0 rgba(255,255,255,.3);
+    font-weight:900;
+  }
 
   /* ── STATUS BAR at bottom of card ── */
   .rec-card-status-bar {
@@ -22474,15 +22494,38 @@ function _wrFmtPrice(v) {
   return v == null ? '-' : Number(v).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-// ส่วนลดจากราคาปลีก เมื่อซื้อ 6 ขวดขึ้นไป (ราคาส่ง) — คืนสตริงเช่น "-15% · -50 บาท" หรือ '' ถ้าคำนวณไม่ได้/ไม่มีส่วนลด
-function _wrWholesaleDiscountLabel(retail, wholesale6) {
+// ส่วนลดจากราคาปลีก เมื่อซื้อ 6 ขวดขึ้นไป (ราคาส่ง) — คำนวณ % และจำนวนเงินที่ประหยัดได้ครั้งเดียว
+// ใช้ร่วมกันทั้ง label แบบข้อความล้วน (_wrWholesaleDiscountLabel) และ badge แบบ HTML (_wrWholesaleDiscountBadgeHTML)
+function _wrWholesaleDiscountParts(retail, wholesale6) {
   const r = Number(retail), w = Number(wholesale6);
-  if (!isFinite(r) || !isFinite(w) || r <= 0 || w <= 0 || w >= r) return '';
+  if (!isFinite(r) || !isFinite(w) || r <= 0 || w <= 0 || w >= r) return null;
   const pct = Math.round((1 - w / r) * 100);
-  if (pct <= 0) return '';
-  const baht = r - w;
-  const bahtStr = baht.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-  return `-${pct}% · -${bahtStr} บาท`;
+  if (pct <= 0) return null;
+  return { pct, baht: r - w };
+}
+
+// คืนสตริงเช่น "-15% · -50 บาท" หรือ '' ถ้าคำนวณไม่ได้/ไม่มีส่วนลด
+function _wrWholesaleDiscountLabel(retail, wholesale6) {
+  const parts = _wrWholesaleDiscountParts(retail, wholesale6);
+  if (!parts) return '';
+  const bahtStr = parts.baht.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return `-${parts.pct}% · -${bahtStr} บาท`;
+}
+
+// ป้ายส่วนลดแบบ pill วางต่อท้ายราคาส่งโดยตรง — ดีไซน์ badge มืออาชีพ แทนข้อความล้วนในบรรทัด label เดิม
+function _wrWholesaleDiscountBadgeHTML(retail, wholesale6) {
+  const parts = _wrWholesaleDiscountParts(retail, wholesale6);
+  if (!parts) return '';
+  const isActiveSort = _wrSortMode === 'discount_desc';
+  return `<span class="wr-discount-badge${isActiveSort ? ' wr-discount-badge-active' : ''}" onclick="event.stopPropagation();_wrSortByDiscountDesc()" title="ประหยัด ${parts.baht.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} บาท/ขวด เทียบราคาปลีก — แตะเพื่อเรียงลำดับส่วนลด สูง→ต่ำ"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1.3" fill="currentColor" stroke="none"/></svg>-${parts.pct}%</span>`;
+}
+
+// ข้อความ "บาท/ขวด · ประหยัด ฿xx" ใช้แทนบรรทัดหน่วยเดิมของช่องราคาส่ง เมื่อมีส่วนลด
+function _wrWholesaleSavingsUnit(retail, wholesale6) {
+  const parts = _wrWholesaleDiscountParts(retail, wholesale6);
+  if (!parts) return 'บาท/ขวด';
+  const bahtStr = parts.baht.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return `บาท/ขวด · ประหยัด ${bahtStr}`;
 }
 
 // [FIX 2026-07-26] เติม 0 นำหน้าบาร์โค้ดตัวเลขที่ไม่ครบ 13 หลัก (สำหรับแสดงผลบาร์โค้ดในการ์ดราคาส่ง)
@@ -22600,6 +22643,7 @@ const _wrSortLabels = {
   relevance: 'ตรงที่สุด',
   price_asc: 'ราคาส่ง ต่ำ→สูง',
   price_desc: 'ราคาส่ง สูง→ต่ำ',
+  discount_desc: 'ส่วนลด สูง→ต่ำ',
   name_asc: 'ชื่อ A-Z',
   name_desc: 'ชื่อ Z-A',
   producer_asc: 'ผู้ผลิต A-Z',
@@ -23049,6 +23093,19 @@ function _wrPickSort(rowKey) {
   _wrCloseSortDD();
   _wrRenderSortRow();
   renderWholesaleResults();
+}
+
+// tapping the "-XX%" discount badge on any wholesale price cell jumps straight to
+// "ส่วนลด สูง→ต่ำ" — a shortcut into the same _wrSortMode the sort dropdown uses, so the
+// sort-row trigger label and dropdown stay in sync with this even though it's not one of
+// the rows listed there.
+function _wrSortByDiscountDesc() {
+  _wrSortMode = 'discount_desc';
+  _wrCloseSortDD();
+  _wrRenderSortRow();
+  renderWholesaleResults();
+  const list = document.getElementById('wholesale-results');
+  if (list) list.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // toggles one grape in/out of the multi-select set — picker stays open so multiple
@@ -24483,9 +24540,9 @@ function _wrBuildResultCard(r, i) {
           <div class="rec-data-cell-unit">บาท/ขวด</div>
         </div>
         <div class="rec-data-cell">
-          <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+${_wrWholesaleDiscountLabel(retail, wholesale6) ? ` <span style="color:#ff9f43">(${_wrWholesaleDiscountLabel(retail, wholesale6)})</span>` : ''}</div>
-          <div class="rec-data-cell-val" style="color:${accentColor};text-shadow:0 0 10px rgba(${accentRgb},.5)">${_wrFmtPrice(wholesale6)}</div>
-          <div class="rec-data-cell-unit">บาท/ขวด</div>
+          <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+</div>
+          <div class="rec-data-cell-val" style="color:${accentColor};text-shadow:0 0 10px rgba(${accentRgb},.5);display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">${_wrFmtPrice(wholesale6)}${_wrWholesaleDiscountBadgeHTML(retail, wholesale6)}</div>
+          <div class="rec-data-cell-unit${_wrWholesaleDiscountParts(retail, wholesale6) ? ' rec-data-cell-unit-save' : ''}">${_wrWholesaleSavingsUnit(retail, wholesale6)}</div>
         </div>
       </div>
     </div>
@@ -24683,6 +24740,18 @@ function renderWholesaleResults() {
       if (av == null) return 1;
       if (bv == null) return -1;
       return (av - bv) * dir;
+    });
+  } else if (_wrSortMode === 'discount_desc') {
+    // triggered by tapping the "-XX%" badge on a wholesale price cell — ranks by discount
+    // percentage off retail (wholesale6 vs retail), highest savings first; rows with no
+    // computable discount sort to the end.
+    matches.sort((a, b) => {
+      const ap = _wrWholesaleDiscountParts(a[6], a[5]);
+      const bp = _wrWholesaleDiscountParts(b[6], b[5]);
+      const apct = ap ? ap.pct : -1;
+      const bpct = bp ? bp.pct : -1;
+      if (apct !== bpct) return bpct - apct;
+      return strCmp(a[1], b[1]);
     });
   } else if (_wrSortMode === 'name_asc' || _wrSortMode === 'name_desc') {
     const dir = _wrSortMode === 'name_asc' ? 1 : -1;
@@ -25779,8 +25848,9 @@ function _wrBuildDetailHTML(i) {
         <div class="rec-data-cell-val" style="color:rgba(255,255,255,.9);font-size:15px"><span class="wr-count-up" data-target="${retail == null ? '' : Number(retail)}">${fmtPrice(retail)}</span></div>
       </div>
       <div class="rec-data-cell">
-        <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+${_wrWholesaleDiscountLabel(retail, wholesale6) ? ` <span style="color:#ff9f43">(${_wrWholesaleDiscountLabel(retail, wholesale6)})</span>` : ''}</div>
-        <div class="rec-data-cell-val" style="color:${accentColor};font-size:15px;text-shadow:0 0 10px rgba(${accentRgb},.5)"><span class="wr-count-up" data-target="${wholesale6 == null ? '' : Number(wholesale6)}">${fmtPrice(wholesale6)}</span></div>
+        <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+</div>
+        <div class="rec-data-cell-val" style="color:${accentColor};font-size:15px;text-shadow:0 0 10px rgba(${accentRgb},.5);display:flex;align-items:baseline;gap:6px;flex-wrap:wrap"><span class="wr-count-up" data-target="${wholesale6 == null ? '' : Number(wholesale6)}">${fmtPrice(wholesale6)}</span>${_wrWholesaleDiscountBadgeHTML(retail, wholesale6)}</div>
+        <div class="rec-data-cell-unit${_wrWholesaleDiscountParts(retail, wholesale6) ? ' rec-data-cell-unit-save' : ''}">${_wrWholesaleSavingsUnit(retail, wholesale6)}</div>
       </div>
     </div>
   `;
