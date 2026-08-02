@@ -12128,7 +12128,21 @@ function syncQtyHeight(row) {
   if (!whiteBox) return;
   const h = whiteBox.offsetHeight + 'px';
   if (qtyPanel) { qtyPanel.style.minHeight = h; qtyPanel.style.height = h; }
-  if (photoPanel) photoPanel.style.minHeight = h;
+  if (photoPanel) {
+    // [FIX] เดิมตั้งแค่ min-height เท่าความสูงกล่องบาร์โค้ดเอง ซึ่งพอบนหน้า wholesale ที่
+    // แถบชื่อ/แบดจ์ (ประเทศ/พันธุ์องุ่น/ทวินเทจ/tier ฯลฯ) สูงกว่าฝั่ง product card มาก รูปเลย
+    // ไม่ยืดลงไปถึงขอบล่างบาร์โค้ดจริง — เปลี่ยนมาวัดระยะจาก "บนสุดของแถว" ถึง "ขอบล่างจริง
+    // ของกล่องบาร์โค้ดขาว" แล้วตั้ง height ตรง ๆ ให้รูปเท่ากันเป๊ะทุกกรณี (ทั้งการ์ดสินค้าและ wholesale)
+    const rowRect = row.getBoundingClientRect();
+    const wbRect = whiteBox.getBoundingClientRect();
+    const targetH = Math.ceil(wbRect.bottom - rowRect.top);
+    if (targetH > 0) {
+      photoPanel.style.height = targetH + 'px';
+      photoPanel.style.minHeight = targetH + 'px';
+    } else {
+      photoPanel.style.minHeight = h;
+    }
+  }
 }
 
 // ── Nexus HUD helpers ─────────────────────────────────────
