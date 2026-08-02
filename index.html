@@ -25667,6 +25667,10 @@ function _wrBuildDetailHTML(i) {
   const tierRgb = _wrHexToRgb(tierColor);
   const secondaryColor = secondaryTag ? _wrTierColor(secondaryTag) : tierColor;
   const sysId = String(barcode || '').slice(-6).toUpperCase();
+  // product photo — same shared per-barcode store the result cards use (loadProductPhoto is the
+  // sync/local-cache read; any barcode still missing locally gets patched in async after the
+  // sheet mounts, via the same _patchPendingProductPhotos() the record cards already rely on).
+  const _wrDetailPhoto = barcode ? loadProductPhoto(barcode) : null;
   const fmtPrice = v => (v == null ? '—' : Number(v).toLocaleString('th-TH', {maximumFractionDigits: 2}) + ' บาท');
   const row = (label, val) => val ? `<div style="margin-bottom:10px"><div style="font-family:'Prompt',sans-serif;font-size:9px;font-weight:800;letter-spacing:1px;color:${tierColor}aa;text-transform:uppercase;margin-bottom:2px">${label}</div><div style="font-family:'Prompt',sans-serif;font-size:13px;color:#e8f0ff;line-height:1.4">${_wrEsc(String(val))}</div></div>` : '';
 
@@ -25697,6 +25701,27 @@ function _wrBuildDetailHTML(i) {
 
     ${_wrLastShown.length > 1 ? `
     <div ${boot()}text-align:center;font-size:8px;color:${tierColor}77;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;margin:-6px 0 10px">◀ double-tap ▶ เลื่อนสินค้า</div>` : ''}
+
+    <!-- product photo — large banner version of the same rec-photo-panel the result cards use,
+         keyed off data-prod-photo-bc so it shares the exact same photo store per barcode. Tap
+         the camera icon to add/replace (reuses _openRecordPhotoMenu — same picker as everywhere
+         else in the app). If this barcode's photo hasn't synced to this device yet, the sheet
+         mount code in _wrOpenDetail patches it in async, same as the result-card list does. -->
+    <div ${boot()}position:relative;margin-bottom:14px">
+      <div class="rec-photo-panel" data-prod-photo-bc="${barcode || ''}" style="width:100%;height:190px;border-radius:12px;overflow:hidden;position:relative;cursor:default;border:1px solid rgba(${tierRgb},.25);background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(${tierRgb},.1)">
+        ${_wrDetailPhoto
+          ? `<img src="${_wrDetailPhoto}" style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;pointer-events:none"/>`
+          : `<div style="display:flex;flex-direction:column;align-items:center;gap:5px;opacity:.4;pointer-events:none"><svg width="34" height="40" viewBox="0 0 24 28" fill="none" stroke="${tierColor}" stroke-width="1.2"><path d="M9 1h6v5l2.4 3.6c.4.6.6 1.3.6 2V25a2 2 0 01-2 2H8a2 2 0 01-2-2V11.6c0-.7.2-1.4.6-2L9 6V1z"/><line x1="8.5" y1="10" x2="15.5" y2="10"/></svg><span style="font-family:'IBM Plex Mono',monospace;font-size:7px;letter-spacing:1.5px;color:${tierColor};font-weight:700">NO PHOTO</span></div>`
+        }
+        <div style="position:absolute;top:6px;left:6px;width:9px;height:9px;border-top:2px solid rgba(${tierRgb},.6);border-left:2px solid rgba(${tierRgb},.6);pointer-events:none"></div>
+        <div style="position:absolute;top:6px;right:6px;width:9px;height:9px;border-top:2px solid rgba(${tierRgb},.4);border-right:2px solid rgba(${tierRgb},.4);pointer-events:none"></div>
+        <div style="position:absolute;bottom:6px;left:6px;width:9px;height:9px;border-bottom:2px solid rgba(${tierRgb},.3);border-left:2px solid rgba(${tierRgb},.3);pointer-events:none"></div>
+        <button type="button" onclick="event.stopPropagation();_openRecordPhotoMenu('${barcode}')"
+          style="position:absolute;bottom:8px;right:8px;width:32px;height:32px;border-radius:10px;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);border:1px solid rgba(${tierRgb},.4);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </button>
+      </div>
+    </div>
 
     ${wineTier ? `
     <!-- classification tier ribbon (primary — Premier/Grand Cru Classé etc. outrank plain AOC).
@@ -25929,6 +25954,9 @@ function _wrOpenDetail(i, dir) {
     frame.setAttribute('data-wr-tier', tierClsAttr);
   }
   body.innerHTML = html;
+  // barcode may not have its photo cached locally yet (e.g. first time this device has seen
+  // this product) — same async cloud fetch-and-patch the result-card list already uses.
+  if (typeof _patchPendingProductPhotos === 'function') _patchPendingProductPhotos([body]);
   document.getElementById('wr-detail-modal').style.display = 'flex';
   // [FIX 2026-07-29] every other modal in this file (login screen, cloud-debug panel, shelf
   // picker, etc.) locks document/body overflow while open — this one never did. Being
