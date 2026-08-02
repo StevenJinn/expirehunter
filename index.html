@@ -22536,6 +22536,17 @@ function _wrWholesaleSavingsUnit(retail, wholesale6) {
   return `บาท/ขวด · ประหยัด ${bahtStr}`;
 }
 
+// [FIX] เวอร์ชันสำหรับหน้า detail sheet เท่านั้น — ราคาบรรทัดบน (fmtPrice) ต่อท้ายด้วย "บาท" อยู่แล้ว
+// ดังนั้นบรรทัดหน่วยนี้จึงไม่ต้องพิมพ์ "บาท/ขวด" ซ้ำอีก (ต่างจาก _wrWholesaleSavingsUnit ด้านบนที่ใช้กับ
+// การ์ดในลิสต์ ซึ่งราคาบรรทัดบนเป็นตัวเลขล้วนไม่มีหน่วย — ที่นั่นยังต้องมี "บาท/ขวด" กำกับ).
+// ไม่มีส่วนลด → คืนสตริงว่าง ให้ผู้เรียกซ่อนบรรทัดนี้ไปเลย แทนที่จะโชว์ "บาท/ขวด" ซ้ำเปล่า ๆ
+function _wrWholesaleSavingsUnitDetail(retail, wholesale6) {
+  const parts = _wrWholesaleDiscountParts(retail, wholesale6);
+  if (!parts) return '';
+  const bahtStr = parts.baht.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return `ประหยัด ${bahtStr} บาท/ขวด`;
+}
+
 // [FIX 2026-07-26] เติม 0 นำหน้าบาร์โค้ดตัวเลขที่ไม่ครบ 13 หลัก (สำหรับแสดงผลบาร์โค้ดในการ์ดราคาส่ง)
 function _wrPad13(code) {
   const s = String(code == null ? '' : code).trim();
@@ -25857,8 +25868,11 @@ function _wrBuildDetailHTML(i) {
       </div>
       <div class="rec-data-cell">
         <div class="rec-data-cell-lbl" style="color:${accentColor}">WHOLESALE · 6 ขวด+</div>
-        <div class="rec-data-cell-val" style="color:${accentColor};font-size:15px;text-shadow:0 0 10px rgba(${accentRgb},.5);display:flex;align-items:baseline;gap:6px;flex-wrap:nowrap;overflow:hidden"><span class="wr-count-up" style="min-width:0;overflow:hidden;text-overflow:ellipsis" data-target="${wholesale6 == null ? '' : Number(wholesale6)}">${fmtPrice(wholesale6)}</span>${_wrWholesaleDiscountBadgeHTML(retail, wholesale6, accentColor, accentRgb)}</div>
-        <div class="rec-data-cell-unit${_wrWholesaleDiscountParts(retail, wholesale6) ? ' rec-data-cell-unit-save' : ''}">${_wrWholesaleSavingsUnit(retail, wholesale6)}</div>
+        <div class="rec-data-cell-val" style="color:${accentColor};font-size:15px;text-shadow:0 0 10px rgba(${accentRgb},.5);position:relative;${_wrWholesaleDiscountParts(retail, wholesale6) ? 'padding-right:48px' : ''}">
+          <span class="wr-count-up" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-target="${wholesale6 == null ? '' : Number(wholesale6)}">${fmtPrice(wholesale6)}</span>
+          <span style="position:absolute;right:0;top:50%;transform:translateY(-50%);line-height:1">${_wrWholesaleDiscountBadgeHTML(retail, wholesale6, accentColor, accentRgb)}</span>
+        </div>
+        ${_wrWholesaleSavingsUnitDetail(retail, wholesale6) ? `<div class="rec-data-cell-unit" style="color:${accentColor}">${_wrWholesaleSavingsUnitDetail(retail, wholesale6)}</div>` : ''}
       </div>
     </div>
   `;
