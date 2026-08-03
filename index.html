@@ -63,6 +63,17 @@ input,textarea,[contenteditable="true"],[contenteditable=""]{
   -webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:default!important;
 }
 html,body{font-family:"Prompt",sans-serif;background:#0a0e1a;color:#e8eaf0;overflow-x:hidden;font-size:16px;
+  /* [FIX 2026-08-03c] touch-action:pan-x pan-y — กันสองนิ้วซูม (pinch-zoom) ทั้งแอป
+     meta viewport ที่มี user-scalable=no/maximum-scale=1.0 (บรรทัด 35) ไม่พอในหลายรุ่นของ
+     Android WebView/Chrome เพราะบางเวอร์ชันเพิกเฉยค่านี้ (accessibility override) หรือยังปล่อยให้
+     pinch เริ่ม gesture ได้ก่อนจะถูกยกเลิก — touch-action ระบุชัดว่า element รับได้แค่ pan-x/pan-y
+     (เลื่อนสองแกนปกติ) ไม่รวม pinch-zoom ในชุด gesture ที่อนุญาต ซึ่ง browser ต้อง honor ตั้งแต่
+     touchstart เลยโดยไม่ต้องรอ JS preventDefault — ส่วน element ลูกที่ประกาศ touch-action ของตัวเอง
+     ไว้แล้ว (pan-y/none/manipulation ทั่วทั้งไฟล์) ไม่กระทบ เพราะค่าที่ browser ใช้จริงคือ
+     intersection ของ touch-action ทุกชั้นบน element ที่ถูกแตะ — ตั้งที่ html,body ได้แค่ "จำกัดเพิ่ม"
+     ไม่มีทางไป "คืนสิทธิ์ซูม" ให้ element ลูกที่ตัดออกไปแล้วอยู่ดี ดู [FIX 2026-08-03d] ด้านล่าง
+     สำหรับ Safari gesture events ที่ touch-action ไม่ครอบคลุม (gesturestart/gesturechange) */
+  touch-action:pan-x pan-y;
   /* [FIX 2026-08-01] เอา min-height:100vh/100dvh ออกจาก html,body — พบว่านี่คือสาเหตุจริงของ
      "พื้นที่ว่างเยอะเกินใต้ปุ่มบันทึก": #main-content-wrap สูงพอดีเนื้อหาอยู่แล้ว (auto height)
      แต่ html,body ถูกบังคับให้สูงเท่า viewport เสมอ พอเนื้อหาสั้นกว่าจอ (โดยเฉพาะจอ/หน้าต่างที่สูงมาก)
@@ -7423,6 +7434,15 @@ body.ues-open-frozen #uesSheet *{animation-play-state:running!important}
    the purely-decorative glitch animation there instead of hoping the compositor cooperates. iOS/
    desktop keep the effect since the bug has only ever reproduced on Android Chrome. */
 if (/Android/i.test(navigator.userAgent)) document.documentElement.classList.add('is-android');
+
+/* [FIX 2026-08-03d] กันสองนิ้วซูมชั้นที่ 2 — Safari (iOS) มี gesture event ของตัวเอง
+   (gesturestart/gesturechange/gestureend) ที่แยกจาก touch/pointer events ทั้งหมด ทำให้
+   touch-action:pan-x pan-y (ชั้นที่ 1 ใน CSS ด้านบน) ไม่ครอบคลุมถึง — ต้อง preventDefault
+   ตรงนี้แยกต่างหาก ไม่กระทบ Android/Chrome เพราะ engine นั้นไม่ยิง gesture event เหล่านี้เลย
+   (ใช้ touch-action อย่างเดียวพอ) จึง listener นี้ no-op เงียบๆ บน Android */
+['gesturestart','gesturechange','gestureend'].forEach(function(ev){
+  document.addEventListener(ev, function(e){ e.preventDefault(); }, {passive:false});
+});
 </script>
 <!-- ══════════════════════════════════════════════════════════════════════
      STANDARD PLAYBOOK — always-on decorative animation inside a small panel
@@ -7469,13 +7489,23 @@ if (/Android/i.test(navigator.userAgent)) document.documentElement.classList.add
 
 /* ── overlay ── */
 #auth-gate-overlay{
-  position:fixed;inset:0;z-index:99999;
+  position:absolute;inset:0;z-index:99999;
   /* [FIX 2026-08-03] เอา width:100vw;height:100vh;height:100dvh ออก — position:fixed;inset:0
      กำหนดขนาดให้เท่า viewport เป๊ะอยู่แล้วโดยไม่ต้องพึ่งหน่วย vw/vh เลย ส่วน 100vw บนมือถือ
      อาจกว้างกว่า visual viewport จริง (เผื่อพื้นที่ scrollbar) และคู่ 100vh→100dvh ทำให้ขนาด
      เปลี่ยนสองรอบตอนโหลด (ครั้งแรกใช้ 100vh แล้วรีเฟลาว์เป็น 100dvh ทันทีที่ browser คำนวณ
      dynamic viewport เสร็จ) — นี่คือสาเหตุที่ scrollbar/overscroll indicator แวบขึ้นบน-ขวา
-     ตอนเปิดแอป 2 ครั้ง เพราะ overlay นี้เป็นด่านแรกที่ render ก่อนอย่างอื่นทั้งหมด */
+     ตอนเปิดแอป 2 ครั้ง เพราะ overlay นี้เป็นด่านแรกที่ render ก่อนอย่างอื่นทั้งหมด
+     [FIX 2026-08-03b] เปลี่ยน fixed → absolute: position:fixed ต้องผูกกับ viewport จริงตลอดเวลา
+     ผ่าน compositor thread ซึ่งบน Android WebView ต้อง re-anchor ทุกครั้งที่ system inset
+     (status bar/gesture nav/cutout) settle เสร็จหลัง cold-launch — นี่คือจังหวะที่ native
+     scrollbar/overscroll affordance ของตัว WebView เองแวบขึ้นมา เพราะ fixed element กำลังถูก
+     คำนวณใหม่พร้อม inset ระหว่างนั้น ส่วน absolute คำนวณตำแหน่งครั้งเดียวตอน layout pass
+     ผูกกับ initial containing block ไม่ต้อง track ผ่าน compositor แบบ fixed
+     ปลอดภัยเพราะ body style="overflow:hidden" (บรรทัด ~7416) ปิด scroll ทั้งเอกสารอยู่แล้ว
+     จึงไม่มีผลต่าง fixed vs absolute จากมุมมองการเลื่อนหน้าเลย — ต่างกันแค่กลไก anchoring
+     เบื้องหลังเท่านั้น ถ้า auth gate เสร็จแล้วซ่อน overlay (ดู JS บรรทัด ~10509/10691) ก็ไม่กระทบ
+     เพราะตอนนั้น overlay ไม่ได้อยู่ในโฟลว์ที่ต้อง reflow กับส่วนอื่นอยู่แล้ว */
   display:flex;align-items:center;justify-content:center;
   font-family:'Prompt',sans-serif;color:#d0e8ff;
   overflow:hidden;
