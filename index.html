@@ -10780,8 +10780,8 @@ async function syncFromCloud(){
   if (_syncInProgress) { _syncQueued = true; return; }
   _syncInProgress = true;
   try {
-    const [cRecords, cDelta, cShelves, cWrNotes] = await Promise.all([
-      cloudGet('records'), cloudGet('catalogDelta'), cloudGet('shelves'), cloudGet('wholesaleNotes')
+    const [cRecords, cDelta, cShelves, cWrNotes, cTipOverrides] = await Promise.all([
+      cloudGet('records'), cloudGet('catalogDelta'), cloudGet('shelves'), cloudGet('wholesaleNotes'), cloudGet('tipOverrides')
     ]);
     let changed = false;
     if (cRecords && cRecords.length) { records = cRecords; localStorage.setItem("expiry-records-v2", JSON.stringify(records)); changed = true; }
@@ -10797,6 +10797,13 @@ async function syncFromCloud(){
       if (typeof _wrMergeCloudNotes === 'function') _wrMergeCloudNotes(cWrNotes);
     } else if (typeof _wrCustomNotes !== 'undefined' && Object.keys(_wrCustomNotes || {}).length) {
       cloudSet('wholesaleNotes', _wrCustomNotes);
+    }
+
+    // curated tooltip overrides — same pull-down/push-up-if-empty pattern as wholesaleNotes above.
+    if (cTipOverrides && typeof cTipOverrides === 'object' && (Object.keys(cTipOverrides.name || {}).length || Object.keys(cTipOverrides.tier || {}).length)) {
+      if (typeof _wrMergeCloudTipOverrides === 'function') _wrMergeCloudTipOverrides(cTipOverrides);
+    } else if (typeof _wrTipOverrides !== 'undefined' && (Object.keys(_wrTipOverrides.name || {}).length || Object.keys(_wrTipOverrides.tier || {}).length)) {
+      cloudSet('tipOverrides', _wrTipOverrides);
     }
 
     if (cShelves && cShelves.length) {
@@ -10951,6 +10958,18 @@ function _attachCloudListeners(){
     if (typeof _wrMergeCloudNotes === 'function') _wrMergeCloudNotes(cWrNotes);
     _markCloudSynced();
   }, e=>{ console.warn("[cloud] wholesaleNotes listener fail", e); _markCloudSyncError('wholesaleNotes-listen: '+(e&&e.code||e)); });
+
+  // curated tooltip overrides — sync สด (edits made on another device/tab, or by another
+  // teammate, show up immediately — same self-write guard as wholesaleNotes above)
+  _cloudRef('tipOverrides').on('value', snap=>{
+    if (!snap.exists()) return;
+    const d = snap.val();
+    if (d && d.updatedAt && _lastWriteAt['tipOverrides'] && d.updatedAt <= _lastWriteAt['tipOverrides']) return;
+    const cTipOverrides = _extractPayload(d);
+    if (!cTipOverrides || typeof cTipOverrides !== 'object') return;
+    if (typeof _wrMergeCloudTipOverrides === 'function') _wrMergeCloudTipOverrides(cTipOverrides);
+    _markCloudSynced();
+  }, e=>{ console.warn("[cloud] tipOverrides listener fail", e); _markCloudSyncError('tipOverrides-listen: '+(e&&e.code||e)); });
 
   // ── photoIndex listener เดียว แทน per-barcode/shelf listeners ──
   _attachPhotoIndexListener();
@@ -22578,6 +22597,109 @@ function _wrNoteParas(text) {
   return String(text || '').split(/\n\s*\n/).map(p => p.trim().replace(/\s*\n\s*/g, ' ')).filter(Boolean);
 }
 
+// [NEW 2026-08-03] curated tooltip overrides — lets the built-in classification tooltip text
+// (WR_TIER_DESCRIPTIONS + WR_TIER_RULES' tipTitle/short) and the wine-name tooltip text
+// (WR_NAME_TIPS' pronun/desc) be corrected or rewritten directly from the UI. Unlike
+// "your note" above (which is a personal free-text addition per barcode), this REPLACES the
+// shared curated copy every reader sees — so it's the same for everyone, synced via one
+// shared cloud key ('tipOverrides'), the same pattern as records/shelves/wholesaleNotes.
+// kind: 'name' → keyed by WR_NAME_TIPS' `key`. kind: 'tier' → keyed by WR_TIER_RULES' `key`
+// (shared by both the primary classification ribbon and any secondary AOC/DOCG/DOCa tag,
+// since both look up WR_TIER_DESCRIPTIONS by the same tier key).
+const WR_TIP_OVERRIDES_KEY = 'wholesale-tip-overrides';
+let _wrTipOverrides = { name: {}, tier: {} };
+(function _wrLoadTipOverrides(){
+  try {
+    const saved = JSON.parse(localStorage.getItem(WR_TIP_OVERRIDES_KEY) || 'null');
+    if (saved && typeof saved === 'object') _wrTipOverrides = { name: saved.name || {}, tier: saved.tier || {} };
+  } catch (e) { /* keep defaults */ }
+})();
+function _wrGetTipOverride(kind, key) {
+  return (key && _wrTipOverrides[kind] && _wrTipOverrides[kind][key]) || null;
+}
+// debounced cloud push — mirrors _wrCloudSetNotes' pattern (280ms), defined once so rapid
+// saves collapse into a single RTDB write instead of one per keystroke-save.
+const _wrCloudSetTipOverrides = (typeof _dbounce === 'function' && typeof cloudSet === 'function')
+  ? _dbounce(()=>cloudSet('tipOverrides', _wrTipOverrides), 280)
+  : null;
+// header/bodyText come straight from the edit form; bodyText is split into paragraphs the
+// same way "your note" is (blank line = new paragraph). Saving with both fields empty clears
+// the override entirely, falling back to the original built-in copy again.
+function _wrSaveTipOverride(kind, key, header, bodyText) {
+  if (!key) return;
+  const paras = _wrNoteParas(bodyText);
+  const trimmedHeader = String(header || '').trim();
+  if (!trimmedHeader && !paras.length) {
+    if (_wrTipOverrides[kind]) delete _wrTipOverrides[kind][key];
+  } else {
+    if (!_wrTipOverrides[kind]) _wrTipOverrides[kind] = {};
+    _wrTipOverrides[kind][key] = { header: trimmedHeader, desc: paras };
+  }
+  try { localStorage.setItem(WR_TIP_OVERRIDES_KEY, JSON.stringify(_wrTipOverrides)); } catch (e) { /* storage full — edit still applies for this session */ }
+  if (_wrCloudSetTipOverrides) _wrCloudSetTipOverrides(); // push to Firebase so every reader sees the correction
+  if (typeof _wrClearDetailCache === 'function') _wrClearDetailCache();
+}
+// merges a cloud snapshot of overrides into the local cache + localStorage, then re-renders
+// whichever wholesale detail sheet is currently open (if any) — same pattern as
+// _wrMergeCloudNotes above.
+function _wrMergeCloudTipOverrides(cOverrides) {
+  if (!cOverrides || typeof cOverrides !== 'object') return;
+  _wrTipOverrides = { name: cOverrides.name || {}, tier: cOverrides.tier || {} };
+  try { localStorage.setItem(WR_TIP_OVERRIDES_KEY, JSON.stringify(_wrTipOverrides)); } catch (e) {}
+  if (typeof _wrClearDetailCache === 'function') _wrClearDetailCache();
+  if (typeof _wrCurrentDetailIndex === 'number' && _wrCurrentDetailIndex >= 0 && typeof _wrOpenDetail === 'function') {
+    _wrOpenDetail(_wrCurrentDetailIndex);
+  }
+}
+// swaps a curated-tip body region (identified by viewId, e.g. the div wrapping a classification
+// tip's descParas, or a name tip's descParas) into an editable header input + body textarea,
+// pre-filled with whatever's currently shown (override if one exists, else the built-in copy).
+function _wrEditCuratedTip(kind, key, viewId) {
+  const view = document.getElementById(viewId);
+  if (!view || !key) return;
+  let fallbackHeader = '', fallbackDesc = [];
+  if (kind === 'name') {
+    const t = WR_NAME_TIPS.find(x => x.key === key);
+    fallbackHeader = t ? t.pronun : '';
+    fallbackDesc = (t && t.desc) || [];
+  } else if (kind === 'tier') {
+    const t = WR_TIER_RULES.find(x => x.key === key);
+    fallbackHeader = t ? (t.tipTitle || t.short) : '';
+    const d = WR_TIER_DESCRIPTIONS[key];
+    fallbackDesc = Array.isArray(d) ? d : (d ? [d] : []);
+  }
+  const override = _wrGetTipOverride(kind, key);
+  const header = override ? override.header : fallbackHeader;
+  const desc = (override ? override.desc : fallbackDesc) || [];
+  view.innerHTML = `
+    <div style="margin-bottom:8px">
+      <div style="font-family:'Prompt',sans-serif;font-size:9px;font-weight:800;letter-spacing:1px;color:#9fb4d9;text-transform:uppercase;margin-bottom:4px">หัวข้อ</div>
+      <input id="wr-curtip-header" type="text" value="${_wrEsc(header)}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:8px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:13px"/>
+    </div>
+    <div style="margin-bottom:6px">
+      <div style="font-family:'Prompt',sans-serif;font-size:9px;font-weight:800;letter-spacing:1px;color:#9fb4d9;text-transform:uppercase;margin-bottom:4px">คำอธิบาย — เว้นบรรทัดว่างเพื่อขึ้นย่อหน้าใหม่</div>
+      <textarea id="wr-curtip-body" rows="8" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:8px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:12.5px;line-height:1.6;resize:vertical">${_wrEsc(desc.join('\n\n'))}</textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" onclick="event.stopPropagation();_wrCancelCuratedTipEdit()" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#cfe9ff;font-size:11px;cursor:pointer;-webkit-tap-highlight-color:transparent">ยกเลิก</button>
+      <button type="button" onclick="event.stopPropagation();_wrSaveCuratedTipEdit('${kind}','${key}')" style="padding:6px 12px;border-radius:7px;border:none;background:#4bcffa;color:#04121e;font-weight:700;font-size:11px;cursor:pointer;-webkit-tap-highlight-color:transparent">บันทึก</button>
+    </div>`;
+  const inp = document.getElementById('wr-curtip-header');
+  if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+}
+// cancels a curated-tip edit without saving — just re-renders the whole sheet (no cache was
+// touched), same approach as _wrCancelNoteEdit.
+function _wrCancelCuratedTipEdit() {
+  if (typeof _wrCurrentDetailIndex === 'number' && typeof _wrOpenDetail === 'function') _wrOpenDetail(_wrCurrentDetailIndex);
+}
+function _wrSaveCuratedTipEdit(kind, key) {
+  const h = document.getElementById('wr-curtip-header');
+  const b = document.getElementById('wr-curtip-body');
+  if (!h || !b) return;
+  _wrSaveTipOverride(kind, key, h.value, b.value);
+  if (typeof _wrCurrentDetailIndex === 'number' && typeof _wrOpenDetail === 'function') _wrOpenDetail(_wrCurrentDetailIndex);
+}
+
 // [NEW 2026-07-30] bottle-size badge — most rows are standard 750ml and carry no size text
 // in the product name at all, but Magnums/Halves/Minis/Specials spell it out inline in all
 // kinds of inconsistent ways ("1.5L Magnum", "Half 0.375L", "375ml.", "50cl.", "Mini 0.25L",
@@ -25813,6 +25935,10 @@ function _wrBuildDetailHTML(i) {
   const rawTier = _wrWineTier(r);
   const wineTier = _wrTierVisual(rawTier);
   const secondaryTag = _wrSecondaryAocTag(r, rawTier) || _wrSecondaryDocgTag(r, rawTier) || _wrSecondaryDocaTag(r, rawTier);
+  // [NEW 2026-08-03] curated-tip overrides for the classification tooltip(s) — see
+  // _wrGetTipOverride/_wrEditCuratedTip above.
+  const tierOverride = wineTier ? _wrGetTipOverride('tier', wineTier.key) : null;
+  const secondaryOverride = secondaryTag ? _wrGetTipOverride('tier', secondaryTag.key) : null;
   // [FIX] accentColor (wine-type color) is now reserved for the WHOLESALE price cell only —
   // every other accent on the detail sheet (frame glow, corners, badges, barcode frame,
   // sysid) uses tierColor, the wine's classification-tier color.
@@ -25876,9 +26002,10 @@ function _wrBuildDetailHTML(i) {
         <span style="position:absolute;bottom:5px;right:5px;width:8px;height:8px;border-bottom:1.5px solid ${tierColor}bb;border-right:1.5px solid ${tierColor}bb;pointer-events:none"></span>
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;padding-bottom:6px;border-bottom:1px solid ${tierColor}33">
           <span style="width:4px;height:4px;flex-shrink:0;background:${tierColor};box-shadow:0 0 5px ${tierColor}"></span>
-          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;letter-spacing:2px;color:${tierColor};text-transform:uppercase">${_wrEsc(wineTier.tipTitle || wineTier.short)}</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;letter-spacing:2px;color:${tierColor};text-transform:uppercase;flex:1;min-width:0">${_wrEsc(tierOverride && tierOverride.header ? tierOverride.header : (wineTier.tipTitle || wineTier.short))}</span>
+          <span onclick="event.stopPropagation();_wrEditCuratedTip('tier','${wineTier.key}','wr-curtip-tier-${wineTier.key}')" style="cursor:pointer;font-size:11px;color:${tierColor};opacity:.85;padding:4px 6px;margin:-4px -6px;flex-shrink:0;-webkit-tap-highlight-color:transparent" title="แก้ไขหัวข้อ/คำอธิบาย">✎</span>
         </div>
-        ${_wrTipBody(WR_TIER_DESCRIPTIONS[wineTier.key])}
+        <div id="wr-curtip-tier-${wineTier.key}">${_wrTipBody(tierOverride ? tierOverride.desc : WR_TIER_DESCRIPTIONS[wineTier.key])}</div>
       </div>
     </div>` : ''}
     ${secondaryTag ? `
@@ -25896,9 +26023,10 @@ function _wrBuildDetailHTML(i) {
         <span style="position:absolute;bottom:5px;right:5px;width:8px;height:8px;border-bottom:1.5px solid ${secondaryColor}bb;border-right:1.5px solid ${secondaryColor}bb;pointer-events:none"></span>
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;padding-bottom:6px;border-bottom:1px solid ${secondaryColor}33">
           <span style="width:4px;height:4px;flex-shrink:0;background:${secondaryColor};box-shadow:0 0 5px ${secondaryColor}"></span>
-          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;letter-spacing:2px;color:${secondaryColor};text-transform:uppercase">${_wrEsc(secondaryTag.tipTitle || secondaryTag.short)}</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;letter-spacing:2px;color:${secondaryColor};text-transform:uppercase;flex:1;min-width:0">${_wrEsc(secondaryOverride && secondaryOverride.header ? secondaryOverride.header : (secondaryTag.tipTitle || secondaryTag.short))}</span>
+          <span onclick="event.stopPropagation();_wrEditCuratedTip('tier','${secondaryTag.key}','wr-curtip-tier2-${secondaryTag.key}')" style="cursor:pointer;font-size:11px;color:${secondaryColor};opacity:.85;padding:4px 6px;margin:-4px -6px;flex-shrink:0;-webkit-tap-highlight-color:transparent" title="แก้ไขหัวข้อ/คำอธิบาย">✎</span>
         </div>
-        ${_wrTipBody(WR_TIER_DESCRIPTIONS[secondaryTag.key])}
+        <div id="wr-curtip-tier2-${secondaryTag.key}">${_wrTipBody(secondaryOverride ? secondaryOverride.desc : WR_TIER_DESCRIPTIONS[secondaryTag.key])}</div>
       </div>
     </div>` : ''}
 
@@ -25913,6 +26041,13 @@ function _wrBuildDetailHTML(i) {
       const nameTip = _wrNameTip(product);
       const noteKey = _wrNoteKey(r);
       const customNote = _wrGetCustomNote(noteKey);
+      // [NEW 2026-08-03] curated-tip override for this wine's name tooltip (header + curated
+      // history/tasting prose) — see _wrGetTipOverride/_wrEditCuratedTip above. Only wines that
+      // already have a WR_NAME_TIPS entry get the edit affordance; other wines rely on "your
+      // note" below for free-text commentary since there's no curated copy to correct.
+      const nameTipKey = nameTip && nameTip.key;
+      const nameTipOverride = nameTipKey ? _wrGetTipOverride('name', nameTipKey) : null;
+      const curatedEditId = 'wr-curtip-name-' + (nameTipKey || 'none');
       // [FIX 2026-07-29] wrapper needs its own z-index (matching the classification
       // ribbon's z-index:30 above) — .wr-boot-item's entrance animation leaves a
       // permanent filter:blur(0) on every boot block, which quietly creates a stacking
@@ -25924,9 +26059,10 @@ function _wrBuildDetailHTML(i) {
       // text into "cards") plus inline highlighting of years/"quoted phrases" so
       // the eye can scan for dates and names before reading prose top-to-bottom.
       const paraHtml = p => `<div style="padding-left:10px;border-left:2px solid ${tierColor}45">${_wrHighlightTip(_wrEsc(p), tierColor)}</div>`;
-      const descParas = (nameTip && nameTip.desc || []).map(paraHtml).join('<div style="height:12px"></div>');
+      const curatedDesc = nameTipOverride ? nameTipOverride.desc : (nameTip && nameTip.desc || []);
+      const descParas = curatedDesc.map(paraHtml).join('<div style="height:12px"></div>');
       const customParasHtml = _wrNoteParas(customNote).map(paraHtml).join('<div style="height:12px"></div>');
-      const headerTitle = nameTip ? nameTip.pronun : 'รายละเอียดเพิ่มเติม';
+      const headerTitle = nameTipOverride && nameTipOverride.header ? nameTipOverride.header : (nameTip ? nameTip.pronun : 'รายละเอียดเพิ่มเติม');
       return `
     <div ${boot()}position:relative;z-index:30;margin-bottom:12px">
       <div style="position:relative;padding-right:26px;box-sizing:border-box;-webkit-tap-highlight-color:transparent;cursor:pointer" data-wr-tip-trigger onclick="_wrToggleTierTip(event,this)">
@@ -25956,10 +26092,13 @@ function _wrBuildDetailHTML(i) {
           <style>.wr-tip-scroll::-webkit-scrollbar{display:none}</style>
           <div style="position:sticky;top:-13px;margin:-13px -15px 9px;padding:13px 15px 8px;background:linear-gradient(165deg, #12172a, #0a0e18);display:flex;align-items:center;gap:6px;padding-bottom:7px;border-bottom:1px solid ${tierColor}33;z-index:1">
             <span style="width:4px;height:4px;flex-shrink:0;background:${tierColor};box-shadow:0 0 5px ${tierColor}"></span>
-            <span style="font-family:'Prompt',sans-serif;font-size:13.5px;font-weight:700;letter-spacing:.3px;color:${tierColor}">${_wrEsc(headerTitle)}</span>
+            <span style="font-family:'Prompt',sans-serif;font-size:13.5px;font-weight:700;letter-spacing:.3px;color:${tierColor};flex:1;min-width:0">${_wrEsc(headerTitle)}</span>
+            ${nameTip ? `<span onclick="event.stopPropagation();_wrEditCuratedTip('name','${nameTipKey}','${curatedEditId}')" style="cursor:pointer;font-size:11px;color:${tierColor};opacity:.85;padding:4px 6px;margin:-4px -6px;flex-shrink:0;-webkit-tap-highlight-color:transparent" title="แก้ไขหัวข้อ/คำอธิบาย">✎</span>` : ''}
           </div>
+          <div id="${curatedEditId}">
           ${descParas}
           ${descParas ? `<div style="height:14px"></div><div style="height:1px;background:${tierColor}22"></div><div style="height:14px"></div>` : ''}
+          </div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
             <span style="font-family:'Prompt',sans-serif;font-size:9px;font-weight:800;letter-spacing:1px;color:${tierColor}aa;text-transform:uppercase">บันทึกของคุณ</span>
             <span onclick="event.stopPropagation();_wrEditNote()" style="cursor:pointer;font-size:11px;color:${tierColor};opacity:.9;padding:4px 6px;margin:-4px -6px;-webkit-tap-highlight-color:transparent" title="แก้ไขบันทึก">✎ แก้ไข</span>
