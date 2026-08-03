@@ -10780,8 +10780,8 @@ async function syncFromCloud(){
   if (_syncInProgress) { _syncQueued = true; return; }
   _syncInProgress = true;
   try {
-    const [cRecords, cDelta, cShelves] = await Promise.all([
-      cloudGet('records'), cloudGet('catalogDelta'), cloudGet('shelves')
+    const [cRecords, cDelta, cShelves, cWrNotes] = await Promise.all([
+      cloudGet('records'), cloudGet('catalogDelta'), cloudGet('shelves'), cloudGet('wholesaleNotes')
     ]);
     let changed = false;
     if (cRecords && cRecords.length) { records = cRecords; localStorage.setItem("expiry-records-v2", JSON.stringify(records)); changed = true; }
@@ -10789,6 +10789,15 @@ async function syncFromCloud(){
 
     if (cDelta && cDelta.length) { localStorage.setItem("expiry-catalog-delta", JSON.stringify(cDelta)); _applyCatalogDelta(cDelta); changed = true; }
     else if (_lastCatalogDelta.length) cloudSet('catalogDelta', _lastCatalogDelta);
+
+    // wholesale tooltip notes — pull cloud copy down; if cloud is empty but we have local
+    // notes (first sync from a device that already wrote some), push local up instead so
+    // nothing gets silently dropped either direction.
+    if (cWrNotes && typeof cWrNotes === 'object' && Object.keys(cWrNotes).length) {
+      if (typeof _wrMergeCloudNotes === 'function') _wrMergeCloudNotes(cWrNotes);
+    } else if (typeof _wrCustomNotes !== 'undefined' && Object.keys(_wrCustomNotes || {}).length) {
+      cloudSet('wholesaleNotes', _wrCustomNotes);
+    }
 
     if (cShelves && cShelves.length) {
       shelves = cShelves.map(s=>{
@@ -10930,6 +10939,18 @@ function _attachCloudListeners(){
     // ทีหลังไม่ได้รับ listener เพิ่ม (จริงๆ photoIndex ดูแลอยู่แล้ว) — ลบออกแล้วใช้ photoIndex เพียงอย่างเดียว
     // loadProductPhotosFromIDB() ด้านบนจัดการ initial load เสร็จแล้ว
   }, e=>{ console.warn("[cloud] catalogDelta listener fail", e); _markCloudSyncError('catalogDelta-listen: '+(e&&e.code||e)); });
+
+  // wholesale tooltip notes — sync สด (edits made on another device/tab show up here without
+  // waiting for the next syncFromCloud() pass, same self-write guard as records/shelves above)
+  _cloudRef('wholesaleNotes').on('value', snap=>{
+    if (!snap.exists()) return;
+    const d = snap.val();
+    if (d && d.updatedAt && _lastWriteAt['wholesaleNotes'] && d.updatedAt <= _lastWriteAt['wholesaleNotes']) return;
+    const cWrNotes = _extractPayload(d);
+    if (!cWrNotes || typeof cWrNotes !== 'object') return;
+    if (typeof _wrMergeCloudNotes === 'function') _wrMergeCloudNotes(cWrNotes);
+    _markCloudSynced();
+  }, e=>{ console.warn("[cloud] wholesaleNotes listener fail", e); _markCloudSyncError('wholesaleNotes-listen: '+(e&&e.code||e)); });
 
   // ── photoIndex listener เดียว แทน per-barcode/shelf listeners ──
   _attachPhotoIndexListener();
@@ -22502,6 +22523,61 @@ function _wrTipBody(val) {
   return _wrEsc(val || '');
 }
 
+// [NEW] per-product custom notes — every wine (not just the curated WR_NAME_TIPS 5) can now
+// carry a free-text tooltip note the user writes themselves, tap-to-read the same way as the
+// classification tip. Keyed by barcode so duplicate-barcode rows share the same note; falls
+// back to the raw product string when a row has no barcode at all.
+// [UPDATED 2026-08-03] now synced to Firebase RTDB (cloud key 'wholesaleNotes') the same way
+// records/shelves/catalogDelta already are — localStorage stays as the instant-read/offline
+// cache, but the source of truth is cloud so notes follow the user across devices instead of
+// being stuck on whichever phone/browser wrote them. Saves push up debounced; syncFromCloud()
+// pulls the latest on boot/reconnect, and a realtime listener (see _attachCloudListeners)
+// keeps other open tabs/devices caught up without a manual refresh.
+const WR_NOTES_KEY = 'wholesale-custom-notes';
+let _wrCustomNotes = {};
+(function _wrLoadCustomNotes(){
+  try { _wrCustomNotes = JSON.parse(localStorage.getItem(WR_NOTES_KEY) || '{}') || {}; }
+  catch (e) { _wrCustomNotes = {}; }
+})();
+function _wrNoteKey(r) {
+  return String((r && r[0]) || (r && r[1]) || '').trim();
+}
+function _wrGetCustomNote(key) {
+  return (key && _wrCustomNotes[key]) || '';
+}
+// debounced cloud push — mirrors cloudSetRecords/cloudSetShelves pattern (280ms), defined once
+// so rapid saves collapse into a single RTDB write instead of one per keystroke-save.
+const _wrCloudSetNotes = (typeof _dbounce === 'function' && typeof cloudSet === 'function')
+  ? _dbounce(()=>cloudSet('wholesaleNotes', _wrCustomNotes), 280)
+  : null;
+function _wrSaveCustomNote(key, text) {
+  if (!key) return;
+  const trimmed = String(text || '').trim();
+  if (trimmed) _wrCustomNotes[key] = trimmed;
+  else delete _wrCustomNotes[key];
+  try { localStorage.setItem(WR_NOTES_KEY, JSON.stringify(_wrCustomNotes)); } catch (e) { /* storage full — edit still applies for this session */ }
+  if (_wrCloudSetNotes) _wrCloudSetNotes(); // push to Firebase so other devices pick it up
+  if (typeof _wrClearDetailCache === 'function') _wrClearDetailCache();
+}
+// merges a cloud snapshot of notes into the local cache + localStorage, then re-renders
+// whichever wholesale detail sheet is currently open (if any) so an edit made on another
+// device shows up immediately without the user having to close/reopen the card.
+function _wrMergeCloudNotes(cNotes) {
+  if (!cNotes || typeof cNotes !== 'object') return;
+  _wrCustomNotes = cNotes;
+  try { localStorage.setItem(WR_NOTES_KEY, JSON.stringify(_wrCustomNotes)); } catch (e) {}
+  if (typeof _wrClearDetailCache === 'function') _wrClearDetailCache();
+  if (typeof _wrCurrentDetailIndex === 'number' && _wrCurrentDetailIndex >= 0 && typeof _wrOpenDetail === 'function') {
+    _wrOpenDetail(_wrCurrentDetailIndex); // re-render open sheet in place with the merged note
+  }
+}
+// splits a raw textarea value into paragraphs (blank line = new paragraph; single newlines
+// inside a paragraph are treated as soft wraps and joined with a space) for display via the
+// same paragraph-card styling _wrTipBody/descParas already use.
+function _wrNoteParas(text) {
+  return String(text || '').split(/\n\s*\n/).map(p => p.trim().replace(/\s*\n\s*/g, ' ')).filter(Boolean);
+}
+
 // [NEW 2026-07-30] bottle-size badge — most rows are standard 750ml and carry no size text
 // in the product name at all, but Magnums/Halves/Minis/Specials spell it out inline in all
 // kinds of inconsistent ways ("1.5L Magnum", "Half 0.375L", "375ml.", "50cl.", "Mini 0.25L",
@@ -25690,6 +25766,40 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// [NEW] swaps the "your note" view region (inside the currently-open wine-name tooltip) into
+// an editable textarea + save/cancel. Only one detail sheet is ever open at a time, so this
+// (and _wrSaveNoteEdit/_wrCancelNoteEdit below) just reads whichever row _wrCurrentDetailIndex
+// currently points at rather than threading a barcode through every onclick string.
+function _wrEditNote() {
+  const view = document.getElementById('wr-note-view');
+  if (!view) return;
+  const r = _wrLastShown[_wrCurrentDetailIndex];
+  const current = _wrGetCustomNote(_wrNoteKey(r));
+  view.innerHTML = `
+    <textarea id="wr-note-textarea" rows="5" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:8px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:12.5px;line-height:1.6;resize:vertical" placeholder="เขียนคำอธิบาย/บันทึกของคุณเอง — เว้นบรรทัดว่างเพื่อขึ้นย่อหน้าใหม่">${_wrEsc(current)}</textarea>
+    <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end">
+      <button type="button" onclick="event.stopPropagation();_wrCancelNoteEdit()" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#cfe9ff;font-size:11px;cursor:pointer;-webkit-tap-highlight-color:transparent">ยกเลิก</button>
+      <button type="button" onclick="event.stopPropagation();_wrSaveNoteEdit()" style="padding:6px 12px;border-radius:7px;border:none;background:#4bcffa;color:#04121e;font-weight:700;font-size:11px;cursor:pointer;-webkit-tap-highlight-color:transparent">บันทึก</button>
+    </div>`;
+  const ta = document.getElementById('wr-note-textarea');
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+// cancels an in-progress edit without saving — the detail cache was never touched, so
+// re-opening the same index just restores the last-saved (or empty) note view untouched.
+function _wrCancelNoteEdit() {
+  _wrOpenDetail(_wrCurrentDetailIndex);
+}
+// persists the textarea's current value (per barcode, via _wrSaveCustomNote — which also
+// clears the whole detail cache) then re-renders this product's sheet so the view immediately
+// reflects the saved note.
+function _wrSaveNoteEdit() {
+  const ta = document.getElementById('wr-note-textarea');
+  if (!ta) return;
+  const r = _wrLastShown[_wrCurrentDetailIndex];
+  _wrSaveCustomNote(_wrNoteKey(r), ta.value);
+  _wrOpenDetail(_wrCurrentDetailIndex);
+}
+
 // opens the full-detail overlay for a card — takes the index into _wrLastShown rather than
 // a barcode, since duplicate barcodes exist in the sheet and would otherwise open the wrong row
 // pure builder — computes everything needed for one product's detail-sheet markup with
@@ -25793,11 +25903,16 @@ function _wrBuildDetailHTML(i) {
     </div>` : ''}
 
     ${(() => {
-      // [NEW 2026-07-29] wine-name tooltip — same tap-to-float mechanism as the
-      // classification badge tip above (_wrToggleTierTip just needs the clicked element's
-      // parent to contain a sibling .wr-tier-tip, so it's reused as-is here rather than
-      // duplicated). Only renders the ⓘ trigger when this product has a matching entry.
+      // [UPDATED] wine-name tooltip — same tap-to-float mechanism as the classification badge
+      // tip above (_wrToggleTierTip just needs the clicked element's parent to contain a
+      // sibling .wr-tier-tip, so it's reused as-is here rather than duplicated). Previously this
+      // ⓘ trigger only appeared for the curated WR_NAME_TIPS 5 (the Bordeaux First Growths) —
+      // now EVERY wine gets the tappable tooltip: curated history/tasting prose (if any) renders
+      // first, followed by a "your note" section the user can write/edit themselves via the
+      // pencil icon — saved per-barcode, synced to Firebase, see _wrSaveCustomNote above.
       const nameTip = _wrNameTip(product);
+      const noteKey = _wrNoteKey(r);
+      const customNote = _wrGetCustomNote(noteKey);
       // [FIX 2026-07-29] wrapper needs its own z-index (matching the classification
       // ribbon's z-index:30 above) — .wr-boot-item's entrance animation leaves a
       // permanent filter:blur(0) on every boot block, which quietly creates a stacking
@@ -25808,23 +25923,23 @@ function _wrBuildDetailHTML(i) {
       // each paragraph gets its own left accent rail (visually chunks the wall of
       // text into "cards") plus inline highlighting of years/"quoted phrases" so
       // the eye can scan for dates and names before reading prose top-to-bottom.
-      const descParas = (nameTip && nameTip.desc || []).map(p =>
-        `<div style="padding-left:10px;border-left:2px solid ${tierColor}45">${_wrHighlightTip(_wrEsc(p), tierColor)}</div>`
-      ).join('<div style="height:12px"></div>');
+      const paraHtml = p => `<div style="padding-left:10px;border-left:2px solid ${tierColor}45">${_wrHighlightTip(_wrEsc(p), tierColor)}</div>`;
+      const descParas = (nameTip && nameTip.desc || []).map(paraHtml).join('<div style="height:12px"></div>');
+      const customParasHtml = _wrNoteParas(customNote).map(paraHtml).join('<div style="height:12px"></div>');
+      const headerTitle = nameTip ? nameTip.pronun : 'รายละเอียดเพิ่มเติม';
       return `
     <div ${boot()}position:relative;z-index:30;margin-bottom:12px">
-      <div style="position:relative;padding-right:26px;box-sizing:border-box;-webkit-tap-highlight-color:transparent${nameTip ? ';cursor:pointer' : ''}"${nameTip ? ` data-wr-tip-trigger onclick="_wrToggleTierTip(event,this)" ` : ''}>
+      <div style="position:relative;padding-right:26px;box-sizing:border-box;-webkit-tap-highlight-color:transparent;cursor:pointer" data-wr-tip-trigger onclick="_wrToggleTierTip(event,this)">
         <span style="font-family:'Prompt',sans-serif;font-size:17px;font-weight:800;color:#f0f4ff;line-height:1.35">${_wrEsc(_wrDisplayName(r))}</span>
         <!-- [FIX 2026-07-29] icon used to sit inline right after the name text (inline-flex), so its
              x-position drifted with however many lines the name wrapped to — never lining up with the
              classification/AOC ribbon ⓘ icons above, which are absolutely pinned to the row's right
              edge. Pinning this one the same way (right:11px, matching the classification ribbon)
              keeps all three ⓘ icons in one straight column regardless of name length. -->
-        ${nameTip ? `<span class="wr-info-ico" style="position:absolute;right:11px;top:4px;opacity:.6"></span>` : ''}
+        <span class="wr-info-ico" style="position:absolute;right:11px;top:4px;opacity:.6"></span>
         <!-- copy wine name — same bottom-right tap affordance as the barcode strip's ⧉ icon below -->
         <span onclick="event.stopPropagation();_wrCopyName('${_wrDisplayName(r).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" style="position:absolute;right:5px;bottom:-2px;opacity:.55;font-size:12px;line-height:1;cursor:pointer;padding:6px;margin:-6px;-webkit-tap-highlight-color:transparent" title="คัดลอกชื่อไวน์">⧉</span>
       </div>
-      ${nameTip ? `
       <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);left:0;z-index:999;width:min(340px,92vw);max-width:100%;box-sizing:border-box;border-radius:10px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${tierColor}33, 0 0 22px -2px ${tierColor}55;overflow:hidden">
         <!-- [FIX] frame + corner decorations now live on this OUTER, non-scrolling wrapper —
              it shrink-wraps the inner scroll region below, so its own box height is always
@@ -25841,11 +25956,17 @@ function _wrBuildDetailHTML(i) {
           <style>.wr-tip-scroll::-webkit-scrollbar{display:none}</style>
           <div style="position:sticky;top:-13px;margin:-13px -15px 9px;padding:13px 15px 8px;background:linear-gradient(165deg, #12172a, #0a0e18);display:flex;align-items:center;gap:6px;padding-bottom:7px;border-bottom:1px solid ${tierColor}33;z-index:1">
             <span style="width:4px;height:4px;flex-shrink:0;background:${tierColor};box-shadow:0 0 5px ${tierColor}"></span>
-            <span style="font-family:'Prompt',sans-serif;font-size:13.5px;font-weight:700;letter-spacing:.3px;color:${tierColor}">${_wrEsc(nameTip.pronun)}</span>
+            <span style="font-family:'Prompt',sans-serif;font-size:13.5px;font-weight:700;letter-spacing:.3px;color:${tierColor}">${_wrEsc(headerTitle)}</span>
           </div>
           ${descParas}
+          ${descParas ? `<div style="height:14px"></div><div style="height:1px;background:${tierColor}22"></div><div style="height:14px"></div>` : ''}
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+            <span style="font-family:'Prompt',sans-serif;font-size:9px;font-weight:800;letter-spacing:1px;color:${tierColor}aa;text-transform:uppercase">บันทึกของคุณ</span>
+            <span onclick="event.stopPropagation();_wrEditNote()" style="cursor:pointer;font-size:11px;color:${tierColor};opacity:.9;padding:4px 6px;margin:-4px -6px;-webkit-tap-highlight-color:transparent" title="แก้ไขบันทึก">✎ แก้ไข</span>
+          </div>
+          <div id="wr-note-view">${customParasHtml || `<div style="opacity:.5;font-style:italic">ยังไม่มีบันทึก — แตะ "แก้ไข" เพื่อเพิ่มคำอธิบายของคุณเอง</div>`}</div>
         </div>
-      </div>` : ''}
+      </div>
     </div>`;
     })()}
 
