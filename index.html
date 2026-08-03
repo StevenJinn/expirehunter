@@ -7470,7 +7470,12 @@ if (/Android/i.test(navigator.userAgent)) document.documentElement.classList.add
 /* ── overlay ── */
 #auth-gate-overlay{
   position:fixed;inset:0;z-index:99999;
-  width:100vw;height:100vh;height:100dvh;
+  /* [FIX 2026-08-03] เอา width:100vw;height:100vh;height:100dvh ออก — position:fixed;inset:0
+     กำหนดขนาดให้เท่า viewport เป๊ะอยู่แล้วโดยไม่ต้องพึ่งหน่วย vw/vh เลย ส่วน 100vw บนมือถือ
+     อาจกว้างกว่า visual viewport จริง (เผื่อพื้นที่ scrollbar) และคู่ 100vh→100dvh ทำให้ขนาด
+     เปลี่ยนสองรอบตอนโหลด (ครั้งแรกใช้ 100vh แล้วรีเฟลาว์เป็น 100dvh ทันทีที่ browser คำนวณ
+     dynamic viewport เสร็จ) — นี่คือสาเหตุที่ scrollbar/overscroll indicator แวบขึ้นบน-ขวา
+     ตอนเปิดแอป 2 ครั้ง เพราะ overlay นี้เป็นด่านแรกที่ render ก่อนอย่างอื่นทั้งหมด */
   display:flex;align-items:center;justify-content:center;
   font-family:'Prompt',sans-serif;color:#d0e8ff;
   overflow:hidden;
