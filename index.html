@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="th" style="overflow:hidden">
 <head>
 <!-- ════════════════════════════════════════════════════════════════
      @MAP — CODE ZONE INDEX (17 zones) — ctrl+F "@ZONE:" to jump between them
@@ -7413,7 +7413,7 @@ body.ues-open-frozen #uesSheet *{animation-play-state:running!important}
 }
 </style>
 </head>
-<body>
+<body style="overflow:hidden">
 <script>
 /* [FIX 2026-08-01 v14b] The header-glitch flicker (see #ues-hdr / #ues-name v14 fix below) traces
    back to Chrome-on-Android's compositor layer-squashing — a heuristic that can change between
@@ -7632,9 +7632,16 @@ if (/Android/i.test(navigator.userAgent)) document.documentElement.classList.add
 // right edge, and on mobile a scroll/touch gesture can trigger the browser's address bar
 // to collapse/expand, changing the viewport height mid-load — which is what let the
 // dashboard's own fixed top bar (and its loading indicator) peek out from behind the
-// overlay and overlap the phone's status bar. Lock immediately, before any dashboard
-// content has a chance to be interacted with; unlocked again once the overlay is fully
-// hidden (see _authGateSyncDone) or re-locked if signed out (see onAuthStateChanged below).
+// overlay and overlap the phone's status bar.
+// [FIX 2026-08-03] this script tag itself runs a few hundred lines after <body> opens —
+// long enough for the browser to do an initial paint first, which is exactly the window
+// where a scrollbar could flash briefly (seen on load: top edge + right edge, twice each,
+// matching the mobile browser's address-bar collapse firing a couple of resize passes
+// before this script got a chance to run). Moved the actual overflow:hidden lock onto
+// <html>/<body> as plain HTML attributes (see very top of file) so it's already in effect
+// before the first paint, with zero script-execution gap. This script now just re-asserts
+// the same lock on subsequent auth state changes (see onAuthStateChanged below) and re-locks
+// on sign-out; unlocked again once the overlay is fully hidden (see _authGateSyncDone).
 document.documentElement.style.overflow = 'hidden';
 document.body.style.overflow = 'hidden';
 </script>
