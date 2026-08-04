@@ -26365,7 +26365,7 @@ function _wrBuildDetailHTML(i) {
         <!-- copy wine name — same bottom-right tap affordance as the barcode strip's ⧉ icon below -->
         <span onclick="event.stopPropagation();_wrCopyName('${_wrDisplayName(r).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" style="position:absolute;right:5px;bottom:-2px;opacity:.55;font-size:12px;line-height:1;cursor:pointer;padding:6px;margin:-6px;-webkit-tap-highlight-color:transparent" title="คัดลอกชื่อไวน์">⧉</span>
       </div>
-      <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);left:0;z-index:999;width:min(340px,92vw);max-width:100%;box-sizing:border-box;border-radius:10px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${tierColor}33, 0 0 22px -2px ${tierColor}55;overflow:hidden">
+      <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);right:0;z-index:999;width:min(340px,92vw);max-width:100%;box-sizing:border-box;border-radius:10px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${tierColor}33, 0 0 22px -2px ${tierColor}55;overflow:hidden">
         <!-- [FIX] frame + corner decorations now live on this OUTER, non-scrolling wrapper —
              it shrink-wraps the inner scroll region below, so its own box height is always
              exactly the true visible card height. Corner brackets anchored here (bottom:5px/
@@ -26373,8 +26373,13 @@ function _wrBuildDetailHTML(i) {
              card. Previously these lived directly on the overflow-y:auto + position:sticky
              header container, whose auto-height the browser miscalculated (sticky child with
              negative margins inside an auto-scrolling box), so the bottom-right corner ended
-             up pinned above where the content actually ended, cutting the card off early. -->
-        <span style="position:absolute;top:-6px;left:14px;width:11px;height:11px;transform:rotate(45deg);background:#0e1220;border-left:1px solid ${tierColor}66;border-top:1px solid ${tierColor}66;z-index:2"></span>
+             up pinned above where the content actually ended, cutting the card off early.
+             [FIX 2026-08-04] anchored right:0 instead of left:0 — the name row's ⓘ icon and
+             the copy-name icon both sit at the row's right edge, and on the product-detail
+             layout the open real estate (right of the bottle photo) is on that same side, so
+             a left-anchored tip used to overlap the photo/grape-chart column instead of using
+             the free space. Arrow nudged to match (right:14px, mirroring the old left:14px). -->
+        <span style="position:absolute;top:-6px;right:14px;width:11px;height:11px;transform:rotate(45deg);background:#0e1220;border-left:1px solid ${tierColor}66;border-top:1px solid ${tierColor}66;z-index:2"></span>
         <span style="position:absolute;top:5px;left:5px;width:8px;height:8px;border-top:1.5px solid ${tierColor}bb;border-left:1.5px solid ${tierColor}bb;pointer-events:none;z-index:2"></span>
         <span style="position:absolute;bottom:5px;right:5px;width:8px;height:8px;border-bottom:1.5px solid ${tierColor}bb;border-right:1.5px solid ${tierColor}bb;pointer-events:none;z-index:2"></span>
         <div class="wr-tip-scroll" style="padding:13px 15px;font-family:'Prompt',sans-serif;font-size:12.5px;line-height:1.75;letter-spacing:.1px;color:#e7edfb;max-height:min(360px,52vh);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:none">
@@ -26504,8 +26509,15 @@ function _wrBuildDetailHTML(i) {
                a pin while armed opens the editor directly (see _wrPinPointerDown's tap
                fallback), and the red ✕ badge above handles delete. A plain tap outside edit
                mode is now read-only, matching "once saved, no edit/delete [affordance] here". -->
-          <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);width:min(220px,70vw);box-sizing:border-box;padding:10px 11px;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:999">
-            <div id="wr-pin-view-${pin.id}">
+          <!-- [FIX 2026-08-04] pin note box had no height cap at all — unlike the classification/
+               name tooltips (.wr-tip-scroll, max-height + overflow-y:auto), a long pin note just
+               grew the box taller with no limit, so it could run off the bottom of the screen with
+               no way to scroll the rest into view ("ข้อความทะลุ"). id div is now the scroll region
+               itself (still the same element _wrEditPhotoPin/_wrSavePhotoPinEdit swap innerHTML on),
+               capped and scrollable exactly like the other tip boxes. -->
+          <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);width:min(220px,70vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:999;overflow:hidden">
+            <div id="wr-pin-view-${pin.id}" class="wr-tip-scroll" style="padding:10px 11px;max-height:min(240px,40vh);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:none">
+              <style>.wr-tip-scroll::-webkit-scrollbar{display:none}</style>
               <div style="font-family:'Prompt',sans-serif;font-size:12px;line-height:1.6;color:#e7edfb;white-space:pre-wrap">${_wrEsc(pin.text)}</div>
             </div>
           </div>
