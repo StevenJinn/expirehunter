@@ -21478,23 +21478,17 @@ function _shelfPhotoMode(hasPhoto) {
       </button>
     </div>
 
-    <!-- wine-type quick-filter chips (topmost row — Red/White/Sparkling/etc.) -->
-    <div id="wholesale-type-chips" style="padding:10px 18px 0;flex-shrink:0;position:relative;z-index:16;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none"></div>
-
-    <!-- sparkling dryness/sweetness-level quick-filter chips — only shown once "Sparkling Wine"
-         is an active type filter, since the level concept (Brut/Extra Dry/Demi Sec/...) only
-         applies to sparkling wines -->
-    <div id="wholesale-sparkling-chips" style="display:none;padding:8px 18px 0;flex-shrink:0;position:relative;z-index:15;gap:6px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none"></div>
-
-    <!-- grape variety quick-filter chips (always visible, no dropdown needed) -->
-    <div id="wholesale-grape-chips" style="padding:10px 18px 0;flex-shrink:0;position:relative;z-index:15;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none"></div>
-    <style>#wholesale-type-chips::-webkit-scrollbar{display:none}#wholesale-grape-chips::-webkit-scrollbar{display:none}#wholesale-country-chips::-webkit-scrollbar{display:none}#wholesale-region-chips::-webkit-scrollbar{display:none}#wholesale-sparkling-chips::-webkit-scrollbar{display:none}</style>
-
-    <!-- country quick-filter chips (always visible, no dropdown needed) -->
-    <div id="wholesale-country-chips" style="padding:8px 18px 0;flex-shrink:0;position:relative;z-index:14;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none"></div>
-
-    <!-- region quick-filter chips — only shown once a single country (or Fine Wine) is selected -->
-    <div id="wholesale-region-chips" style="display:none;padding:6px 18px 0;flex-shrink:0;position:relative;z-index:13;gap:6px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none"></div>
+    <!-- [FIX 2026-08-03e] quick-filter category buttons — เดิมตรงนี้เป็น 3-4 แถว scroll แนวนอน
+         (wine-type / sparkling-level / grape / country / region) ซ้อนกันจนรก และเลื่อนแนวนอน
+         บนมือถือชนกับ edge-swipe gesture ของระบบ (ปัญหาเดียวกับที่เคยแก้ใน price slider)
+         เปลี่ยนเป็นปุ่มหมวดหมู่คงที่ 3 ปุ่ม (ประเภท/พันธุ์องุ่น/แหล่งกำเนิด) ไม่ scroll เลย
+         แตะแล้วเปิด popover (#wholesale-quickcat-modal ด้านล่าง) แทน — sparkling-level และ
+         region ที่เคยเป็นแถวแยก ย้ายเข้าไปเป็น section ย่อยภายใน popover ของ "ประเภท"/"แหล่งกำเนิด"
+         ตามลำดับ (แสดงเฉพาะเมื่อเงื่อนไขตรง เหมือนพฤติกรรมเดิมทุกอย่าง) ใช้ state Set ตัวเดิม
+         (_wrTypeFilters ฯลฯ) และ toggle function ตัวเดิมทั้งหมด จึงยัง sync กับ Smart Filter
+         sheet และ badge บนการ์ดผลลัพธ์เหมือนเดิม ไม่มีอะไรเปลี่ยนที่ data layer เลย -->
+    <div id="wholesale-cat-row" style="padding:10px 18px 0;flex-shrink:0;position:relative;z-index:16;display:flex;gap:7px"></div>
+    <div id="wholesale-active-pills" style="padding:0 18px;flex-shrink:0;position:relative;z-index:16;display:flex;flex-wrap:wrap;gap:6px"></div>
 
     <!-- sort chips -->
     <div id="wholesale-sort-row" style="padding:10px 18px 12px;flex-shrink:0;position:relative;z-index:20;display:none;gap:6px;overflow:visible"></div>
@@ -21640,6 +21634,30 @@ function _shelfPhotoMode(hasPhoto) {
       <div class="wr-sf-footer-status" id="wr-sf-footer-status"></div>
       <button onclick="_wrApplySmartFilter()" style="width:100%;background:linear-gradient(135deg,#4bcffa,#2a9fd6);border:none;border-radius:12px;color:#04121a;font-size:13.5px;font-weight:900;letter-spacing:.5px;padding:13px;cursor:pointer;font-family:'Prompt',sans-serif;box-shadow:0 4px 18px rgba(75,207,250,.35)">APPLY FILTERS</button>
     </div>
+  </div>
+</div>
+
+<!-- [FIX 2026-08-03e] quick-filter category popover — opened by the #wholesale-cat-row buttons
+     above. Same bottom-sheet chrome as #wr-smartfilter-modal (gradient panel, top glow line,
+     corner marks) so it reads as the same design language, but scoped to ONE category at a
+     time and applies live on tap (no separate "apply" step) — matching how the old quick-filter
+     chip rows always behaved, unlike the staged Smart Filter sheet. -->
+<div id="wholesale-quickcat-modal" style="display:none;position:fixed;inset:0;z-index:745;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);align-items:flex-end;justify-content:center;touch-action:none;overscroll-behavior:none" onclick="if(event.target===this){_wrCloseQuickCat();}">
+  <div id="wholesale-quickcat-sheet" style="background:linear-gradient(160deg,#04080a 0%,#061019 60%,#03060c 100%);border:1px solid rgba(75,207,250,.28);border-bottom:none;border-radius:18px 18px 0 0;width:100%;max-width:480px;max-height:72vh;max-height:72dvh;display:flex;flex-direction:column;box-shadow:0 -12px 60px rgba(0,0,0,.9);position:relative;overflow:hidden;padding-bottom:env(safe-area-inset-bottom);animation:delHistIn .28s cubic-bezier(.34,1.56,.64,1) both;touch-action:pan-y">
+    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(75,207,250,0) 5%,rgba(75,207,250,.9) 30%,rgba(0,212,170,.8) 50%,rgba(75,207,250,.9) 70%,rgba(75,207,250,0) 95%,transparent);background-size:200% 100%;animation:delHistBorder 2.5s linear infinite"></div>
+    <div class="wr-sf-grid-bg"></div>
+    <div class="wr-sf-corner tl"></div>
+    <div class="wr-sf-corner tr"></div>
+
+    <div style="padding:16px 18px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(75,207,250,.12);flex-shrink:0;position:relative;z-index:2">
+      <div id="wholesale-quickcat-title" style="font-size:14px;font-weight:800;color:#eaf6ff;letter-spacing:.5px;font-family:'Prompt',sans-serif"></div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <span id="wholesale-quickcat-clear" style="font-family:'Prompt',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.5px;color:rgba(75,207,250,.7);cursor:pointer">ล้าง</span>
+        <button onclick="_wrCloseQuickCat()" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;width:30px;height:30px;color:#cfe9ff;font-size:14px;cursor:pointer;flex-shrink:0">✕</button>
+      </div>
+    </div>
+
+    <div id="wholesale-quickcat-body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain;padding:16px 18px;position:relative;z-index:2"></div>
   </div>
 </div>
 
@@ -23812,6 +23830,10 @@ function _wrClearSparklingLevelFilter() {
   renderWholesaleResults();
 }
 
+// [FIX 2026-08-03e] SUPERSEDED — this rendered the old #wholesale-sparkling-chips scroll strip,
+// which no longer exists in the DOM (see #wholesale-cat-row + #wholesale-quickcat-modal instead).
+// No longer called anywhere; left in place only as reference since _wrSparklingLevelCounts()/
+// WR_SPARKLING_LEVELS are still used by the new popover body (_wrRenderQuickCatBody).
 // dryness/sweetness-level quick-filter chips for sparkling wine — only shown once "Sparkling
 // Wine" is an active type filter, since the level concept doesn't apply to other wine types.
 // Levels are ordered driest → sweetest (WR_SPARKLING_LEVELS order) rather than by count, so
@@ -23865,6 +23887,8 @@ function _wrClearTypeFilter() {
   renderWholesaleResults();
 }
 
+// [FIX 2026-08-03e] SUPERSEDED by #wholesale-cat-row / _wrRenderCatRow() + the popover body
+// (_wrRenderQuickCatBody, cat==='type'). No longer called — left as reference.
 // topmost quick-filter strip — wine type (Red/White/Sparkling/etc.), colored to match
 // each type's accent color used on the result cards themselves
 function _wrRenderTypeChips() {
@@ -24006,6 +24030,9 @@ function _wrClearGrapeFilter() {
 // how many quick-access chips to show before the "ทั้งหมด" (show-all) chip
 const _WR_GRAPE_CHIP_LIMIT = 16;
 
+// [FIX 2026-08-03e] SUPERSEDED by #wholesale-cat-row / _wrRenderCatRow() + the popover body
+// (_wrRenderQuickCatBody, cat==='grape'), which lists every grape via _wrSfGrapeChipsHtml
+// instead of a top-16-then-external-picker. No longer called — left as reference.
 // always-visible horizontal strip of the most common grape varieties, so picking
 // one doesn't require opening the sort dropdown at all
 function _wrRenderGrapeChips() {
@@ -24130,6 +24157,169 @@ function _wrClearRegionFilter() {
   renderWholesaleResults();
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   [FIX 2026-08-03e] QUICK-FILTER CATEGORY POPOVER — replaces the old 3-row
+   horizontal-scroll chip strip (wine-type / grape / country, plus the
+   conditional sparkling-level and region rows) with 3 fixed buttons that
+   each open a bottom-sheet popover. Nothing changes at the data layer:
+   still the same _wrTypeFilters/_wrGrapeFilters/_wrCountryFilters/
+   _wrRegionFilters/_wrSparklingLevelFilters Sets, same toggle functions,
+   applied live (no separate "apply" step) exactly like the old chip rows.
+   The popover body reuses _wrSfChipsHtml/_wrSfCountryChipsHtml/
+   _wrSfGrapeChipsHtml — the same generators the Smart Filter sheet uses —
+   just pointed at the live toggle functions instead of the Sf* staged
+   ones, so flag colors/grape colors/type colors are identical everywhere.
+   ══════════════════════════════════════════════════════════════════════ */
+
+let _wrQuickCatOpen = null; // 'type' | 'grape' | 'country' | null — which popover (if any) is open
+
+const _WR_QUICKCAT_LABELS = { type: 'ประเภท', grape: 'พันธุ์องุ่น', country: 'แหล่งกำเนิด' };
+
+// what a category button shows when collapsed: idle "ทั้งหมด", the single selected name,
+// or "N รายการ" once 2+ things are picked within that category (region counts toward country)
+function _wrQuickCatSummary(cat) {
+  if (cat === 'type') {
+    const n = _wrTypeFilters.size;
+    if (!n) return { text: 'ทั้งหมด', accent: null, active: false };
+    const first = Array.from(_wrTypeFilters)[0];
+    return { text: n === 1 ? first : `${n} รายการ`, accent: _wrTypeColor(first, ''), active: true };
+  }
+  if (cat === 'grape') {
+    const n = _wrGrapeFilters.size;
+    if (!n) return { text: 'ทั้งหมด', accent: null, active: false };
+    const first = Array.from(_wrGrapeFilters)[0];
+    return { text: n === 1 ? first : `${n} รายการ`, accent: _wrGrapeColorInfo(first).idleColor, active: true };
+  }
+  // country — region is a nested refinement of country, so it counts toward the same button
+  const cn = _wrCountryFilters.size, rn = _wrRegionFilters.size;
+  if (!cn) return { text: 'ทั้งหมด', accent: null, active: false };
+  const first = Array.from(_wrCountryFilters)[0];
+  const total = cn + rn;
+  return { text: (total === 1) ? first : `${total} รายการ`, accent: _wrCountryRepColor(first), active: true };
+}
+
+function _wrRenderCatRow() {
+  const row = document.getElementById('wholesale-cat-row');
+  if (!row) return;
+  row.innerHTML = ['type', 'grape', 'country'].map(cat => {
+    const s = _wrQuickCatSummary(cat);
+    const accent = s.accent || '#4bcffa';
+    const accentRgb = _wrHexToRgb(accent);
+    return `<button type="button" onclick="_wrOpenQuickCat('${cat}')"
+      style="flex:1;min-width:0;position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+      font-family:'Prompt',sans-serif;border-radius:12px;padding:8px 11px;cursor:pointer;text-align:left;
+      border:1.5px solid ${s.active ? accent : 'rgba(255,255,255,.1)'};
+      background:${s.active ? `rgba(${accentRgb},.1)` : 'rgba(255,255,255,.03)'}">
+      <span style="font-size:9.5px;font-weight:700;letter-spacing:.3px;color:${s.active ? accent : '#6b7390'}">${_WR_QUICKCAT_LABELS[cat]}</span>
+      <span style="font-size:12.5px;font-weight:700;color:${s.active ? '#eaf6ff' : '#c8d0e8'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:flex;align-items:center;gap:4px">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_wrEsc(s.text)}</span>
+        <span style="font-size:8px;color:${s.active ? accent : '#4a5270'};flex-shrink:0">▾</span>
+      </span>
+    </button>`;
+  }).join('');
+}
+
+// active-filter pills below the category row — empty (and hidden) until something's picked,
+// so the screen stays uncluttered while browsing with no filters active
+function _wrRenderActivePills() {
+  const wrap = document.getElementById('wholesale-active-pills');
+  if (!wrap) return;
+  const items = [];
+  _wrTypeFilters.forEach(n => items.push({ name: n, accent: _wrTypeColor(n, ''), remove: `_wrToggleTypeFilter('${n.replace(/'/g, "\\'")}')` }));
+  if (_wrTypeFilters.has('Sparkling Wine')) {
+    _wrSparklingLevelFilters.forEach(n => items.push({ name: n, accent: '#ffd200', remove: `_wrToggleSparklingLevelFilter('${n.replace(/'/g, "\\'")}')` }));
+  }
+  _wrGrapeFilters.forEach(n => items.push({ name: n, accent: _wrGrapeColorInfo(n).idleColor, remove: `_wrToggleGrapeFilter('${n.replace(/'/g, "\\'")}')` }));
+  _wrCountryFilters.forEach(n => items.push({ name: n, accent: _wrCountryRepColor(n), remove: `_wrToggleCountryFilter('${n.replace(/'/g, "\\'")}')` }));
+  _wrRegionFilters.forEach(n => items.push({ name: n, accent: '#7c9cff', remove: `_wrToggleRegionFilter('${n.replace(/'/g, "\\'")}')` }));
+
+  if (!items.length) { wrap.innerHTML = ''; wrap.style.display = 'none'; return; }
+  wrap.style.display = 'flex';
+  wrap.style.paddingTop = '8px';
+  wrap.style.paddingBottom = '2px';
+
+  const pillsHtml = items.map(it => `<span style="display:inline-flex;align-items:center;gap:5px;border:1px solid ${it.accent};background:${it.accent}1a;border-radius:20px;padding:4px 5px 4px 11px;font-family:'Prompt',sans-serif;font-size:11px;font-weight:600;color:${it.accent}">
+    ${_wrEsc(it.name)}<span onclick="${it.remove}" style="background:rgba(255,255,255,.12);border-radius:50%;width:15px;height:15px;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;color:#fff;flex-shrink:0">×</span>
+  </span>`).join('');
+
+  const clearAllHtml = items.length > 1
+    ? `<span onclick="_wrQuickCatClearAllPills()" style="font-family:'Prompt',sans-serif;font-size:10.5px;color:#6b7390;text-decoration:underline;padding:5px 2px;cursor:pointer;align-self:center">ล้างทั้งหมด</span>`
+    : '';
+
+  wrap.innerHTML = pillsHtml + clearAllHtml;
+}
+
+// clears only the quick-filter dimensions shown as pills (type/sparkling-level/grape/country/
+// region) — deliberately does NOT touch price/vintage/classification/label-tier, which live in
+// the separate Smart Filter sheet and aren't represented in this pill row, so this can't
+// silently reset a setting the person can't see from here
+function _wrQuickCatClearAllPills() {
+  _wrTypeFilters.clear();
+  _wrSparklingLevelFilters.clear();
+  _wrGrapeFilters.clear();
+  _wrCountryFilters.clear();
+  _wrRegionFilters.clear();
+  _wrUpdateSmartFilterDot();
+  renderWholesaleResults();
+}
+
+// fills the popover body for whichever category is currently open — no-op if none is open, so
+// this can be called unconditionally from renderWholesaleResults() on every result re-render
+function _wrRenderQuickCatBody() {
+  if (!_wrQuickCatOpen) return;
+  const cat = _wrQuickCatOpen;
+  const titleEl = document.getElementById('wholesale-quickcat-title');
+  const bodyEl = document.getElementById('wholesale-quickcat-body');
+  const clearEl = document.getElementById('wholesale-quickcat-clear');
+  if (!bodyEl || !titleEl || !clearEl) return;
+
+  if (cat === 'type') {
+    titleEl.textContent = 'ประเภท · Wine Type';
+    clearEl.onclick = _wrClearTypeFilter;
+    let html = `<div style="display:flex;flex-wrap:wrap;gap:8px">${_wrSfChipsHtml(_wrTypeCounts(), _wrTypeFilters, '_wrToggleTypeFilter', name => _wrTypeColor(name, ''))}</div>`;
+    const slCounts = _wrTypeFilters.has('Sparkling Wine') ? _wrSparklingLevelCounts() : new Map();
+    if (slCounts.size) {
+      html += `<div style="margin-top:18px">
+        <div class="wr-sf-section-label">ระดับความหวาน · Sparkling Level</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">${_wrSfChipsHtml(slCounts, _wrSparklingLevelFilters, '_wrToggleSparklingLevelFilter', null)}</div>
+      </div>`;
+    }
+    bodyEl.innerHTML = html;
+  } else if (cat === 'grape') {
+    titleEl.textContent = 'พันธุ์องุ่น · Grape Variety';
+    clearEl.onclick = _wrClearGrapeFilter;
+    bodyEl.innerHTML = `<div id="wholesale-quickcat-grape-chips" style="display:flex;flex-wrap:wrap;gap:8px">${_wrSfGrapeChipsHtml('_wrToggleGrapeFilter')}</div>`;
+  } else if (cat === 'country') {
+    titleEl.textContent = 'แหล่งกำเนิด · Country';
+    clearEl.onclick = _wrClearCountryFilter;
+    let html = `<div style="display:flex;flex-wrap:wrap;gap:8px">${_wrSfCountryChipsHtml('_wrToggleCountryFilter')}</div>`;
+    if (_wrCountryFilters.size === 1) {
+      const country = Array.from(_wrCountryFilters)[0];
+      const rCounts = _wrRegionCounts(country);
+      if (rCounts.size) {
+        html += `<div style="margin-top:18px">
+          <div class="wr-sf-section-label">แคว้น · Region</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">${_wrSfChipsHtml(rCounts, _wrRegionFilters, '_wrToggleRegionFilter', null)}</div>
+        </div>`;
+      }
+    }
+    bodyEl.innerHTML = html;
+  }
+}
+
+function _wrOpenQuickCat(cat) {
+  _wrQuickCatOpen = cat;
+  _wrRenderQuickCatBody();
+  const modal = document.getElementById('wholesale-quickcat-modal');
+  if (modal) modal.style.display = 'flex';
+}
+
+function _wrCloseQuickCat() {
+  _wrQuickCatOpen = null;
+  const modal = document.getElementById('wholesale-quickcat-modal');
+  if (modal) modal.style.display = 'none';
+}
+
 // toggles a producer's label tier (First Label / Second Label / Third Label / Related Cuvee)
 // in/out of the filter set — tapped straight from the badge on a result card, same pattern
 // as type/vintage/grape/country
@@ -24148,6 +24338,9 @@ function _wrToggleTierFilter(key) {
   renderWholesaleResults();
 }
 
+// [FIX 2026-08-03e] SUPERSEDED — the region section now lives inside the "country" popover body
+// (_wrRenderQuickCatBody, cat==='country'), same condition (single country selected). No longer
+// called — left as reference since _wrRegionCounts() is still used by the new popover.
 // region chip strip only appears once a single country (or Fine Wine) is selected — with zero
 // or 2+ countries active, "region" isn't a well-defined concept, so the strip is hidden and any
 // stale region picks are cleared
@@ -24201,6 +24394,9 @@ function _wrToggleVintageFilter(vintage) {
   renderWholesaleResults();
 }
 
+// [FIX 2026-08-03e] SUPERSEDED by #wholesale-cat-row / _wrRenderCatRow() + the popover body
+// (_wrRenderQuickCatBody, cat==='country'), which now shares its flag-color logic with the
+// Smart Filter sheet via _wrSfCountryChipsHtml(toggleFnName). No longer called — left as reference.
 // always-visible horizontal strip of every country in the database — there are only
 // a handful, so unlike grapes there's no need for a "more" overflow chip
 function _wrRenderCountryChips() {
@@ -24432,10 +24628,29 @@ function _wrSfChipsHtml(counts, selectedSet, toggleFnName, colorFn) {
   }).join('');
 }
 
+// [FIX 2026-08-03e] representative flag color for a country/Fine Wine name — factored out of
+// _wrSfCountryChipsHtml so the identical color logic (and therefore identical flag colors) can
+// be reused anywhere else a single-country accent is needed, e.g. the quick-filter category
+// button summary (_wrQuickCatSummary) — single source of truth, nothing about flag rendering
+// changes, it's the exact same override table + _wrReadableFlagColor fallback as before.
+function _wrCountryRepColor(name) {
+  if (name === 'Fine Wine') return '#ffd200';
+  const BORDER_COLOR_OVERRIDES = {
+    'Australia': '#4A90E2', 'New Zealand': '#4A90E2', 'USA': '#4A90E2', 'Chile': '#4A90E2',
+    'Germany': '#FFD400', 'Portugal': '#FFD400'
+  };
+  if (BORDER_COLOR_OVERRIDES[name]) return BORDER_COLOR_OVERRIDES[name];
+  return _wrReadableFlagColor(_wrFlagColors(name)) || '#00d4aa';
+}
+
 // country chips ใน Smart Filter — เอา logic สีธง/รูปธงจริงชุดเดียวกับ _wrRenderCountryChips()
 // (หน้า wholesale search หลัก) มาใช้ ต่างกันแค่ onclick ไปที่ _wrSfToggleCountry แทน
 // _wrToggleCountryFilter แต่ผูก state _wrCountryFilters ตัวเดียวกัน จึงซิงค์กับหน้าหลักอัตโนมัติ
-function _wrSfCountryChipsHtml() {
+// [FIX 2026-08-03e] เพิ่ม param toggleFnName (default เดิม '_wrSfToggleCountry') เพื่อให้
+// popover หมวดหมู่ด่วนตัวใหม่เรียกใช้ฟังก์ชันนี้ตัวเดียวกันได้ (ผูก '_wrToggleCountryFilter'
+// แบบ apply-ทันทีแทน) โดยสีธง/ไล่เฉด/ทุกอย่างเหมือนเดิมเป๊ะ ไม่มีการ fork logic เป็นชุดที่สอง
+function _wrSfCountryChipsHtml(toggleFnName) {
+  toggleFnName = toggleFnName || '_wrSfToggleCountry';
   const counts = _wrCountryCounts();
   const names = Array.from(counts.entries())
     .sort((a, b) => {
@@ -24450,11 +24665,7 @@ function _wrSfCountryChipsHtml() {
     const count = counts.get(name) || 0;
     const isFineWine = name === 'Fine Wine';
     const flagColors = isFineWine ? null : _wrFlagColors(name);
-    const BORDER_COLOR_OVERRIDES = {
-      'Australia': '#4A90E2', 'New Zealand': '#4A90E2', 'USA': '#4A90E2', 'Chile': '#4A90E2',
-      'Germany': '#FFD400', 'Portugal': '#FFD400'
-    };
-    const repColor = BORDER_COLOR_OVERRIDES[name] || _wrReadableFlagColor(flagColors);
+    const repColor = _wrCountryRepColor(name);
 
     const activeBg = isFineWine ? '#ffd200' : (repColor || '#00d4aa');
     const activeText = '#0b0f1d';
@@ -24468,7 +24679,7 @@ function _wrSfCountryChipsHtml() {
     const activeTextShadow = (!isFineWine && flagColors) ? 'text-shadow:0 1px 3px rgba(0,0,0,.85),0 0 2px rgba(0,0,0,.6);' : '';
     const ACTIVE_BORDER_OVERRIDES = { 'Germany': '#FFD400', 'Portugal': '#2ECC71' };
     const activeBorder = ACTIVE_BORDER_OVERRIDES[name] || activeBg;
-    return `<button type="button" class="wr-sf-chip${isActive ? ' active' : ''}" onclick="_wrSfToggleCountry('${name.replace(/'/g, "\\'")}')"
+    return `<button type="button" class="wr-sf-chip${isActive ? ' active' : ''}" onclick="${toggleFnName}('${name.replace(/'/g, "\\'")}')"
       style="border:1.5px solid ${isActive ? activeBorder : idleBorder};background:${isActive ? activeBackground : idleBg};
       color:${isActive ? activeTextColor : idleColor};${isActive ? activeTextShadow : ''}box-shadow:${isActive ? `0 0 10px ${activeBg}80` : 'none'}">${_wrEsc(name)}${count ? ` <span style="opacity:.65">${count}</span>` : ''}</button>`;
   }).join('');
@@ -24558,7 +24769,11 @@ function _wrSfToggleLabelTier(name) {
 // strip (_wrRenderGrapeChips / _WR_GRAPE_CHIP_LIMIT): collapsed by default to just the top
 // varieties so the sheet doesn't get overwhelmed by every grape in the database, with a
 // trailing chip to expand/collapse the rest in place.
-function _wrSfGrapeChipsHtml() {
+// [FIX 2026-08-03e] เพิ่ม param toggleFnName (default เดิม '_wrSfToggleGrape') — เหตุผลเดียวกับ
+// _wrSfCountryChipsHtml ด้านบน: popover หมวดหมู่ด่วนตัวใหม่เรียกฟังก์ชันนี้ตัวเดียวกันได้ ผูก
+// '_wrToggleGrapeFilter' แบบ apply-ทันที สีพันธุ์องุ่น/การจัดกลุ่มแดง-ขาวเหมือนเดิมทุกจุด
+function _wrSfGrapeChipsHtml(toggleFnName) {
+  toggleFnName = toggleFnName || '_wrSfToggleGrape';
   const counts = _wrGrapeCounts();
   const allNames = Array.from(counts.entries())
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -24585,7 +24800,7 @@ function _wrSfGrapeChipsHtml() {
     return `<button type="button" class="wr-sf-chip${active ? ' active' : ''}"
       style="border:1.5px solid ${active ? gc.idleColor : gc.idleBorder};background:${active ? gc.activeBackground : gc.idleBg};
       color:${active ? gc.activeTextColor : gc.idleColor};box-shadow:${active ? `0 0 10px ${gc.glow}` : 'none'}"
-      onclick="_wrSfToggleGrape('${name.replace(/'/g, "\\'")}')">${_wrEsc(name)}${count ? ` <span style="opacity:.65">${count}</span>` : ''}</button>`;
+      onclick="${toggleFnName}('${name.replace(/'/g, "\\'")}')">${_wrEsc(name)}${count ? ` <span style="opacity:.65">${count}</span>` : ''}</button>`;
   }).join('');
 
   const hiddenCount = allNames.length - Math.min(_WR_GRAPE_CHIP_LIMIT, allNames.length);
@@ -24601,7 +24816,12 @@ function _wrSfGrapeChipsHtml() {
 
 function _wrSfRenderGrapeChips() {
   const wrap = document.getElementById('wr-sf-grape-chips');
-  if (wrap) wrap.innerHTML = _wrSfGrapeChipsHtml();
+  if (wrap) wrap.innerHTML = _wrSfGrapeChipsHtml('_wrSfToggleGrape');
+  // [FIX 2026-08-03e] quick-filter popover's grape section shares the same expand/collapse
+  // state — refresh it too if it's the one currently mounted (Smart Filter sheet and this
+  // popover are never open at the same time, but both call through this one function)
+  const qwrap = document.getElementById('wholesale-quickcat-grape-chips');
+  if (qwrap) qwrap.innerHTML = _wrSfGrapeChipsHtml('_wrToggleGrapeFilter');
 }
 
 function _wrSfToggleGrapeExpanded() {
@@ -25470,9 +25690,11 @@ function renderWholesaleResults() {
   const list = document.getElementById('wholesale-results');
   if (!list) return;
 
-  _wrRenderTypeChips();
-  _wrRenderGrapeChips();
-  _wrRenderCountryChips();
+  // [FIX 2026-08-03e] เดิมเรียก _wrRenderTypeChips()/_wrRenderGrapeChips()/_wrRenderCountryChips()
+  // (แถว scroll เดิม) ตอนนี้เปลี่ยนเป็นปุ่มหมวดหมู่ + pill ที่เลือกอยู่ + popover body (no-op ถ้าไม่ได้เปิด)
+  _wrRenderCatRow();
+  _wrRenderActivePills();
+  _wrRenderQuickCatBody();
   _wrUpdateSmartFilterDot();
 
   const sortRow = document.getElementById('wholesale-sort-row');
