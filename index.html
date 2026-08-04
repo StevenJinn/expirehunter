@@ -22773,6 +22773,11 @@ function _wrTogglePinAddMode(evt, btn) {
 function _wrPhotoPanelClick(evt) {
   const panel = evt.currentTarget;
   if (!panel.classList.contains('wr-pin-adding')) return;
+  // [FIX] without this, the click bubbles on up to document's "cancel any open .wr-photo-pin-new
+  // form on outside click" listener (added below _wrStartNewPin) — which then immediately
+  // removed the very form _wrStartNewPin just appended, all within this same click, so nothing
+  // ever appeared to type into.
+  evt.stopPropagation();
   const rect = panel.getBoundingClientRect();
   const x = Math.max(3, Math.min(97, ((evt.clientX - rect.left) / rect.width) * 100));
   const y = Math.max(3, Math.min(97, ((evt.clientY - rect.top) / rect.height) * 100));
@@ -22789,9 +22794,8 @@ function _wrStartNewPin(panel, x, y) {
   wrap.className = 'wr-photo-pin-new';
   wrap.style.cssText = `position:absolute;left:${x}%;top:${y}%;transform:translate(-50%,-50%);z-index:60`;
   wrap.innerHTML = `
-    <div style="display:flex;align-items:center;gap:5px;padding:5px 8px;border-radius:20px;background:rgba(10,12,20,.82);border:1px solid #4bcffa;box-shadow:0 3px 10px rgba(0,0,0,.5)">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4bcffa" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <span style="font-family:'Prompt',sans-serif;font-size:10px;font-weight:600;color:#4bcffa;white-space:nowrap">หมุดใหม่</span>
+    <div style="width:24px;height:24px;border-radius:50%;background:rgba(10,12,20,.82);border:1px solid #4bcffa;display:flex;align-items:center;justify-content:center;box-shadow:0 0 8px rgba(75,207,250,.65)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4bcffa" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     </div>
     <div style="position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);width:min(230px,72vw);box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid rgba(75,207,250,.55);background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 10px 26px -6px rgba(0,0,0,.85);z-index:999">
       <textarea rows="3" placeholder="อธิบายจุดนี้บนรูป เช่น ตราประจำตระกูล, ปีที่ผลิต..." style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:7px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:12px;line-height:1.5;resize:vertical"></textarea>
@@ -26356,16 +26360,13 @@ function _wrBuildDetailHTML(i) {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="20" y1="20" x2="15.5" y2="15.5"/></svg>
         </button>
         <!-- persisted photo-pin markers — universal/shared annotations (see WR_PHOTO_PINS_KEY
-             above). Styled as a small pill badge (magnifying glass + short label + chevron),
-             matching the "ค้นหาสิ่งที่คล้ายกัน"-style search badge look requested as a reference —
-             tap floats the full tap-to-read tip below (reusing _wrToggleTierTip's generic
+             above), rendered as a small round magnifying-glass button at its saved x%/y%; tap
+             floats the full tap-to-read tip below (reusing _wrToggleTierTip's generic
              sibling-.wr-tier-tip lookup) with edit/delete affordances. -->
         ${_wrGetPhotoPins(_wrNoteKey(r)).map(pin => `
-        <div style="position:absolute;left:${pin.x}%;top:${pin.y}%;transform:translate(-50%,-50%);z-index:40;max-width:88%">
-          <div class="wr-photo-pin-dot" data-wr-tip-trigger onclick="_wrToggleTierTip(event,this)" style="position:relative;display:flex;align-items:center;gap:5px;box-sizing:border-box;padding:5px 8px 5px 6px;border-radius:20px;background:rgba(10,12,20,.82);border:1px solid rgba(255,255,255,.22);cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.5);-webkit-tap-highlight-color:transparent;backdrop-filter:blur(2px)">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" style="flex-shrink:0"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <span style="font-family:'Prompt',sans-serif;font-size:10.5px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px">${_wrEsc(pin.text.length > 16 ? pin.text.slice(0, 16) + '…' : pin.text)}</span>
-            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" style="flex-shrink:0;opacity:.75"><path d="M9 6l6 6-6 6"/></svg>
+        <div style="position:absolute;left:${pin.x}%;top:${pin.y}%;transform:translate(-50%,-50%);z-index:40">
+          <div class="wr-photo-pin-dot" data-wr-tip-trigger onclick="_wrToggleTierTip(event,this)" style="position:relative;width:24px;height:24px;box-sizing:border-box;padding:0;border-radius:50%;background:rgba(10,12,20,.82);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.5);-webkit-tap-highlight-color:transparent">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </div>
           <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);width:min(220px,70vw);box-sizing:border-box;padding:10px 11px;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:999">
             <div id="wr-pin-view-${pin.id}">
