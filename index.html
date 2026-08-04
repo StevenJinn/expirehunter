@@ -22882,7 +22882,7 @@ function _wrStartNewPin(panel, x, y) {
     <div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4bcffa" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.75))"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     </div>
-    <div class="wr-pin-new-box" style="position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);width:min(230px,72vw);box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid rgba(75,207,250,.55);background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 10px 26px -6px rgba(0,0,0,.85);z-index:999">
+    <div class="wr-pin-new-box" style="position:absolute;top:50%;left:calc(100% + 9px);transform:translate(0,-50%);width:min(230px,72vw);box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid rgba(75,207,250,.55);background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 10px 26px -6px rgba(0,0,0,.85);z-index:999">
       <textarea rows="3" placeholder="อธิบายจุดนี้บนรูป เช่น ตราประจำตระกูล, ปีที่ผลิต..." style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:7px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:12px;line-height:1.5;resize:vertical"></textarea>
       <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px">
         <button type="button" class="wr-pin-new-cancel" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#cfe9ff;font-size:10.5px;cursor:pointer">ยกเลิก</button>
@@ -22891,10 +22891,15 @@ function _wrStartNewPin(panel, x, y) {
     </div>`;
   wrap.addEventListener('click', e => e.stopPropagation());
   panel.appendChild(wrap);
-  // [FIX 2026-08-04] clamp this form horizontally to the viewport, same reasoning/approach as
-  // _wrTogglePhotoPinTip below — a pin dropped near the photo panel's own left edge (which,
-  // being only ~104px wide, is often near the screen's left edge too) would otherwise center
-  // a 230px-wide box straight off the visible screen.
+  // [FIX 2026-08-04] anchored to the RIGHT of the marker (top:50%/left:calc(100% + 9px) above),
+  // same side-opening spot as the saved-pin read tip (.wr-photo-pin-tip, see its markup +
+  // _wrTogglePhotoPinTip) instead of hanging the box directly below the marker. The photo panel
+  // is only ~104/72px wide, so a box opening straight down inside that narrow column had nowhere
+  // to go but over the info column / barcode / price rows beside it — opening sideways keeps it
+  // off that neighboring content in the common case. Still clamped on BOTH axes against the
+  // viewport (previously only horizontal — a pin near the top or bottom of a tall photo panel
+  // could push the box off-screen vertically with no correction), using the same
+  // measure-then-shift approach as _wrTogglePhotoPinTip below.
   const box = wrap.querySelector('.wr-pin-new-box');
   if (box) {
     const rect = box.getBoundingClientRect();
@@ -22902,7 +22907,10 @@ function _wrStartNewPin(panel, x, y) {
     let shift = 0;
     if (rect.left < margin) shift = margin - rect.left;
     else if (rect.right > window.innerWidth - margin) shift = (window.innerWidth - margin) - rect.right;
-    if (shift) box.style.transform = `translateX(calc(-50% + ${shift}px))`;
+    let vshift = 0;
+    if (rect.top < margin) vshift = margin - rect.top;
+    else if (rect.bottom > window.innerHeight - margin) vshift = (window.innerHeight - margin) - rect.bottom;
+    if (shift || vshift) box.style.transform = `translate(${shift}px, calc(-50% + ${vshift}px))`;
   }
   const ta = wrap.querySelector('textarea');
   if (ta) ta.focus();
