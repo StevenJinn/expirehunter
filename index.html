@@ -22835,10 +22835,13 @@ function _wrPinPointerDown(evt, wrapEl, pinId) {
       const pin = _wrGetPhotoPins(key).find(p => p.id === pinId);
       if (pin) { pin.x = lastX; pin.y = lastY; _wrPersistPhotoPins(); }
     }
-    // no movement → treat as a tap, same as editing being off
+    // no movement while editing is armed → open the editor directly (not the read-only view —
+    // once a pin is saved, edit/delete only happen through edit mode, not the normal tap-to-read
+    // tip; see markup comment above the pin's wr-tier-tip).
     else {
       const dot = wrapEl.querySelector('.wr-photo-pin-dot');
-      if (dot) _wrTogglePhotoPinTip({ stopPropagation(){} }, dot);
+      if (dot) _wrTogglePhotoPinTip({ stopPropagation(){} }, dot, true);
+      _wrEditPhotoPin(pinId);
     }
   }
   document.addEventListener('pointermove', onMove);
@@ -22851,11 +22854,15 @@ function _wrStartNewPin(panel, x, y) {
   const wrap = document.createElement('div');
   wrap.className = 'wr-photo-pin-new';
   wrap.style.cssText = `position:absolute;left:${x}%;top:${y}%;transform:translate(-50%,-50%);z-index:60`;
+  // [FIX 2026-08-04] marker simplified to ONE plain flat circle (was a bordered ring with a
+  // second smaller dot centered inside it, i.e. two circles stacked — looked like a nested/
+  // layered marker instead of a single dot). The 26px wrapper is just an invisible tap-target
+  // for accuracy on mobile; only the 14px <span> inside actually paints.
   wrap.innerHTML = `
-    <div style="width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.22);border:2px solid #4bcffa;display:flex;align-items:center;justify-content:center;box-shadow:0 0 8px rgba(75,207,250,.65)">
-      <div style="width:6px;height:6px;border-radius:50%;background:#4bcffa;box-shadow:0 0 4px rgba(75,207,250,.9)"></div>
+    <div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4bcffa" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.75))"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     </div>
-    <div style="position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);width:min(230px,72vw);box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid rgba(75,207,250,.55);background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 10px 26px -6px rgba(0,0,0,.85);z-index:999">
+    <div class="wr-pin-new-box" style="position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);width:min(230px,72vw);box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid rgba(75,207,250,.55);background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 10px 26px -6px rgba(0,0,0,.85);z-index:999">
       <textarea rows="3" placeholder="อธิบายจุดนี้บนรูป เช่น ตราประจำตระกูล, ปีที่ผลิต..." style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:7px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:12px;line-height:1.5;resize:vertical"></textarea>
       <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px">
         <button type="button" class="wr-pin-new-cancel" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#cfe9ff;font-size:10.5px;cursor:pointer">ยกเลิก</button>
@@ -22864,6 +22871,19 @@ function _wrStartNewPin(panel, x, y) {
     </div>`;
   wrap.addEventListener('click', e => e.stopPropagation());
   panel.appendChild(wrap);
+  // [FIX 2026-08-04] clamp this form horizontally to the viewport, same reasoning/approach as
+  // _wrTogglePhotoPinTip below — a pin dropped near the photo panel's own left edge (which,
+  // being only ~104px wide, is often near the screen's left edge too) would otherwise center
+  // a 230px-wide box straight off the visible screen.
+  const box = wrap.querySelector('.wr-pin-new-box');
+  if (box) {
+    const rect = box.getBoundingClientRect();
+    const margin = 8;
+    let shift = 0;
+    if (rect.left < margin) shift = margin - rect.left;
+    else if (rect.right > window.innerWidth - margin) shift = (window.innerWidth - margin) - rect.right;
+    if (shift) box.style.transform = `translateX(calc(-50% + ${shift}px))`;
+  }
   const ta = wrap.querySelector('textarea');
   if (ta) ta.focus();
   wrap.querySelector('.wr-pin-new-cancel').addEventListener('click', () => wrap.remove());
@@ -26123,8 +26143,24 @@ document.addEventListener('click', (e) => {
 // position (left:50%; translateX(-50%)) could run off the visible viewport, showing a
 // clipped, misplaced-looking box. This measures the opened tip's actual position and nudges
 // it back on-screen with a small extra translateX offset, leaving every other tip untouched.
-function _wrTogglePhotoPinTip(evt, badgeEl) {
-  _wrToggleTierTip(evt, badgeEl);
+function _wrTogglePhotoPinTip(evt, badgeEl, forceOpen) {
+  if (forceOpen) {
+    // [NEW 2026-08-04] used when edit mode opens a pin straight into its editor (see
+    // _wrPinPointerDown) — always ends up open, never toggles closed, even if it happened to
+    // already be open from a previous tap.
+    if (evt) evt.stopPropagation();
+    const wrap = badgeEl.parentElement;
+    const tip = wrap && wrap.querySelector('.wr-tier-tip');
+    if (!tip) return;
+    document.querySelectorAll('.wr-tier-tip').forEach(t => {
+      if (t !== tip) t.style.display = 'none';
+      if (t.parentElement) t.parentElement.style.zIndex = '';
+    });
+    tip.style.display = 'block';
+    wrap.style.zIndex = '500';
+  } else {
+    _wrToggleTierTip(evt, badgeEl);
+  }
   const wrap = badgeEl.parentElement;
   const tip = wrap && wrap.querySelector('.wr-tier-tip');
   if (!tip || tip.style.display === 'none') return;
@@ -26436,37 +26472,41 @@ function _wrBuildDetailHTML(i) {
           style="position:absolute;bottom:5px;right:5px;width:26px;height:26px;border-radius:8px;background:rgba(0,0,0,.82);border:1px solid rgba(${tierRgb},.4);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
         </button>
-        <!-- [REVISED 2026-08-04] pin edit-mode toggle — now a pencil icon (was a magnifying
-             glass) since tapping it no longer only arms "add a pin": it arms editing generally
-             (see _wrTogglePinEditMode) — while armed, tapping empty photo area still drops a
-             new pin (_wrPhotoPanelClick → _wrStartNewPin), but existing pins also become
-             draggable to a new spot and show a one-tap delete badge (both below). -->
-        <button type="button" class="wr-pin-add-btn" onclick="_wrTogglePinEditMode(event,this)" title="${pinEditActive ? 'โหมดแก้ไข: แตะที่ว่างเพื่อปักหมุด, ลากหมุดเพื่อย้าย, แตะ ✕ เพื่อลบ — แตะปุ่มนี้อีกครั้งเพื่อปิด' : 'แก้ไข/ย้าย/ลบหมุดบนรูป'}"
+        <!-- [REVISED 2026-08-04] pin edit-mode toggle icon — magnifying glass framed by 4
+             viewfinder/scan corners (matching the "search from this image" style reference),
+             replacing the plain pencil. Function unchanged: arms editing generally (see
+             _wrTogglePinEditMode) — while armed, tapping empty photo area still drops a new
+             pin (_wrPhotoPanelClick → _wrStartNewPin), existing pins become draggable to a new
+             spot, and a tap on one opens its editor directly (both in _wrPinPointerDown). -->
+        <button type="button" class="wr-pin-add-btn" onclick="_wrTogglePinEditMode(event,this)" title="${pinEditActive ? 'โหมดแก้ไข: แตะที่ว่างเพื่อปักหมุด, ลากหมุดเพื่อย้าย, แตะหมุดเพื่อแก้ไขข้อความ, แตะ ✕ เพื่อลบ — แตะปุ่มนี้อีกครั้งเพื่อปิด' : 'แก้ไข/ย้าย/ลบหมุดบนรูป'}"
           style="position:absolute;top:5px;left:5px;width:22px;height:22px;border-radius:7px;background:${pinEditActive ? 'rgba(75,207,250,.92)' : 'rgba(0,0,0,.78)'};border:1px solid ${pinEditActive ? '#4bcffa' : `rgba(${tierRgb},.4)`};display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V3h5"/><path d="M16 3h5v5"/><path d="M21 16v5h-5"/><path d="M8 21H3v-5"/><circle cx="12" cy="12" r="3.4"/><line x1="14.4" y1="14.4" x2="16.6" y2="16.6"/></svg>
         </button>
         <!-- persisted photo-pin markers — universal/shared annotations (see WR_PHOTO_PINS_KEY
-             above), rendered at their saved x%/y% as a plain white circle marker (matching the
-             dot style used by visual-search/"shop the look" pins on a photo) instead of the old
-             magnifying-glass icon. Tap reads the note (_wrTogglePhotoPinTip, which also clamps
-             the tip on-screen — see its doc). While edit mode is armed the marker can also be
-             dragged to a new spot (_wrPinPointerDown) and shows a small red ✕ badge for
-             one-tap removal. -->
+             above), rendered at their saved x%/y% as a single plain white dot (matching the
+             flat-dot style used by visual-search/"shop the look" pins on a photo) — the visible
+             .wr-photo-pin-dot circle is intentionally small; the wrap div around it is the
+             actual (larger, invisible) tap/drag target for accuracy on mobile, so it's still
+             just ONE visible circle, not two stacked on top of each other. Tap reads the note
+             (_wrTogglePhotoPinTip, which also clamps the tip on-screen — see its doc). While
+             edit mode is armed the marker can also be dragged to a new spot (_wrPinPointerDown)
+             and shows a small red ✕ badge for one-tap removal. -->
         ${_wrGetPhotoPins(_wrNoteKey(r)).map(pin => `
         <div class="wr-photo-pin-wrap" style="position:absolute;left:${pin.x}%;top:${pin.y}%;transform:translate(-50%,-50%);z-index:40" onpointerdown="_wrPinPointerDown(event,this,'${pin.id}')">
-          <div class="wr-photo-pin-dot" data-wr-tip-trigger onclick="_wrTogglePhotoPinTip(event,this)" style="position:relative;width:20px;height:20px;box-sizing:border-box;padding:0;border-radius:50%;background:rgba(0,0,0,.22);border:2px solid #fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.6),0 0 0 3px rgba(255,255,255,.18);-webkit-tap-highlight-color:transparent">
-            <div style="width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 4px rgba(255,255,255,.9)"></div>
+          <div class="wr-photo-pin-dot" data-wr-tip-trigger onclick="_wrTogglePhotoPinTip(event,this)" style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.75))"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </div>
           <div class="wr-pin-del-badge" onclick="event.stopPropagation();_wrDeletePhotoPin('${pin.id}')" title="ลบหมุด" style="display:none;align-items:center;justify-content:center;position:absolute;top:-6px;right:-6px;width:15px;height:15px;border-radius:50%;background:#ff4d4d;border:1.5px solid #0a0e18;cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,.5);z-index:2">
             <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
           </div>
+          <!-- [FIX 2026-08-04] read-only view no longer shows "แก้ไข"/"ลบ" — once a pin is
+               saved, editing/deleting only happens through edit mode (top-left toggle): tapping
+               a pin while armed opens the editor directly (see _wrPinPointerDown's tap
+               fallback), and the red ✕ badge above handles delete. A plain tap outside edit
+               mode is now read-only, matching "once saved, no edit/delete [affordance] here". -->
           <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);width:min(220px,70vw);box-sizing:border-box;padding:10px 11px;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:999">
             <div id="wr-pin-view-${pin.id}">
               <div style="font-family:'Prompt',sans-serif;font-size:12px;line-height:1.6;color:#e7edfb;white-space:pre-wrap">${_wrEsc(pin.text)}</div>
-              <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:7px">
-                <span onclick="event.stopPropagation();_wrEditPhotoPin('${pin.id}')" style="cursor:pointer;font-size:10.5px;color:${tierColor}" title="แก้ไข">✎ แก้ไข</span>
-                <span onclick="event.stopPropagation();_wrDeletePhotoPin('${pin.id}')" style="cursor:pointer;font-size:10.5px;color:#ff8a8a" title="ลบ">🗑 ลบ</span>
-              </div>
             </div>
           </div>
         </div>`).join('')}
