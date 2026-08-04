@@ -26133,7 +26133,7 @@ function _wrToggleTierTip(evt, badgeEl) {
     if (t.parentElement) t.parentElement.style.zIndex = '';
   });
   tip.style.display = willOpen ? 'block' : 'none';
-  wrap.style.zIndex = willOpen ? '500' : '';
+  wrap.style.zIndex = willOpen ? '5000' : '';
 }
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.wr-tier-badge') && !e.target.closest('.wr-tier-tip') && !e.target.closest('[data-wr-tip-trigger]')) {
@@ -26145,13 +26145,15 @@ document.addEventListener('click', (e) => {
 });
 // [NEW 2026-08-04] photo-pin tip open/close — same open/close behavior as _wrToggleTierTip
 // above (reused rather than duplicated: closes any other open tip, toggles this one), but
-// then ALSO clamps the tip horizontally to stay fully on-screen. Needed only for photo pins:
-// unlike the other .wr-tier-tip triggers (which sit on wide badges near the sheet's own left/
-// right edge), a pin can land anywhere across the photo panel — including close to its left
-// edge, which itself sits close to the screen's left edge — so the tip's default centered
-// position (left:50%; translateX(-50%)) could run off the visible viewport, showing a
-// clipped, misplaced-looking box. This measures the opened tip's actual position and nudges
-// it back on-screen with a small extra translateX offset, leaving every other tip untouched.
+// then ALSO clamps the tip on-screen. Needed only for photo pins: unlike the other
+// .wr-tier-tip triggers (which sit on wide badges near the sheet's own left/right edge), a
+// pin can land anywhere on the photo panel. [FIX 2026-08-04] the tip now opens to the pin's
+// RIGHT (vertically centered on it, via top:50%/left:calc(100% + 9px)) instead of centered
+// underneath — a centered-below box could land mid-photo, get visually buried under the
+// price panel that follows in the DOM, and get cut off at the bottom of the sheet. Opening
+// sideways keeps it clear of both. This still measures the opened tip's actual position and
+// nudges it back on-screen (now on either axis) if the pin sits close enough to the sheet's
+// own edge that the tip would otherwise run past the viewport.
 function _wrTogglePhotoPinTip(evt, badgeEl, forceOpen) {
   if (forceOpen) {
     // [NEW 2026-08-04] used when edit mode opens a pin straight into its editor (see
@@ -26166,20 +26168,36 @@ function _wrTogglePhotoPinTip(evt, badgeEl, forceOpen) {
       if (t.parentElement) t.parentElement.style.zIndex = '';
     });
     tip.style.display = 'block';
-    wrap.style.zIndex = '500';
+    wrap.style.zIndex = '5000';
   } else {
     _wrToggleTierTip(evt, badgeEl);
   }
   const wrap = badgeEl.parentElement;
   const tip = wrap && wrap.querySelector('.wr-tier-tip');
   if (!tip || tip.style.display === 'none') return;
-  tip.style.setProperty('--wr-tip-shift', '-50%'); // reset before measuring, in case a previous open left an offset
+  tip.style.setProperty('--wr-tip-shift', '0px'); // reset before measuring, in case a previous open left an offset
+  tip.style.top = '50%';
+  tip.style.bottom = '';
+  tip.style.transform = ''; // drop any vertical-clamp override from a previous open, back to the CSS default
   const rect = tip.getBoundingClientRect();
   const margin = 8;
   let shift = 0;
   if (rect.left < margin) shift = margin - rect.left;
   else if (rect.right > window.innerWidth - margin) shift = (window.innerWidth - margin) - rect.right;
-  if (shift) tip.style.setProperty('--wr-tip-shift', `calc(-50% + ${shift}px)`);
+  if (shift) tip.style.setProperty('--wr-tip-shift', `${shift}px`);
+  // [NEW] vertical clamp — the tip is now vertically centered on the pin (opens to its right)
+  // instead of always dropping straight down, so a pin near the top/bottom of the photo can
+  // push the tip off-screen top/bottom. Re-measure after the horizontal shift and nudge with
+  // top/bottom swapped as needed, same on-screen-clamp idea as the horizontal case above.
+  const rect2 = tip.getBoundingClientRect();
+  if (rect2.top < margin) {
+    tip.style.top = '0';
+    tip.style.transform = `translateY(0) translateX(var(--wr-tip-shift))`;
+  } else if (rect2.bottom > window.innerHeight - margin) {
+    tip.style.top = 'auto';
+    tip.style.bottom = '0';
+    tip.style.transform = `translateY(0) translateX(var(--wr-tip-shift))`;
+  }
 }
 
 // [NEW] swaps the "your note" view region (inside the currently-open wine-name tooltip) into
@@ -26524,7 +26542,7 @@ function _wrBuildDetailHTML(i) {
                no way to scroll the rest into view ("ข้อความทะลุ"). id div is now the scroll region
                itself (still the same element _wrEditPhotoPin/_wrSavePhotoPinEdit swap innerHTML on),
                capped and scrollable exactly like the other tip boxes. -->
-          <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 7px);left:50%;--wr-tip-shift:-50%;transform:translateX(var(--wr-tip-shift));width:min(220px,70vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:999;overflow:hidden">
+          <div class="wr-tier-tip" style="display:none;position:absolute;top:50%;left:calc(100% + 9px);--wr-tip-shift:0px;transform:translateY(-50%) translateX(var(--wr-tip-shift));width:min(220px,70vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:9999;overflow:hidden">
             <div id="wr-pin-view-${pin.id}" class="wr-tip-scroll" style="padding:10px 11px;max-height:min(240px,40vh);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:none">
               <style>.wr-tip-scroll::-webkit-scrollbar{display:none}</style>
               <div style="font-family:'Prompt',sans-serif;font-size:12px;line-height:1.6;color:#e7edfb;white-space:pre-wrap">${_wrEsc(pin.text)}</div>
