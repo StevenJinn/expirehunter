@@ -2864,6 +2864,17 @@ body.cam-open #page-catalog{
      other, so the tip is positioned correctly from the very first painted frame. */
   @keyframes wrTierTipPop{0%{opacity:0;transform:translateX(var(--wr-tip-shift,0px)) translateY(-4px) scale(.96)}100%{opacity:1;transform:translateX(var(--wr-tip-shift,0px)) translateY(0) scale(1)}}
   .wr-tier-tip{animation:wrTierTipPop .16s cubic-bezier(.2,.8,.3,1.2)}
+  /* [FIX 2026-08-04] the photo-pin tip's *resting* transform also centers it vertically on
+     the pin (translate(shift, calc(-50% + vshift))) — unlike the other 4 .wr-tier-tip badges,
+     which just hang below their trigger with no transform of their own. wrTierTipPop above
+     only reproduces the horizontal --wr-tip-shift piece, so during its 160ms the photo-pin tip
+     would render without the -50% vertical centering, appear near the pin's top-left, then
+     jump down to center the instant the animation ended. This variant keyframe/class is scoped
+     to just the photo-pin tip (via the extra .wr-photo-pin-tip class) so the other 4 tips —
+     which rely on wrTierTipPop's plain translateY(-4px→0), not a centered transform — are
+     untouched. */
+  @keyframes wrPhotoPinTipPop{0%{opacity:0;transform:translate(var(--wr-tip-shift,0px), calc(-50% + var(--wr-tip-vshift,0px) - 4px)) scale(.96)}100%{opacity:1;transform:translate(var(--wr-tip-shift,0px), calc(-50% + var(--wr-tip-vshift,0px))) scale(1)}}
+  .wr-photo-pin-tip{animation-name:wrPhotoPinTipPop}
   /* [NEW 2026-07-29] thin webkit scrollbar for long tooltip entries (Firefox uses
      the inline scrollbar-width/scrollbar-color already set on the element). */
   .wr-tier-tip::-webkit-scrollbar{width:5px}
@@ -26542,7 +26553,7 @@ function _wrBuildDetailHTML(i) {
                no way to scroll the rest into view ("ข้อความทะลุ"). id div is now the scroll region
                itself (still the same element _wrEditPhotoPin/_wrSavePhotoPinEdit swap innerHTML on),
                capped and scrollable exactly like the other tip boxes. -->
-          <div class="wr-tier-tip" style="display:none;position:absolute;top:50%;left:calc(100% + 9px);--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift), calc(-50% + var(--wr-tip-vshift)));width:min(220px,70vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:9999;overflow:hidden">
+          <div class="wr-tier-tip wr-photo-pin-tip" style="display:none;position:absolute;top:50%;left:calc(100% + 9px);--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift), calc(-50% + var(--wr-tip-vshift)));width:min(220px,70vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:9999;overflow:hidden">
             <div id="wr-pin-view-${pin.id}" class="wr-tip-scroll" style="padding:10px 11px;max-height:min(240px,40vh);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:none">
               <style>.wr-tip-scroll::-webkit-scrollbar{display:none}</style>
               <div style="font-family:'Prompt',sans-serif;font-size:12px;line-height:1.6;color:#e7edfb;white-space:pre-wrap">${_wrEsc(pin.text)}</div>
