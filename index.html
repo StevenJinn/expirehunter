@@ -7731,6 +7731,47 @@ document.body.style.overflow = 'hidden';
   addEventListener('resize', _debouncedResize);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', _debouncedResize);
 
+  /* [NEW 2026-08-04] parallax tilt — the star field has always had 2 depth layers (BG/FG)
+     but nothing actually drove them apart; both sat perfectly still. This drives a small
+     (targetTiltX, targetTiltY) in the range [-1,1] from whichever input source is available
+     — phone tilt (deviceorientation) first, falling back to drag/mouse-move for desktop or
+     devices without a motion sensor — and eases toward it each frame so the motion reads as
+     a slow, heavy drift rather than a jittery 1:1 tracking of every sensor sample. Foreground
+     stars get pushed further than background stars (classic parallax depth cue); the nebula
+     itself stays put so there's no risk of it not covering an edge. */
+  let targetTiltX=0, targetTiltY=0, curTiltX=0, curTiltY=0;
+  const TILT_MAX = 16; // px of travel at full tilt, tuned to feel like a subtle drift not a shove
+
+  function _clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
+
+  function _onOrientation(e){
+    if (e.gamma==null || e.beta==null) return;
+    // gamma: left/right tilt (-90..90), beta: front/back tilt (0..180, ~45 when comfortably
+    // holding the phone up to look at) — both normalized to roughly [-1,1] around that resting pose
+    targetTiltX = _clamp(e.gamma/28, -1, 1);
+    targetTiltY = _clamp((e.beta-45)/28, -1, 1);
+  }
+  let _tiltWired=false;
+  function _wireTilt(){
+    if (_tiltWired) return; _tiltWired=true;
+    if (typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
+      // iOS 13+ — needs a user gesture to grant motion access; any tap on the overlay counts
+      DeviceOrientationEvent.requestPermission().then(state=>{
+        if (state==='granted') window.addEventListener('deviceorientation', _onOrientation);
+      }).catch(()=>{});
+    } else {
+      window.addEventListener('deviceorientation', _onOrientation);
+    }
+  }
+  const overlayForTilt = document.getElementById('auth-gate-overlay');
+  if (overlayForTilt) overlayForTilt.addEventListener('pointerdown', _wireTilt, { once:true, passive:true });
+  // desktop / no-motion-sensor fallback — pointer position relative to screen center
+  window.addEventListener('pointermove', (e)=>{
+    if (overlayForTilt && overlayForTilt.style.display==='none') return;
+    targetTiltX = _clamp((e.clientX/innerWidth-.5)*2, -1, 1);
+    targetTiltY = _clamp((e.clientY/innerHeight-.5)*2, -1, 1);
+  }, { passive:true });
+
   /* ── star field: 2 layers for parallax depth ── */
   function mkStars(n, rMin, rMax, aMin, aMax){
     return Array.from({length:n}, ()=>({
@@ -7793,7 +7834,21 @@ document.body.style.overflow = 'hidden';
   }
 
   let frame=0, lastW=0, lastH=0;
-  function draw(){
+  // [FIX 2026-08-04] two problems found beyond the v13 fix below: (1) this loop had no fps cap
+  // at all — every other generative-background canvas in the app (#bgCanvas rain, sonar, ECG,
+  // hex-viz) caps itself to 12-20fps, this one alone ran flat-out at the display's native
+  // refresh rate (60-120fps) computing 360 stars' worth of sin()-twinkle + a shooting-star check
+  // every single frame. (2) far worse: this canvas belongs ONLY to #auth-gate-overlay (the
+  // login screen) — once login finishes, _authGateSyncDone() sets overlay.style.display='none'
+  // and the user never sees this canvas again for the rest of the session, yet the loop below
+  // never checked for that and kept computing+drawing forever, invisible, for as long as the
+  // app stayed open. That's a pure heat/battery drain with zero visible benefit. Now: skipped
+  // entirely (cheap early-return, no star math, no canvas draw calls) whenever the overlay is
+  // hidden, and capped to 20fps the rest of the time. The rAF chain itself is kept alive (rather
+  // than fully stopped) so sign-out — which flips the overlay back to display:flex (see
+  // onAuthStateChanged above) — makes the starfield reappear immediately with no extra wiring.
+  var _slLast=0;
+  function draw(now){
     // [FIX 2026-08-01 v13] เจอตัวการใหญ่จริง: draw() นี้ไม่มี guard อะไรเลยแม้แต่ document.hidden —
     // วาดดาว 280 ดวง+เนบิวลา (สร้าง gradient ใหม่ทุกเฟรมสำหรับ Milky Way band) เต็ม 60fps ตลอดเวลา
     // ไม่เคยหยุด ไม่ว่า UES จะเปิดทับอยู่หรือไม่ก็ตาม — นี่คือภาระ GPU/CPU ต่อเนื่องที่ไปแย่งเฟรมกับ
@@ -7802,6 +7857,19 @@ document.body.style.overflow = 'hidden';
     if(document.hidden || document.body.classList.contains('ues-open-frozen')){
       requestAnimationFrame(draw); return;
     }
+    // [FIX 2026-08-04] real fix — see comment block above. Overlay hidden (login already done)
+    // → skip all star/nebula work, just keep the chain alive cheaply so sign-out can resume it.
+    const overlayEl = document.getElementById('auth-gate-overlay');
+    if (overlayEl && overlayEl.style.display === 'none') {
+      requestAnimationFrame(draw); return;
+    }
+    if (now - _slLast < 50) { requestAnimationFrame(draw); return; } // cap 20fps
+    _slLast = now;
+    // ease current tilt toward target — slow heavy drift, not 1:1 sensor jitter
+    curTiltX += (targetTiltX-curTiltX)*.05;
+    curTiltY += (targetTiltY-curTiltY)*.05;
+    const bgOx=curTiltX*TILT_MAX*.4, bgOy=curTiltY*TILT_MAX*.4; // background layer — subtle
+    const fgOx=curTiltX*TILT_MAX,    fgOy=curTiltY*TILT_MAX;    // foreground layer — full travel
     const W=cv.width, H=cv.height;
     if(W!==lastW||H!==lastH||!nebulaCache){ nebulaCache=buildNebula(W,H); lastW=W; lastH=H; }
 
@@ -7812,19 +7880,20 @@ document.body.style.overflow = 'hidden';
     STARS_BG.forEach(s=>{
       const a = s.a*(0.5+0.5*Math.sin(frame*s.twinkleSpeed+s.twinklePhase));
       ctx.fillStyle= s.hue===200 ? `rgba(100,180,255,${a})` : s.hue===30 ? `rgba(255,200,100,${a})` : `rgba(255,255,255,${a})`;
-      ctx.beginPath();ctx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(s.x*W+bgOx,s.y*H+bgOy,s.r,0,Math.PI*2);ctx.fill();
     });
 
     /* ── foreground stars (slightly brighter) ── */
     STARS_FG.forEach(s=>{
       const a = s.a*(0.6+0.4*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+1));
       ctx.fillStyle=`rgba(255,255,255,${a})`;
-      ctx.beginPath();ctx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2);ctx.fill();
+      const sx=s.x*W+fgOx, sy=s.y*H+fgOy;
+      ctx.beginPath();ctx.arc(sx,sy,s.r,0,Math.PI*2);ctx.fill();
       /* subtle cross-hair flare on bright stars */
       if(s.r>1.4){
         ctx.strokeStyle=`rgba(255,255,255,${a*.25})`;ctx.lineWidth=.5;
-        ctx.beginPath();ctx.moveTo(s.x*W-4,s.y*H);ctx.lineTo(s.x*W+4,s.y*H);ctx.stroke();
-        ctx.beginPath();ctx.moveTo(s.x*W,s.y*H-4);ctx.lineTo(s.x*W,s.y*H+4);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(sx-4,sy);ctx.lineTo(sx+4,sy);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(sx,sy-4);ctx.lineTo(sx,sy+4);ctx.stroke();
       }
     });
 
@@ -7859,7 +7928,7 @@ document.body.style.overflow = 'hidden';
     frame++;
     requestAnimationFrame(draw);
   }
-  draw();
+  requestAnimationFrame(draw);
 })();
 </script>
 <canvas id="cdb-rain-canvas" style="display:none!important;"></canvas>
@@ -26771,7 +26840,7 @@ function _wrBuildDetailHTML(i) {
                no way to scroll the rest into view ("ข้อความทะลุ"). id div is now the scroll region
                itself (still the same element _wrEditPhotoPin/_wrSavePhotoPinEdit swap innerHTML on),
                capped and scrollable exactly like the other tip boxes. -->
-          <div class="wr-tier-tip wr-photo-pin-tip" style="display:none;position:absolute;top:50%;left:calc(100% + 9px);--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift), calc(-50% + var(--wr-tip-vshift)));width:min(210px,68vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:9999;overflow:hidden">
+          <div class="wr-tier-tip wr-photo-pin-tip" onclick="event.stopPropagation()" style="display:none;position:absolute;top:50%;left:calc(100% + 9px);--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift), calc(-50% + var(--wr-tip-vshift)));width:min(210px,68vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:9999;overflow:hidden">
             <div id="wr-pin-view-${pin.id}" class="wr-tip-scroll" style="padding:10px 11px;max-height:min(240px,40vh);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:none">
               <style>.wr-tip-scroll::-webkit-scrollbar{display:none}</style>
               ${pin.image ? `<img src="${pin.image}" style="width:100%;max-height:160px;object-fit:cover;border-radius:7px;display:block;margin-bottom:8px"/>` : ''}
