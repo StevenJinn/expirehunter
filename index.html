@@ -26175,29 +26175,19 @@ function _wrTogglePhotoPinTip(evt, badgeEl, forceOpen) {
   const wrap = badgeEl.parentElement;
   const tip = wrap && wrap.querySelector('.wr-tier-tip');
   if (!tip || tip.style.display === 'none') return;
-  tip.style.setProperty('--wr-tip-shift', '0px'); // reset before measuring, in case a previous open left an offset
-  tip.style.top = '50%';
-  tip.style.bottom = '';
-  tip.style.transform = ''; // drop any vertical-clamp override from a previous open, back to the CSS default
+  // reset both axes before measuring, in case a previous open left an offset
+  tip.style.setProperty('--wr-tip-shift', '0px');
+  tip.style.setProperty('--wr-tip-vshift', '0px');
   const rect = tip.getBoundingClientRect();
   const margin = 8;
   let shift = 0;
   if (rect.left < margin) shift = margin - rect.left;
   else if (rect.right > window.innerWidth - margin) shift = (window.innerWidth - margin) - rect.right;
   if (shift) tip.style.setProperty('--wr-tip-shift', `${shift}px`);
-  // [NEW] vertical clamp — the tip is now vertically centered on the pin (opens to its right)
-  // instead of always dropping straight down, so a pin near the top/bottom of the photo can
-  // push the tip off-screen top/bottom. Re-measure after the horizontal shift and nudge with
-  // top/bottom swapped as needed, same on-screen-clamp idea as the horizontal case above.
-  const rect2 = tip.getBoundingClientRect();
-  if (rect2.top < margin) {
-    tip.style.top = '0';
-    tip.style.transform = `translateY(0) translateX(var(--wr-tip-shift))`;
-  } else if (rect2.bottom > window.innerHeight - margin) {
-    tip.style.top = 'auto';
-    tip.style.bottom = '0';
-    tip.style.transform = `translateY(0) translateX(var(--wr-tip-shift))`;
-  }
+  let vshift = 0;
+  if (rect.top < margin) vshift = margin - rect.top;
+  else if (rect.bottom > window.innerHeight - margin) vshift = (window.innerHeight - margin) - rect.bottom;
+  if (vshift) tip.style.setProperty('--wr-tip-vshift', `${vshift}px`);
 }
 
 // [NEW] swaps the "your note" view region (inside the currently-open wine-name tooltip) into
@@ -26483,8 +26473,18 @@ function _wrBuildDetailHTML(i) {
          row given class="rec-card-barcode-row" + align-items:stretch — same pattern as the
          result-card list — so syncQtyHeight() (triggered off this barcode's own canvas via
          canvas.closest('.rec-card-barcode-row')) can grow the photo down to the barcode's real
-         bottom edge instead of stopping at a fixed 140px next to just producer/grapes. -->
-    <div ${boot('rec-card-barcode-row')}display:flex;align-items:stretch;gap:12px">
+         bottom edge instead of stopping at a fixed 140px next to just producer/grapes.
+         [FIX 2026-08-04] added position:relative;z-index:2 here (paired with z-index:1 on the
+         price panel below, .rec-card-data). Both this row and the price panel are .wr-boot-item
+         elements — that class's boot-in animation makes each one permanently form its OWN
+         stacking context (an element with a non-'none' animation-name touching transform/opacity
+         does this regardless of whether the animation has finished playing), so no z-index set on
+         anything *inside* this row — including the photo-pin note tip, however high — could ever
+         out-rank the price panel's contents once it got its own separate context; the later
+         sibling in the DOM was always winning ties. Giving the two rows themselves explicit,
+         ordered z-indexes fixes that at the source. -->
+    <div ${boot('rec-card-barcode-row')}display:flex;align-items:stretch;gap:12px;position:relative;z-index:2">
+      <!-- [see z-index note above] -->
       <div class="rec-photo-panel${pinEditActive ? ' wr-pin-edit-mode' : ''}" data-prod-photo-bc="${barcode || ''}" onclick="_wrPhotoPanelClick(event)" style="width:104px;max-height:480px;flex-shrink:0;border-radius:12px;overflow:visible;position:relative;cursor:default;border:1px solid rgba(${tierRgb},.25);background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(${tierRgb},.1)">
         <!-- [FIX 2026-08-03] image + corner brackets now live in an INNER absolutely-positioned
              wrapper that carries its own overflow:hidden/border-radius — the outer panel switched
@@ -26542,7 +26542,7 @@ function _wrBuildDetailHTML(i) {
                no way to scroll the rest into view ("ข้อความทะลุ"). id div is now the scroll region
                itself (still the same element _wrEditPhotoPin/_wrSavePhotoPinEdit swap innerHTML on),
                capped and scrollable exactly like the other tip boxes. -->
-          <div class="wr-tier-tip" style="display:none;position:absolute;top:50%;left:calc(100% + 9px);--wr-tip-shift:0px;transform:translateY(-50%) translateX(var(--wr-tip-shift));width:min(220px,70vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:9999;overflow:hidden">
+          <div class="wr-tier-tip" style="display:none;position:absolute;top:50%;left:calc(100% + 9px);--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift), calc(-50% + var(--wr-tip-vshift)));width:min(220px,70vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:9999;overflow:hidden">
             <div id="wr-pin-view-${pin.id}" class="wr-tip-scroll" style="padding:10px 11px;max-height:min(240px,40vh);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:none">
               <style>.wr-tip-scroll::-webkit-scrollbar{display:none}</style>
               <div style="font-family:'Prompt',sans-serif;font-size:12px;line-height:1.6;color:#e7edfb;white-space:pre-wrap">${_wrEsc(pin.text)}</div>
@@ -26580,7 +26580,7 @@ function _wrBuildDetailHTML(i) {
     <!-- price panel — [REVERTED 2026-08-02] wholesale cell no longer colored by wine type;
          it now matches tierColor like the rest of the sheet. Wine type lives on the type
          badge chip above instead. Readouts count up on open. -->
-    <div ${boot('rec-card-data')}--seg-color:${tierColor}">
+    <div ${boot('rec-card-data')}--seg-color:${tierColor};position:relative;z-index:1">
       <div class="rec-data-cell">
         <div class="rec-data-cell-lbl" style="color:rgba(255,255,255,.5)">RETAIL · ราคาปลีก</div>
         <div class="rec-data-cell-val" style="color:rgba(255,255,255,.9);font-size:15px"><span class="wr-count-up" data-target="${retail == null ? '' : Number(retail)}">${fmtPrice(retail)}</span></div>
