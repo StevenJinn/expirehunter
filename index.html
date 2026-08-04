@@ -22835,6 +22835,16 @@ function _wrPhotoPanelClick(evt) {
 // a genuine drag from a plain tap via a small movement threshold: no movement past the
 // threshold on pointerup → treated as a tap and opens the read/edit tip instead of moving.
 function _wrPinPointerDown(evt, wrapEl, pinId) {
+  // [FIX 2026-08-04] this listener sits on .wr-photo-pin-wrap, which also contains the pin's
+  // own note/edit tip AS A CHILD (see markup — the tip box lives inside the same wrap as the
+  // dot). Any pointerdown that starts inside that open tip — scrolling the note text, tapping
+  // ยกเลิก/บันทึก/ลบหมุด, focusing the textarea — was bubbling up to this same handler and
+  // getting treated as a drag-to-move gesture on the PIN ITSELF: the touch/scroll inside the
+  // box dragged pin.x/pin.y along with it (the dot visibly "followed" the box), and the
+  // stopPropagation+preventDefault below silently swallowed the click those buttons depend on,
+  // which is why ลบหมุด/ยกเลิก/บันทึก felt broken. Only a touch that actually started on the
+  // dot itself (never inside its tip) should ever be treated as a potential drag.
+  if (evt.target.closest('.wr-tier-tip')) return;
   const panel = wrapEl.closest('.rec-photo-panel');
   if (!panel || !panel.classList.contains('wr-pin-edit-mode')) return; // not editing → let the tap bubble to open the tip as usual
   evt.stopPropagation();
@@ -22965,7 +22975,7 @@ function _wrStartNewPin(panel, x, y) {
     <div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4bcffa" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.75))"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     </div>
-    <div class="wr-pin-new-box" style="position:absolute;top:50%;left:calc(100% + 9px);transform:translate(0,-50%);width:min(260px,82vw);box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid rgba(75,207,250,.55);background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 10px 26px -6px rgba(0,0,0,.85);z-index:999">
+    <div class="wr-pin-new-box" style="position:absolute;top:50%;left:calc(100% + 9px);transform:translate(0,-50%);width:min(210px,68vw);box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid rgba(75,207,250,.55);background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 10px 26px -6px rgba(0,0,0,.85);z-index:999">
       <!-- [NEW 2026-08-04] optional photo attach — same not-written-until-"บันทึก" pattern as
            the text itself; picking a file just fills the in-memory pendingImage below until save. -->
       <div class="wr-pin-img-preview" style="display:none;position:relative;margin-bottom:7px">
@@ -26761,7 +26771,7 @@ function _wrBuildDetailHTML(i) {
                no way to scroll the rest into view ("ข้อความทะลุ"). id div is now the scroll region
                itself (still the same element _wrEditPhotoPin/_wrSavePhotoPinEdit swap innerHTML on),
                capped and scrollable exactly like the other tip boxes. -->
-          <div class="wr-tier-tip wr-photo-pin-tip" style="display:none;position:absolute;top:50%;left:calc(100% + 9px);--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift), calc(-50% + var(--wr-tip-vshift)));width:min(260px,82vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:9999;overflow:hidden">
+          <div class="wr-tier-tip wr-photo-pin-tip" style="display:none;position:absolute;top:50%;left:calc(100% + 9px);--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift), calc(-50% + var(--wr-tip-vshift)));width:min(210px,68vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:9999;overflow:hidden">
             <div id="wr-pin-view-${pin.id}" class="wr-tip-scroll" style="padding:10px 11px;max-height:min(240px,40vh);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:none">
               <style>.wr-tip-scroll::-webkit-scrollbar{display:none}</style>
               ${pin.image ? `<img src="${pin.image}" style="width:100%;max-height:160px;object-fit:cover;border-radius:7px;display:block;margin-bottom:8px"/>` : ''}
