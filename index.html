@@ -22867,6 +22867,39 @@ function _wrPinPointerDown(evt, wrapEl, pinId) {
   document.addEventListener('pointermove', onMove);
   document.addEventListener('pointerup', onUp, { once: true });
 }
+// [NEW 2026-08-04] shrinks a picked photo before it's stored on a pin — photo pins sync through
+// the same small per-key cloud doc as every other pin on every record (see _wrCloudSetPhotoPins
+// below), so an un-resized phone photo (often several MB straight off a camera) would bloat that
+// doc and slow the sync for every pin on the wine, not just this one. Downscales to at most
+// maxDim on the long edge and re-encodes as JPEG — far more resolution than the ~220px-wide pin
+// tip thumbnail will ever actually show, so nothing visible is lost. Callback style rather than
+// a Promise so it drops in next to the rest of this file's plain-callback DOM code with no
+// async/await surface to thread through _wrStartNewPin/_wrEditPhotoPin's closures.
+function _wrReadPinImage(file, cb) {
+  if (!file || !file.type || !file.type.startsWith('image/')) { cb(null); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 900;
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (w > maxDim || h > maxDim) {
+        if (w >= h) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        cb(canvas.toDataURL('image/jpeg', .78));
+      } catch (e) { cb(reader.result); } // canvas unsupported/tainted — fall back to the raw data-URL
+    };
+    img.onerror = () => cb(null);
+    img.src = reader.result;
+  };
+  reader.onerror = () => cb(null);
+  reader.readAsDataURL(file);
+}
 // drops a temporary (unsaved) pin marker + open textarea directly at the tapped spot — only
 // written into _wrPhotoPins (and re-rendered as a real persisted pin) once "บันทึก" is
 // pressed with non-empty text; "ยกเลิก" or an empty save just removes the temp element.
@@ -22883,6 +22916,17 @@ function _wrStartNewPin(panel, x, y) {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4bcffa" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.75))"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     </div>
     <div class="wr-pin-new-box" style="position:absolute;top:50%;left:calc(100% + 9px);transform:translate(0,-50%);width:min(230px,72vw);box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid rgba(75,207,250,.55);background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 10px 26px -6px rgba(0,0,0,.85);z-index:999">
+      <!-- [NEW 2026-08-04] optional photo attach — same not-written-until-"บันทึก" pattern as
+           the text itself; picking a file just fills the in-memory pendingImage below until save. -->
+      <div class="wr-pin-img-preview" style="display:none;position:relative;margin-bottom:7px">
+        <img class="wr-pin-img-thumb" style="width:100%;max-height:120px;object-fit:cover;border-radius:6px;display:block"/>
+        <button type="button" class="wr-pin-img-remove" style="position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.75);border:1px solid rgba(255,255,255,.3);color:#fff;font-size:11px;line-height:1;cursor:pointer">✕</button>
+      </div>
+      <button type="button" class="wr-pin-img-add" style="display:flex;align-items:center;gap:5px;padding:5px 9px;margin-bottom:7px;border-radius:6px;border:1px dashed rgba(75,207,250,.5);background:rgba(75,207,250,.06);color:#8fd8fb;font-size:10.5px;cursor:pointer">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        แนบรูป
+      </button>
+      <input type="file" accept="image/*" class="wr-pin-img-input" style="display:none">
       <textarea rows="3" placeholder="อธิบายจุดนี้บนรูป เช่น ตราประจำตระกูล, ปีที่ผลิต..." style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:7px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:12px;line-height:1.5;resize:vertical"></textarea>
       <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px">
         <button type="button" class="wr-pin-new-cancel" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#cfe9ff;font-size:10.5px;cursor:pointer">ยกเลิก</button>
@@ -22914,26 +22958,63 @@ function _wrStartNewPin(panel, x, y) {
   }
   const ta = wrap.querySelector('textarea');
   if (ta) ta.focus();
+  let pendingImage = null;
+  const imgInput = wrap.querySelector('.wr-pin-img-input');
+  const imgAddBtn = wrap.querySelector('.wr-pin-img-add');
+  const imgPreviewWrap = wrap.querySelector('.wr-pin-img-preview');
+  const imgThumb = wrap.querySelector('.wr-pin-img-thumb');
+  const imgRemoveBtn = wrap.querySelector('.wr-pin-img-remove');
+  imgAddBtn.addEventListener('click', () => imgInput.click());
+  imgInput.addEventListener('change', () => {
+    const file = imgInput.files && imgInput.files[0];
+    if (!file) return;
+    _wrReadPinImage(file, (dataUrl) => {
+      if (!dataUrl) return;
+      pendingImage = dataUrl;
+      imgThumb.src = dataUrl;
+      imgPreviewWrap.style.display = 'block';
+      imgAddBtn.style.display = 'none';
+    });
+  });
+  imgRemoveBtn.addEventListener('click', () => {
+    pendingImage = null;
+    imgInput.value = '';
+    imgPreviewWrap.style.display = 'none';
+    imgAddBtn.style.display = 'flex';
+  });
   wrap.querySelector('.wr-pin-new-cancel').addEventListener('click', () => wrap.remove());
   wrap.querySelector('.wr-pin-new-save').addEventListener('click', () => {
     const text = ta.value.trim();
     wrap.remove();
-    if (!text) return;
+    if (!text && !pendingImage) return;
     const r = _wrLastShown[_wrCurrentDetailIndex];
     const key = _wrNoteKey(r);
     if (!key) return;
     if (!_wrPhotoPins[key]) _wrPhotoPins[key] = [];
-    _wrPhotoPins[key].push({ id: 'pin-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), x, y, text });
+    const pin = { id: 'pin-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), x, y, text };
+    if (pendingImage) pin.image = pendingImage;
+    _wrPhotoPins[key].push(pin);
     _wrPersistPhotoPins();
     if (typeof _wrOpenDetail === 'function') _wrOpenDetail(_wrCurrentDetailIndex);
   });
 }
 // removes any still-open "add new pin" form if the person taps elsewhere without saving it.
+// [FIX 2026-08-04] listens on the CAPTURE phase (the trailing `true`), not the default bubble
+// phase — almost every other tappable control in the detail sheet (badges, tier-tip triggers,
+// the ✎/⧉ icons, other pins, the edit-mode toggle button, etc.) calls event.stopPropagation()
+// in its own onclick, which stops the click from ever bubbling up to a document-level bubble
+// listener. That made the "tap elsewhere to close" behavior only work when the tap happened to
+// land on genuinely empty, unhandled space — tapping any of those other controls left the new-
+// pin form sitting open (and visually overlapping) instead of closing it. Capture runs top-down
+// BEFORE the target's own bubble-phase handler, so it sees every click first regardless of what
+// that element's own handler does with propagation afterward. It still fires before
+// _wrStartNewPin ever creates a form on the click that opens one (that happens later, in the
+// panel's bubble-phase onclick), so a brand-new form is never wiped out by its own opening tap.
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.wr-photo-pin-new')) {
     document.querySelectorAll('.wr-photo-pin-new').forEach(w => w.remove());
   }
-});
+}, true);
 // swaps an existing pin's view region into an editable textarea, same swap-in-place pattern
 // as _wrEditNote/_wrEditCuratedTip above.
 function _wrEditPhotoPin(pinId) {
@@ -22943,16 +23024,59 @@ function _wrEditPhotoPin(pinId) {
   const key = _wrNoteKey(r);
   const pin = _wrGetPhotoPins(key).find(p => p.id === pinId);
   if (!pin) return;
+  // [NEW 2026-08-04] tracked separately from pin.image so "ยกเลิก" (or navigating away without
+  // saving) drops a newly-picked photo untouched, same not-written-until-"บันทึก" pattern as the
+  // new-pin form (_wrStartNewPin) — a data-URL is too large to round-trip through an inline
+  // onclick attribute, hence the id-scoped querySelector + addEventListener wiring below instead
+  // of the onclick="..." string used for the plain ยกเลิก/บันทึก buttons.
+  let pendingImage = pin.image || null;
   view.innerHTML = `
+    <div class="wr-pin-img-preview" style="display:${pendingImage ? 'block' : 'none'};position:relative;margin-bottom:7px">
+      <img class="wr-pin-img-thumb" src="${pendingImage || ''}" style="width:100%;max-height:120px;object-fit:cover;border-radius:6px;display:block"/>
+      <button type="button" class="wr-pin-img-remove" style="position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.75);border:1px solid rgba(255,255,255,.3);color:#fff;font-size:11px;line-height:1;cursor:pointer">✕</button>
+    </div>
+    <button type="button" class="wr-pin-img-add" style="display:${pendingImage ? 'none' : 'flex'};align-items:center;gap:5px;padding:5px 9px;margin-bottom:7px;border-radius:6px;border:1px dashed rgba(75,207,250,.5);background:rgba(75,207,250,.06);color:#8fd8fb;font-size:10.5px;cursor:pointer">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      ${pendingImage ? 'เปลี่ยนรูป' : 'แนบรูป'}
+    </button>
+    <input type="file" accept="image/*" class="wr-pin-img-input" style="display:none">
     <textarea id="wr-pin-edit-ta" rows="3" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:7px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:12px;line-height:1.5;resize:vertical">${_wrEsc(pin.text)}</textarea>
     <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px">
       <button type="button" onclick="event.stopPropagation();_wrOpenDetail(_wrCurrentDetailIndex)" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#cfe9ff;font-size:10.5px;cursor:pointer">ยกเลิก</button>
-      <button type="button" onclick="event.stopPropagation();_wrSavePhotoPinEdit('${pinId}')" style="padding:5px 10px;border-radius:6px;border:none;background:#4bcffa;color:#04121e;font-weight:700;font-size:10.5px;cursor:pointer">บันทึก</button>
+      <button type="button" id="wr-pin-edit-save-${pinId}" style="padding:5px 10px;border-radius:6px;border:none;background:#4bcffa;color:#04121e;font-weight:700;font-size:10.5px;cursor:pointer">บันทึก</button>
     </div>`;
   const ta = document.getElementById('wr-pin-edit-ta');
   if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  const imgInput = view.querySelector('.wr-pin-img-input');
+  const imgAddBtn = view.querySelector('.wr-pin-img-add');
+  const imgPreviewWrap = view.querySelector('.wr-pin-img-preview');
+  const imgThumb = view.querySelector('.wr-pin-img-thumb');
+  const imgRemoveBtn = view.querySelector('.wr-pin-img-remove');
+  imgAddBtn.addEventListener('click', (e) => { e.stopPropagation(); imgInput.click(); });
+  imgInput.addEventListener('click', (e) => e.stopPropagation());
+  imgInput.addEventListener('change', () => {
+    const file = imgInput.files && imgInput.files[0];
+    if (!file) return;
+    _wrReadPinImage(file, (dataUrl) => {
+      if (!dataUrl) return;
+      pendingImage = dataUrl;
+      imgThumb.src = dataUrl;
+      imgPreviewWrap.style.display = 'block';
+      imgAddBtn.style.display = 'none';
+    });
+  });
+  imgRemoveBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    pendingImage = null;
+    imgInput.value = '';
+    imgPreviewWrap.style.display = 'none';
+    imgAddBtn.style.display = 'flex';
+    imgAddBtn.lastChild.textContent = 'แนบรูป';
+  });
+  const saveBtn = document.getElementById('wr-pin-edit-save-' + pinId);
+  if (saveBtn) saveBtn.addEventListener('click', (e) => { e.stopPropagation(); _wrSavePhotoPinEdit(pinId, pendingImage); });
 }
-function _wrSavePhotoPinEdit(pinId) {
+function _wrSavePhotoPinEdit(pinId, pendingImage) {
   const ta = document.getElementById('wr-pin-edit-ta');
   if (!ta) return;
   const r = _wrLastShown[_wrCurrentDetailIndex];
@@ -22961,8 +23085,11 @@ function _wrSavePhotoPinEdit(pinId) {
   const pin = pins.find(p => p.id === pinId);
   const text = ta.value.trim();
   if (pin) {
-    if (text) pin.text = text;
-    else _wrPhotoPins[key] = pins.filter(p => p.id !== pinId); // empty save removes the pin
+    if (text || pendingImage) {
+      pin.text = text;
+      if (pendingImage) pin.image = pendingImage; else delete pin.image; // removed in the editor → drop the stored photo too
+    }
+    else _wrPhotoPins[key] = pins.filter(p => p.id !== pinId); // empty save (no text, no image) removes the pin
   }
   _wrPersistPhotoPins();
   if (typeof _wrOpenDetail === 'function') _wrOpenDetail(_wrCurrentDetailIndex);
@@ -26564,6 +26691,7 @@ function _wrBuildDetailHTML(i) {
           <div class="wr-tier-tip wr-photo-pin-tip" style="display:none;position:absolute;top:50%;left:calc(100% + 9px);--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift), calc(-50% + var(--wr-tip-vshift)));width:min(220px,70vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:9999;overflow:hidden">
             <div id="wr-pin-view-${pin.id}" class="wr-tip-scroll" style="padding:10px 11px;max-height:min(240px,40vh);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:none">
               <style>.wr-tip-scroll::-webkit-scrollbar{display:none}</style>
+              ${pin.image ? `<img src="${pin.image}" style="width:100%;max-height:160px;object-fit:cover;border-radius:7px;display:block;margin-bottom:8px"/>` : ''}
               <div style="font-family:'Prompt',sans-serif;font-size:12px;line-height:1.6;color:#e7edfb;white-space:pre-wrap">${_wrEsc(pin.text)}</div>
             </div>
           </div>
