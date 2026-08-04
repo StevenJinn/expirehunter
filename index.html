@@ -7751,22 +7751,34 @@ document.body.style.overflow = 'hidden';
     targetTiltX = _clamp(e.gamma/28, -1, 1);
     targetTiltY = _clamp((e.beta-45)/28, -1, 1);
   }
-  let _tiltWired=false;
-  function _wireTilt(){
-    if (_tiltWired) return; _tiltWired=true;
-    if (typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
-      // iOS 13+ — needs a user gesture to grant motion access; any tap on the overlay counts
+  // [FIX 2026-08-04] this used to be wired up ONLY from a pointerdown on #auth-gate-overlay —
+  // but that gesture-gating is only actually required on iOS 13+ (DeviceOrientationEvent.
+  // requestPermission must be called from a user gesture there, or it throws/does nothing).
+  // Everywhere else (Android, desktop) needs no permission at all — addEventListener alone is
+  // enough — so gating it behind a tap meant: if the session auto-signs-in (persisted Firebase
+  // login, overlay never actually tapped) or that one tap didn't land where expected, the
+  // listener was never attached and the stars just sat still forever with no error to notice.
+  // Now the plain path attaches immediately, unconditionally, on script load; only the iOS
+  // permission-prompt path still waits for a gesture (required by the platform, not a choice).
+  if (typeof DeviceOrientationEvent === 'undefined') {
+    // no motion API at all (most desktop browsers) — pointermove fallback below covers this
+  } else if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS 13+ — needs a real user gesture to grant motion access. Wired to the FIRST tap
+    // anywhere in the document (not just the login overlay) so it still works even if the
+    // overlay is skipped entirely by an auto-login.
+    const _wireIOS = () => {
       DeviceOrientationEvent.requestPermission().then(state=>{
         if (state==='granted') window.addEventListener('deviceorientation', _onOrientation);
       }).catch(()=>{});
-    } else {
-      window.addEventListener('deviceorientation', _onOrientation);
-    }
+    };
+    document.addEventListener('pointerdown', _wireIOS, { once:true, passive:true });
+  } else {
+    // Android / anything else that doesn't gate motion behind a permission prompt
+    window.addEventListener('deviceorientation', _onOrientation);
   }
-  const overlayForTilt = document.getElementById('auth-gate-overlay');
-  if (overlayForTilt) overlayForTilt.addEventListener('pointerdown', _wireTilt, { once:true, passive:true });
   // desktop / no-motion-sensor fallback — pointer position relative to screen center
   window.addEventListener('pointermove', (e)=>{
+    const overlayForTilt = document.getElementById('auth-gate-overlay');
     if (overlayForTilt && overlayForTilt.style.display==='none') return;
     targetTiltX = _clamp((e.clientX/innerWidth-.5)*2, -1, 1);
     targetTiltY = _clamp((e.clientY/innerHeight-.5)*2, -1, 1);
@@ -22867,9 +22879,11 @@ function _wrMergeCloudPhotoPins(cPins) {
 // a new pin (via _wrPhotoPanelClick below), existing pins can be dragged to a new spot
 // (_wrPinPointerDown), and a plain tap opens the editor, which has a confirm-gated delete
 // button (_wrEditPhotoPin/_wrDeletePhotoPin — no more one-tap on-photo delete badge). Stays
-// armed after each add/move/delete (unlike the old add-only mode, which auto-disarmed after
-// a single drop) so multiple pins can be placed/adjusted in one go — tap the button again to
-// turn editing off.
+// armed after a plain drag-to-move (no note box was ever open, nothing to "finish") so several
+// pins can be repositioned in one go — but see _wrExitPinEditMode below: any time a pin's note
+// box actually finishes being used (saved, cancelled, deleted, or dismissed by tapping away),
+// edit mode now turns itself off automatically instead of staying armed until a second tap on
+// this same button.
 function _wrTogglePinEditMode(evt, btn) {
   if (evt) evt.stopPropagation();
   const panel = btn.closest('.rec-photo-panel');
@@ -22880,6 +22894,23 @@ function _wrTogglePinEditMode(evt, btn) {
   btn.style.borderColor = active ? '#4bcffa' : '';
   btn.title = active ? 'โหมดแก้ไข: แตะที่ว่างเพื่อปักหมุด, ลากหมุดเพื่อย้าย, แตะหมุดเพื่อแก้ไข/ลบ — แตะปุ่มนี้อีกครั้งเพื่อปิด' : 'แก้ไข/ย้าย/ลบหมุดบนรูป';
 }
+// [NEW 2026-08-04] shared "stop editing pins" step — called from every place a pin's note box
+// finishes being used (บันทึก/ยกเลิก/ลบหมุด, or tapping away without any of those) so the
+// magnifying-glass toggle turns itself off instead of staying armed and waiting for a second,
+// separate tap on the button to actually stop editing. Safe to call even when nothing is armed.
+function _wrExitPinEditMode() {
+  _wrPinEditModeIdx = -1;
+  document.querySelectorAll('.rec-photo-panel.wr-pin-edit-mode').forEach(panel => {
+    panel.classList.remove('wr-pin-edit-mode');
+    const btn = panel.querySelector('.wr-pin-add-btn');
+    if (btn) {
+      btn.style.background = 'rgba(0,0,0,.78)';
+      btn.style.borderColor = '';
+      btn.title = 'แก้ไข/ย้าย/ลบหมุดบนรูป';
+    }
+  });
+}
+
 // fires on any click that bubbles up to the panel itself (buttons and existing pins all
 // stopPropagation their own clicks, so this only sees clicks on empty photo area) — does
 // nothing unless pin edit mode is currently on.
@@ -23121,10 +23152,11 @@ function _wrStartNewPin(panel, x, y) {
     imgAddBtn.style.display = 'flex';
     clampBox();
   });
-  wrap.querySelector('.wr-pin-new-cancel').addEventListener('click', () => wrap.remove());
+  wrap.querySelector('.wr-pin-new-cancel').addEventListener('click', () => { wrap.remove(); _wrExitPinEditMode(); });
   wrap.querySelector('.wr-pin-new-save').addEventListener('click', () => {
     const text = ta.value.trim();
     wrap.remove();
+    _wrExitPinEditMode(); // [NEW 2026-08-04] finishing a save exits edit mode outright — see doc above
     if (!text && !pendingImage) return;
     const r = _wrLastShown[_wrCurrentDetailIndex];
     const key = _wrNoteKey(r);
@@ -23151,7 +23183,13 @@ function _wrStartNewPin(panel, x, y) {
 // panel's bubble-phase onclick), so a brand-new form is never wiped out by its own opening tap.
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.wr-photo-pin-new')) {
-    document.querySelectorAll('.wr-photo-pin-new').forEach(w => w.remove());
+    const openForms = document.querySelectorAll('.wr-photo-pin-new');
+    if (openForms.length) {
+      openForms.forEach(w => w.remove());
+      // [NEW 2026-08-04] dismissing the form by tapping away (no save) exits edit mode outright
+      // too, same as an explicit ยกเลิก/บันทึก — see _wrExitPinEditMode doc above.
+      _wrExitPinEditMode();
+    }
   }
 }, true);
 // swaps an existing pin's view region into an editable textarea, same swap-in-place pattern
@@ -23188,7 +23226,7 @@ function _wrEditPhotoPin(pinId) {
            a single misplaced tap with no way to undo, which is the exact problem this fixes. -->
       <button type="button" id="wr-pin-edit-delete-${pinId}" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(255,77,77,.4);background:rgba(255,77,77,.08);color:#ff8080;font-size:10.5px;cursor:pointer">ลบหมุด</button>
       <div style="display:flex;gap:6px">
-        <button type="button" onclick="event.stopPropagation();_wrOpenDetail(_wrCurrentDetailIndex)" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#cfe9ff;font-size:10.5px;cursor:pointer">ยกเลิก</button>
+        <button type="button" onclick="event.stopPropagation();_wrExitPinEditMode();_wrOpenDetail(_wrCurrentDetailIndex)" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#cfe9ff;font-size:10.5px;cursor:pointer">ยกเลิก</button>
         <button type="button" id="wr-pin-edit-save-${pinId}" style="padding:5px 10px;border-radius:6px;border:none;background:#4bcffa;color:#04121e;font-weight:700;font-size:10.5px;cursor:pointer">บันทึก</button>
       </div>
     </div>`;
@@ -23254,6 +23292,7 @@ function _wrSavePhotoPinEdit(pinId, pendingImage) {
     else _wrPhotoPins[key] = pins.filter(p => p.id !== pinId); // empty save (no text, no image) removes the pin
   }
   _wrPersistPhotoPins();
+  _wrExitPinEditMode(); // [NEW 2026-08-04] saving a pin's edit exits edit mode outright — see doc above
   if (typeof _wrOpenDetail === 'function') _wrOpenDetail(_wrCurrentDetailIndex);
 }
 function _wrDeletePhotoPin(pinId) {
@@ -23261,6 +23300,7 @@ function _wrDeletePhotoPin(pinId) {
   const key = _wrNoteKey(r);
   _wrPhotoPins[key] = _wrGetPhotoPins(key).filter(p => p.id !== pinId);
   _wrPersistPhotoPins();
+  _wrExitPinEditMode(); // [NEW 2026-08-04] same as save/cancel — deleting a pin exits edit mode outright
   if (typeof _wrOpenDetail === 'function') _wrOpenDetail(_wrCurrentDetailIndex);
 }
 
@@ -26445,10 +26485,16 @@ function _wrToggleTierTip(evt, badgeEl) {
 }
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.wr-tier-badge') && !e.target.closest('.wr-tier-tip') && !e.target.closest('[data-wr-tip-trigger]')) {
+    // [NEW 2026-08-04] if the tip being closed here is a photo-pin tip currently showing its
+    // EDIT form (not just the plain read view), tapping away should exit pin-edit-mode outright
+    // too, same as the new-pin form's outside-tap handling above — see _wrExitPinEditMode doc.
+    let closedAnEditingPin = false;
     document.querySelectorAll('.wr-tier-tip').forEach(t => {
+      if (t.style.display === 'block' && t.classList.contains('wr-photo-pin-tip') && t.querySelector('#wr-pin-edit-ta')) closedAnEditingPin = true;
       t.style.display = 'none';
       if (t.parentElement) t.parentElement.style.zIndex = '';
     });
+    if (closedAnEditingPin && typeof _wrExitPinEditMode === 'function') _wrExitPinEditMode();
   }
 });
 // [NEW 2026-08-04] photo-pin tip open/close — same open/close behavior as _wrToggleTierTip
@@ -26779,8 +26825,16 @@ function _wrBuildDetailHTML(i) {
          anything *inside* this row — including the photo-pin note tip, however high — could ever
          out-rank the price panel's contents once it got its own separate context; the later
          sibling in the DOM was always winning ties. Giving the two rows themselves explicit,
-         ordered z-indexes fixes that at the source. -->
-    <div ${boot('rec-card-barcode-row')}display:flex;align-items:stretch;gap:12px;position:relative;z-index:2">
+         ordered z-indexes fixes that at the source.
+         [FIX 2026-08-04 #2] z-index bumped 2 → 40 — the badges row just above (type/vintage/
+         country/region/bottle-size, position:relative;z-index:30 a bit further up) is its own
+         .wr-boot-item stacking context too, at z-index:30. That beat this row's old z-index:2,
+         so the ENTIRE badges row painted over the ENTIRE barcode row as one block — including the
+         new-pin note box, however high its own internal z-index was set — which is exactly the
+         "new pin box renders underneath the 2000/France badges" bug this fixes. 40 clears that 30
+         while staying well clear of the tier-tip popovers elsewhere (999), which live inside their
+         own contexts and aren't affected by this row's rank at all. -->
+    <div ${boot('rec-card-barcode-row')}display:flex;align-items:stretch;gap:12px;position:relative;z-index:40">
       <!-- [see z-index note above] -->
       <div class="rec-photo-panel${pinEditActive ? ' wr-pin-edit-mode' : ''}" data-prod-photo-bc="${barcode || ''}" onclick="_wrPhotoPanelClick(event)" style="width:104px;max-height:480px;flex-shrink:0;border-radius:12px;overflow:visible;position:relative;cursor:default;border:1px solid rgba(${tierRgb},.25);background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(${tierRgb},.1)">
         <!-- [FIX 2026-08-03] image + corner brackets now live in an INNER absolutely-positioned
