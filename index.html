@@ -2860,6 +2860,14 @@ body.cam-open #page-catalog{
   .wr-tier-tip::-webkit-scrollbar{width:5px}
   .wr-tier-tip::-webkit-scrollbar-track{background:transparent}
   .wr-tier-tip::-webkit-scrollbar-thumb{background:currentColor;opacity:.35;border-radius:3px}
+  /* [NEW 2026-08-04] photo-pin edit mode — the top-left toggle button (now an edit-mode
+     switch, not just "add") arms .wr-pin-edit-mode on the photo panel. While armed: existing
+     pin markers show a grab cursor + a small red delete badge, and are draggable to a new
+     spot (see _wrPinPointerDown). While NOT armed, pins are inert tap-to-read markers only. */
+  .wr-photo-pin-wrap{touch-action:none}
+  .rec-photo-panel.wr-pin-edit-mode .wr-photo-pin-dot{cursor:grab}
+  .rec-photo-panel.wr-pin-edit-mode .wr-photo-pin-dot:active{cursor:grabbing}
+  .rec-photo-panel.wr-pin-edit-mode .wr-pin-del-badge{display:flex !important}
   .wr-tier-badge{cursor:pointer;-webkit-tap-highlight-color:transparent}
   /* [FIX 2026-08-02] previous version still rendered the "i" as an actual text glyph
      (Georgia/Times serif character) inside the CSS-drawn circle. Even pinned to the
@@ -22728,6 +22736,12 @@ function _wrSaveCuratedTipEdit(kind, key) {
 // the panel's actual pixel size on a given device.
 const WR_PHOTO_PINS_KEY = 'wholesale-photo-pins';
 let _wrPhotoPins = {};
+// [NEW 2026-08-04] which _wrLastShown index currently has pin edit-mode armed — has to be
+// tracked outside the DOM because add/move/delete all re-render the detail sheet from scratch
+// (_wrOpenDetail), which would otherwise wipe the runtime-only .wr-pin-edit-mode class and
+// force re-tapping the toggle button after every single change. -1 means "off everywhere";
+// reset to -1 whenever a different record's sheet opens (see _wrOpenDetail).
+let _wrPinEditModeIdx = -1;
 (function _wrLoadPhotoPins(){
   try { _wrPhotoPins = JSON.parse(localStorage.getItem(WR_PHOTO_PINS_KEY) || '{}') || {}; }
   catch (e) { _wrPhotoPins = {}; }
@@ -22755,24 +22769,29 @@ function _wrMergeCloudPhotoPins(cPins) {
     _wrOpenDetail(_wrCurrentDetailIndex);
   }
 }
-// toggles "pin-adding" mode on a photo panel — while active, the next tap anywhere on the
-// photo (that isn't itself a button/existing pin, which all stopPropagation their own clicks)
-// drops a new pin there via _wrPhotoPanelClick below.
-function _wrTogglePinAddMode(evt, btn) {
+// [REVISED 2026-08-04] toggles "pin edit mode" on a photo panel — this single button now
+// covers add/move/delete instead of just "add": while armed, tapping empty photo area drops
+// a new pin (via _wrPhotoPanelClick below), existing pins can be dragged to a new spot
+// (_wrPinPointerDown), and each pin shows a small delete badge for one-tap removal. Stays
+// armed after each add/move/delete (unlike the old add-only mode, which auto-disarmed after
+// a single drop) so multiple pins can be placed/adjusted in one go — tap the button again to
+// turn editing off.
+function _wrTogglePinEditMode(evt, btn) {
   if (evt) evt.stopPropagation();
   const panel = btn.closest('.rec-photo-panel');
   if (!panel) return;
-  const active = panel.classList.toggle('wr-pin-adding');
+  const active = panel.classList.toggle('wr-pin-edit-mode');
+  _wrPinEditModeIdx = active ? _wrCurrentDetailIndex : -1; // remembered across the re-renders that add/move/delete trigger — see declaration above
   btn.style.background = active ? 'rgba(75,207,250,.92)' : 'rgba(0,0,0,.78)';
   btn.style.borderColor = active ? '#4bcffa' : '';
-  btn.title = active ? 'แตะบนรูปเพื่อปักหมุด' : 'เพิ่มจุดอธิบายบนรูป';
+  btn.title = active ? 'โหมดแก้ไข: แตะที่ว่างเพื่อปักหมุด, ลากหมุดเพื่อย้าย, แตะ ✕ เพื่อลบ — แตะปุ่มนี้อีกครั้งเพื่อปิด' : 'แก้ไข/ย้าย/ลบหมุดบนรูป';
 }
 // fires on any click that bubbles up to the panel itself (buttons and existing pins all
 // stopPropagation their own clicks, so this only sees clicks on empty photo area) — does
-// nothing unless pin-adding mode is currently on.
+// nothing unless pin edit mode is currently on.
 function _wrPhotoPanelClick(evt) {
   const panel = evt.currentTarget;
-  if (!panel.classList.contains('wr-pin-adding')) return;
+  if (!panel.classList.contains('wr-pin-edit-mode')) return;
   // [FIX] without this, the click bubbles on up to document's "cancel any open .wr-photo-pin-new
   // form on outside click" listener (added below _wrStartNewPin) — which then immediately
   // removed the very form _wrStartNewPin just appended, all within this same click, so nothing
@@ -22781,10 +22800,49 @@ function _wrPhotoPanelClick(evt) {
   const rect = panel.getBoundingClientRect();
   const x = Math.max(3, Math.min(97, ((evt.clientX - rect.left) / rect.width) * 100));
   const y = Math.max(3, Math.min(97, ((evt.clientY - rect.top) / rect.height) * 100));
-  panel.classList.remove('wr-pin-adding');
-  const toggleBtn = panel.querySelector('.wr-pin-add-btn');
-  if (toggleBtn) { toggleBtn.style.background = 'rgba(0,0,0,.78)'; toggleBtn.style.borderColor = ''; toggleBtn.title = 'เพิ่มจุดอธิบายบนรูป'; }
+  // [REVISED 2026-08-04] edit mode stays armed after dropping a pin (see function doc above)
+  // — no longer auto-disarms itself here the way the old add-only toggle used to.
   _wrStartNewPin(panel, x, y);
+}
+// [NEW 2026-08-04] drag-to-move for existing pins, only live while the panel's edit mode is
+// armed (checked first — otherwise this falls through and lets the click bubble to
+// _wrToggleTierTip normally, same tap-to-read behavior as when editing is off). Distinguishes
+// a genuine drag from a plain tap via a small movement threshold: no movement past the
+// threshold on pointerup → treated as a tap and opens the read/edit tip instead of moving.
+function _wrPinPointerDown(evt, wrapEl, pinId) {
+  const panel = wrapEl.closest('.rec-photo-panel');
+  if (!panel || !panel.classList.contains('wr-pin-edit-mode')) return; // not editing → let the tap bubble to open the tip as usual
+  evt.stopPropagation();
+  evt.preventDefault();
+  const startX = evt.clientX, startY = evt.clientY;
+  const rect = panel.getBoundingClientRect();
+  let moved = false, lastX = null, lastY = null;
+  function onMove(e) {
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (!moved && Math.hypot(dx, dy) < 5) return; // below drag threshold — still a candidate tap
+    moved = true;
+    lastX = Math.max(3, Math.min(97, ((e.clientX - rect.left) / rect.width) * 100));
+    lastY = Math.max(3, Math.min(97, ((e.clientY - rect.top) / rect.height) * 100));
+    wrapEl.style.left = lastX + '%';
+    wrapEl.style.top = lastY + '%';
+  }
+  function onUp() {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    if (moved && lastX != null) {
+      const r = _wrLastShown[_wrCurrentDetailIndex];
+      const key = _wrNoteKey(r);
+      const pin = _wrGetPhotoPins(key).find(p => p.id === pinId);
+      if (pin) { pin.x = lastX; pin.y = lastY; _wrPersistPhotoPins(); }
+    }
+    // no movement → treat as a tap, same as editing being off
+    else {
+      const dot = wrapEl.querySelector('.wr-photo-pin-dot');
+      if (dot) _wrTogglePhotoPinTip({ stopPropagation(){} }, dot);
+    }
+  }
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp, { once: true });
 }
 // drops a temporary (unsaved) pin marker + open textarea directly at the tapped spot — only
 // written into _wrPhotoPins (and re-rendered as a real persisted pin) once "บันทึก" is
@@ -22794,8 +22852,8 @@ function _wrStartNewPin(panel, x, y) {
   wrap.className = 'wr-photo-pin-new';
   wrap.style.cssText = `position:absolute;left:${x}%;top:${y}%;transform:translate(-50%,-50%);z-index:60`;
   wrap.innerHTML = `
-    <div style="width:24px;height:24px;border-radius:50%;background:rgba(10,12,20,.82);border:1px solid #4bcffa;display:flex;align-items:center;justify-content:center;box-shadow:0 0 8px rgba(75,207,250,.65)">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4bcffa" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <div style="width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.22);border:2px solid #4bcffa;display:flex;align-items:center;justify-content:center;box-shadow:0 0 8px rgba(75,207,250,.65)">
+      <div style="width:6px;height:6px;border-radius:50%;background:#4bcffa;box-shadow:0 0 4px rgba(75,207,250,.9)"></div>
     </div>
     <div style="position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);width:min(230px,72vw);box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid rgba(75,207,250,.55);background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 10px 26px -6px rgba(0,0,0,.85);z-index:999">
       <textarea rows="3" placeholder="อธิบายจุดนี้บนรูป เช่น ตราประจำตระกูล, ปีที่ผลิต..." style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:7px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:12px;line-height:1.5;resize:vertical"></textarea>
@@ -26056,6 +26114,28 @@ document.addEventListener('click', (e) => {
     });
   }
 });
+// [NEW 2026-08-04] photo-pin tip open/close — same open/close behavior as _wrToggleTierTip
+// above (reused rather than duplicated: closes any other open tip, toggles this one), but
+// then ALSO clamps the tip horizontally to stay fully on-screen. Needed only for photo pins:
+// unlike the other .wr-tier-tip triggers (which sit on wide badges near the sheet's own left/
+// right edge), a pin can land anywhere across the photo panel — including close to its left
+// edge, which itself sits close to the screen's left edge — so the tip's default centered
+// position (left:50%; translateX(-50%)) could run off the visible viewport, showing a
+// clipped, misplaced-looking box. This measures the opened tip's actual position and nudges
+// it back on-screen with a small extra translateX offset, leaving every other tip untouched.
+function _wrTogglePhotoPinTip(evt, badgeEl) {
+  _wrToggleTierTip(evt, badgeEl);
+  const wrap = badgeEl.parentElement;
+  const tip = wrap && wrap.querySelector('.wr-tier-tip');
+  if (!tip || tip.style.display === 'none') return;
+  tip.style.transform = 'translateX(-50%)'; // reset before measuring, in case a previous open left an offset
+  const rect = tip.getBoundingClientRect();
+  const margin = 8;
+  let shift = 0;
+  if (rect.left < margin) shift = margin - rect.left;
+  else if (rect.right > window.innerWidth - margin) shift = (window.innerWidth - margin) - rect.right;
+  if (shift) tip.style.transform = `translateX(calc(-50% + ${shift}px))`;
+}
 
 // [NEW] swaps the "your note" view region (inside the currently-open wine-name tooltip) into
 // an editable textarea + save/cancel. Only one detail sheet is ever open at a time, so this
@@ -26099,6 +26179,10 @@ function _wrSaveNoteEdit() {
 function _wrBuildDetailHTML(i) {
   const r = _wrLastShown[i];
   if (!r) return null;
+  // [NEW 2026-08-04] whether this record's photo panel re-renders with pin edit-mode already
+  // armed — true only right after that same mode was toggled on for this exact index (see
+  // _wrPinEditModeIdx doc above _wrTogglePinEditMode).
+  const pinEditActive = (_wrPinEditModeIdx === i);
   const barcode = r[0], product = r[1], type = r[2], vintage = r[3], wholesale = r[4], wholesale6 = r[5], retail = r[6], grapes = r[7], country = _wrRealCountry(r);
   const producer = r[9] || '', labelTier = r[10] || '', classification = r[11] || '', region = r[12] || '';
   const rawTier = _wrWineTier(r);
@@ -26333,7 +26417,7 @@ function _wrBuildDetailHTML(i) {
          canvas.closest('.rec-card-barcode-row')) can grow the photo down to the barcode's real
          bottom edge instead of stopping at a fixed 140px next to just producer/grapes. -->
     <div ${boot('rec-card-barcode-row')}display:flex;align-items:stretch;gap:12px">
-      <div class="rec-photo-panel" data-prod-photo-bc="${barcode || ''}" onclick="_wrPhotoPanelClick(event)" style="width:104px;max-height:480px;flex-shrink:0;border-radius:12px;overflow:visible;position:relative;cursor:default;border:1px solid rgba(${tierRgb},.25);background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(${tierRgb},.1)">
+      <div class="rec-photo-panel${pinEditActive ? ' wr-pin-edit-mode' : ''}" data-prod-photo-bc="${barcode || ''}" onclick="_wrPhotoPanelClick(event)" style="width:104px;max-height:480px;flex-shrink:0;border-radius:12px;overflow:visible;position:relative;cursor:default;border:1px solid rgba(${tierRgb},.25);background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(${tierRgb},.1)">
         <!-- [FIX 2026-08-03] image + corner brackets now live in an INNER absolutely-positioned
              wrapper that carries its own overflow:hidden/border-radius — the outer panel switched
              to overflow:visible so photo pins (added below) can float their tap-to-read tip
@@ -26352,21 +26436,29 @@ function _wrBuildDetailHTML(i) {
           style="position:absolute;bottom:5px;right:5px;width:26px;height:26px;border-radius:8px;background:rgba(0,0,0,.82);border:1px solid rgba(${tierRgb},.4);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
         </button>
-        <!-- [NEW 2026-08-03] pin-add toggle — magnifying glass button; tapping arms "pin mode"
-             (see _wrTogglePinAddMode), and the next tap anywhere on the photo drops a new
-             annotation pin there (_wrPhotoPanelClick → _wrStartNewPin). -->
-        <button type="button" class="wr-pin-add-btn" onclick="_wrTogglePinAddMode(event,this)" title="เพิ่มจุดอธิบายบนรูป"
-          style="position:absolute;top:5px;left:5px;width:22px;height:22px;border-radius:7px;background:rgba(0,0,0,.78);border:1px solid rgba(${tierRgb},.4);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="20" y1="20" x2="15.5" y2="15.5"/></svg>
+        <!-- [REVISED 2026-08-04] pin edit-mode toggle — now a pencil icon (was a magnifying
+             glass) since tapping it no longer only arms "add a pin": it arms editing generally
+             (see _wrTogglePinEditMode) — while armed, tapping empty photo area still drops a
+             new pin (_wrPhotoPanelClick → _wrStartNewPin), but existing pins also become
+             draggable to a new spot and show a one-tap delete badge (both below). -->
+        <button type="button" class="wr-pin-add-btn" onclick="_wrTogglePinEditMode(event,this)" title="${pinEditActive ? 'โหมดแก้ไข: แตะที่ว่างเพื่อปักหมุด, ลากหมุดเพื่อย้าย, แตะ ✕ เพื่อลบ — แตะปุ่มนี้อีกครั้งเพื่อปิด' : 'แก้ไข/ย้าย/ลบหมุดบนรูป'}"
+          style="position:absolute;top:5px;left:5px;width:22px;height:22px;border-radius:7px;background:${pinEditActive ? 'rgba(75,207,250,.92)' : 'rgba(0,0,0,.78)'};border:1px solid ${pinEditActive ? '#4bcffa' : `rgba(${tierRgb},.4)`};display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
         </button>
         <!-- persisted photo-pin markers — universal/shared annotations (see WR_PHOTO_PINS_KEY
-             above), rendered as a small round magnifying-glass button at its saved x%/y%; tap
-             floats the full tap-to-read tip below (reusing _wrToggleTierTip's generic
-             sibling-.wr-tier-tip lookup) with edit/delete affordances. -->
+             above), rendered at their saved x%/y% as a plain white circle marker (matching the
+             dot style used by visual-search/"shop the look" pins on a photo) instead of the old
+             magnifying-glass icon. Tap reads the note (_wrTogglePhotoPinTip, which also clamps
+             the tip on-screen — see its doc). While edit mode is armed the marker can also be
+             dragged to a new spot (_wrPinPointerDown) and shows a small red ✕ badge for
+             one-tap removal. -->
         ${_wrGetPhotoPins(_wrNoteKey(r)).map(pin => `
-        <div style="position:absolute;left:${pin.x}%;top:${pin.y}%;transform:translate(-50%,-50%);z-index:40">
-          <div class="wr-photo-pin-dot" data-wr-tip-trigger onclick="_wrToggleTierTip(event,this)" style="position:relative;width:24px;height:24px;box-sizing:border-box;padding:0;border-radius:50%;background:rgba(10,12,20,.82);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.5);-webkit-tap-highlight-color:transparent">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <div class="wr-photo-pin-wrap" style="position:absolute;left:${pin.x}%;top:${pin.y}%;transform:translate(-50%,-50%);z-index:40" onpointerdown="_wrPinPointerDown(event,this,'${pin.id}')">
+          <div class="wr-photo-pin-dot" data-wr-tip-trigger onclick="_wrTogglePhotoPinTip(event,this)" style="position:relative;width:20px;height:20px;box-sizing:border-box;padding:0;border-radius:50%;background:rgba(0,0,0,.22);border:2px solid #fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.6),0 0 0 3px rgba(255,255,255,.18);-webkit-tap-highlight-color:transparent">
+            <div style="width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 4px rgba(255,255,255,.9)"></div>
+          </div>
+          <div class="wr-pin-del-badge" onclick="event.stopPropagation();_wrDeletePhotoPin('${pin.id}')" title="ลบหมุด" style="display:none;align-items:center;justify-content:center;position:absolute;top:-6px;right:-6px;width:15px;height:15px;border-radius:50%;background:#ff4d4d;border:1.5px solid #0a0e18;cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,.5);z-index:2">
+            <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
           </div>
           <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);width:min(220px,70vw);box-sizing:border-box;padding:10px 11px;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:999">
             <div id="wr-pin-view-${pin.id}">
@@ -26436,6 +26528,10 @@ function _wrBuildDetailHTML(i) {
 // kicking off the slide + deferred canvas/count-up animations.
 function _wrOpenDetail(i, dir) {
   if (!_wrLastShown[i]) return;
+  // [NEW 2026-08-04] pin edit-mode should only "survive" re-renders of the SAME record (the
+  // ones add/move/delete themselves trigger) — switching to a different product's sheet always
+  // starts with editing off, so it doesn't stay silently armed on a photo the person swiped away from.
+  if (i !== _wrCurrentDetailIndex) _wrPinEditModeIdx = -1;
   _wrCurrentDetailIndex = i;
   _wrPruneDetailCache(i);
   const built = _wrGetOrBuildDetail(i);
