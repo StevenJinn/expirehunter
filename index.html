@@ -2853,7 +2853,16 @@ body.cam-open #page-catalog{
   @keyframes recDataFlash{0%{opacity:0;transform:translateY(4px)}30%{opacity:1}100%{opacity:1;transform:none}}
   @keyframes recBarcodeGlow{0%,100%{filter:brightness(1)}50%{filter:brightness(1.2)}}
   @keyframes recDotBlink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.25;transform:scale(.75)}}
-  @keyframes wrTierTipPop{0%{opacity:0;transform:translateY(-4px) scale(.96)}100%{opacity:1;transform:translateY(0) scale(1)}}
+  /* [FIX 2026-08-04] transform is a single property — a keyframe that sets
+     transform:translateY()/scale() replaces the WHOLE value while the animation plays,
+     silently dropping any translateX() a script had set for horizontal centering (only
+     the photo-pin tip does this, via _wrTogglePhotoPinTip's on-screen clamp). That made a
+     pin tip visibly flash at its un-centered, un-clamped position for the animation's
+     160ms before snapping to the correct spot once the animation ended. Routing the
+     horizontal offset through a CSS variable (defaulting to 0px for every other tip,
+     which never sets it) lets both live in the same transform without one erasing the
+     other, so the tip is positioned correctly from the very first painted frame. */
+  @keyframes wrTierTipPop{0%{opacity:0;transform:translateX(var(--wr-tip-shift,0px)) translateY(-4px) scale(.96)}100%{opacity:1;transform:translateX(var(--wr-tip-shift,0px)) translateY(0) scale(1)}}
   .wr-tier-tip{animation:wrTierTipPop .16s cubic-bezier(.2,.8,.3,1.2)}
   /* [NEW 2026-07-29] thin webkit scrollbar for long tooltip entries (Firefox uses
      the inline scrollbar-width/scrollbar-color already set on the element). */
@@ -26164,13 +26173,13 @@ function _wrTogglePhotoPinTip(evt, badgeEl, forceOpen) {
   const wrap = badgeEl.parentElement;
   const tip = wrap && wrap.querySelector('.wr-tier-tip');
   if (!tip || tip.style.display === 'none') return;
-  tip.style.transform = 'translateX(-50%)'; // reset before measuring, in case a previous open left an offset
+  tip.style.setProperty('--wr-tip-shift', '-50%'); // reset before measuring, in case a previous open left an offset
   const rect = tip.getBoundingClientRect();
   const margin = 8;
   let shift = 0;
   if (rect.left < margin) shift = margin - rect.left;
   else if (rect.right > window.innerWidth - margin) shift = (window.innerWidth - margin) - rect.right;
-  if (shift) tip.style.transform = `translateX(calc(-50% + ${shift}px))`;
+  if (shift) tip.style.setProperty('--wr-tip-shift', `calc(-50% + ${shift}px)`);
 }
 
 // [NEW] swaps the "your note" view region (inside the currently-open wine-name tooltip) into
@@ -26515,7 +26524,7 @@ function _wrBuildDetailHTML(i) {
                no way to scroll the rest into view ("ข้อความทะลุ"). id div is now the scroll region
                itself (still the same element _wrEditPhotoPin/_wrSavePhotoPinEdit swap innerHTML on),
                capped and scrollable exactly like the other tip boxes. -->
-          <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);width:min(220px,70vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:999;overflow:hidden">
+          <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 7px);left:50%;--wr-tip-shift:-50%;transform:translateX(var(--wr-tip-shift));width:min(220px,70vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:999;overflow:hidden">
             <div id="wr-pin-view-${pin.id}" class="wr-tip-scroll" style="padding:10px 11px;max-height:min(240px,40vh);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:none">
               <style>.wr-tip-scroll::-webkit-scrollbar{display:none}</style>
               <div style="font-family:'Prompt',sans-serif;font-size:12px;line-height:1.6;color:#e7edfb;white-space:pre-wrap">${_wrEsc(pin.text)}</div>
