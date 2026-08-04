@@ -22872,7 +22872,52 @@ function _wrPinPointerDown(evt, wrapEl, pinId) {
   document.addEventListener('pointermove', onMove);
   document.addEventListener('pointerup', onUp, { once: true });
 }
-// [NEW 2026-08-04] shrinks a picked photo before it's stored on a pin — photo pins sync through
+// [FIX 2026-08-04] the pin dot's own onclick used to call _wrTogglePhotoPinTip directly and
+// unconditionally. While edit mode is armed, a plain tap already fires the pointerdown/pointerup
+// pair above (_wrPinPointerDown → onUp), which force-opens the tip and swaps it into the editor.
+// On touch devices the browser's compatibility "click" event still follows that same tap in
+// several mobile browsers/WebViews even after pointerdown.preventDefault() — so this onclick
+// then ALSO ran, calling the plain (toggling, non-forceOpen) _wrTogglePhotoPinTip, which saw the
+// tip the pointerup handler had *just* opened and immediately toggled it closed again. The tip's
+// content had already been swapped to the edit form by then, so it wasn't reset — net effect:
+// the tip visibly opened and closed in the same tap ("nothing happens"), but the very next tap
+// (with edit mode now off, so only this onclick fires, with no matching open-just-before-it)
+// revealed that stale edit form instead of the normal read view. Guarding this handler to do
+// nothing while edit mode is armed removes the stray second toggle entirely — opening/editing a
+// pin while armed is handled fully by the pointerdown/pointerup pair; this only needs to run
+// the plain read-only toggle when edit mode is off.
+function _wrPhotoPinDotClick(evt, dotEl) {
+  const panel = dotEl.closest('.rec-photo-panel');
+  if (panel && panel.classList.contains('wr-pin-edit-mode')) {
+    if (evt) evt.stopPropagation();
+    return;
+  }
+  _wrTogglePhotoPinTip(evt, dotEl);
+}
+// [FIX 2026-08-04] shared on-screen clamp for any .wr-tier-tip box — nudges it back within the
+// viewport on both axes. Previously this logic lived only inside _wrTogglePhotoPinTip and ran
+// once, at the moment a tip first opens. That's not enough for the photo-pin tip specifically:
+// it opens at its compact READ height, but _wrEditPhotoPin then swaps its content in place for
+// a much taller edit form (image preview + textarea + button row) *after* that one clamp already
+// ran — so a pin sitting in the lower half of the photo could open its editor with the
+// ยกเลิก/บันทึก/ลบหมุด row pushed past the bottom of the screen with nowhere left to clamp to.
+// Called again after any content swap that can change a tip's height (see call sites below).
+function _wrClampTip(tip) {
+  if (!tip) return;
+  tip.style.setProperty('--wr-tip-shift', '0px');
+  tip.style.setProperty('--wr-tip-vshift', '0px');
+  const rect = tip.getBoundingClientRect();
+  const margin = 8;
+  let shift = 0;
+  if (rect.left < margin) shift = margin - rect.left;
+  else if (rect.right > window.innerWidth - margin) shift = (window.innerWidth - margin) - rect.right;
+  if (shift) tip.style.setProperty('--wr-tip-shift', `${shift}px`);
+  let vshift = 0;
+  if (rect.top < margin) vshift = margin - rect.top;
+  else if (rect.bottom > window.innerHeight - margin) vshift = (window.innerHeight - margin) - rect.bottom;
+  if (vshift) tip.style.setProperty('--wr-tip-vshift', `${vshift}px`);
+}
+
 // the same small per-key cloud doc as every other pin on every record (see _wrCloudSetPhotoPins
 // below), so an un-resized phone photo (often several MB straight off a camera) would bloat that
 // doc and slow the sync for every pin on the wine, not just this one. Downscales to at most
@@ -22920,7 +22965,7 @@ function _wrStartNewPin(panel, x, y) {
     <div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4bcffa" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.75))"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     </div>
-    <div class="wr-pin-new-box" style="position:absolute;top:50%;left:calc(100% + 9px);transform:translate(0,-50%);width:min(230px,72vw);box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid rgba(75,207,250,.55);background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 10px 26px -6px rgba(0,0,0,.85);z-index:999">
+    <div class="wr-pin-new-box" style="position:absolute;top:50%;left:calc(100% + 9px);transform:translate(0,-50%);width:min(260px,82vw);box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid rgba(75,207,250,.55);background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 10px 26px -6px rgba(0,0,0,.85);z-index:999">
       <!-- [NEW 2026-08-04] optional photo attach — same not-written-until-"บันทึก" pattern as
            the text itself; picking a file just fills the in-memory pendingImage below until save. -->
       <div class="wr-pin-img-preview" style="display:none;position:relative;margin-bottom:7px">
@@ -22949,8 +22994,15 @@ function _wrStartNewPin(panel, x, y) {
   // viewport (previously only horizontal — a pin near the top or bottom of a tall photo panel
   // could push the box off-screen vertically with no correction), using the same
   // measure-then-shift approach as _wrTogglePhotoPinTip below.
+  // [FIX 2026-08-04 #2] pulled into a named fn so it can run again after a photo gets attached
+  // below — the box grows taller at that point (image preview added on top of the textarea +
+  // buttons), and the one clamp that used to run only right here, before any image existed,
+  // left the button row able to end up pushed past the bottom of the screen once a photo was
+  // added, with no correction happening after the fact.
   const box = wrap.querySelector('.wr-pin-new-box');
-  if (box) {
+  function clampBox() {
+    if (!box) return;
+    box.style.transform = 'translate(0,-50%)'; // reset before re-measuring
     const rect = box.getBoundingClientRect();
     const margin = 8;
     let shift = 0;
@@ -22961,6 +23013,7 @@ function _wrStartNewPin(panel, x, y) {
     else if (rect.bottom > window.innerHeight - margin) vshift = (window.innerHeight - margin) - rect.bottom;
     if (shift || vshift) box.style.transform = `translate(${shift}px, calc(-50% + ${vshift}px))`;
   }
+  clampBox();
   const ta = wrap.querySelector('textarea');
   if (ta) ta.focus();
   let pendingImage = null;
@@ -22979,6 +23032,7 @@ function _wrStartNewPin(panel, x, y) {
       imgThumb.src = dataUrl;
       imgPreviewWrap.style.display = 'block';
       imgAddBtn.style.display = 'none';
+      clampBox(); // box just grew by the image preview — re-clamp
     });
   });
   imgRemoveBtn.addEventListener('click', () => {
@@ -22986,6 +23040,7 @@ function _wrStartNewPin(panel, x, y) {
     imgInput.value = '';
     imgPreviewWrap.style.display = 'none';
     imgAddBtn.style.display = 'flex';
+    clampBox();
   });
   wrap.querySelector('.wr-pin-new-cancel').addEventListener('click', () => wrap.remove());
   wrap.querySelector('.wr-pin-new-save').addEventListener('click', () => {
@@ -23060,6 +23115,12 @@ function _wrEditPhotoPin(pinId) {
     </div>`;
   const ta = document.getElementById('wr-pin-edit-ta');
   if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  // [FIX 2026-08-04] the tip was already clamped on-screen once, back when it opened at its
+  // shorter read-only height (see _wrTogglePhotoPinTip) — swapping in this taller edit form
+  // (image preview + textarea + button row) just now can push its bottom edge, buttons and
+  // all, past the bottom of the screen if that first clamp didn't account for it. Re-clamp now
+  // that the real (larger) box exists in the DOM.
+  _wrClampTip(view.closest('.wr-tier-tip'));
   const imgInput = view.querySelector('.wr-pin-img-input');
   const imgAddBtn = view.querySelector('.wr-pin-img-add');
   const imgPreviewWrap = view.querySelector('.wr-pin-img-preview');
@@ -23076,6 +23137,7 @@ function _wrEditPhotoPin(pinId) {
       imgThumb.src = dataUrl;
       imgPreviewWrap.style.display = 'block';
       imgAddBtn.style.display = 'none';
+      _wrClampTip(view.closest('.wr-tier-tip')); // box just grew by the image preview — re-clamp
     });
   });
   imgRemoveBtn.addEventListener('click', (e) => {
@@ -23085,6 +23147,7 @@ function _wrEditPhotoPin(pinId) {
     imgPreviewWrap.style.display = 'none';
     imgAddBtn.style.display = 'flex';
     imgAddBtn.lastChild.textContent = 'แนบรูป';
+    _wrClampTip(view.closest('.wr-tier-tip'));
   });
   const saveBtn = document.getElementById('wr-pin-edit-save-' + pinId);
   if (saveBtn) saveBtn.addEventListener('click', (e) => { e.stopPropagation(); _wrSavePhotoPinEdit(pinId, pendingImage); });
@@ -26341,20 +26404,9 @@ function _wrTogglePhotoPinTip(evt, badgeEl, forceOpen) {
   const wrap = badgeEl.parentElement;
   const tip = wrap && wrap.querySelector('.wr-tier-tip');
   if (!tip || tip.style.display === 'none') return;
-  // reset both axes before measuring, in case a previous open left an offset
-  tip.style.setProperty('--wr-tip-shift', '0px');
-  tip.style.setProperty('--wr-tip-vshift', '0px');
-  const rect = tip.getBoundingClientRect();
-  const margin = 8;
-  let shift = 0;
-  if (rect.left < margin) shift = margin - rect.left;
-  else if (rect.right > window.innerWidth - margin) shift = (window.innerWidth - margin) - rect.right;
-  if (shift) tip.style.setProperty('--wr-tip-shift', `${shift}px`);
-  let vshift = 0;
-  if (rect.top < margin) vshift = margin - rect.top;
-  else if (rect.bottom > window.innerHeight - margin) vshift = (window.innerHeight - margin) - rect.bottom;
-  if (vshift) tip.style.setProperty('--wr-tip-vshift', `${vshift}px`);
+  _wrClampTip(tip); // see shared helper (near _wrPinPointerDown) for why this got pulled out
 }
+
 
 // [NEW] swaps the "your note" view region (inside the currently-open wine-name tooltip) into
 // an editable textarea + save/cancel. Only one detail sheet is ever open at a time, so this
@@ -26691,7 +26743,7 @@ function _wrBuildDetailHTML(i) {
              and shows a small red ✕ badge for one-tap removal. -->
         ${_wrGetPhotoPins(_wrNoteKey(r)).map(pin => `
         <div class="wr-photo-pin-wrap" style="position:absolute;left:${pin.x}%;top:${pin.y}%;transform:translate(-50%,-50%);z-index:40" onpointerdown="_wrPinPointerDown(event,this,'${pin.id}')">
-          <div class="wr-photo-pin-dot" data-wr-tip-trigger onclick="_wrTogglePhotoPinTip(event,this)" style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent">
+          <div class="wr-photo-pin-dot" data-wr-tip-trigger onclick="_wrPhotoPinDotClick(event,this)" style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.75))"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </div>
           <!-- [FIX 2026-08-04] the old red ✕ badge sitting right on top of the 26px pin dot
@@ -26709,7 +26761,7 @@ function _wrBuildDetailHTML(i) {
                no way to scroll the rest into view ("ข้อความทะลุ"). id div is now the scroll region
                itself (still the same element _wrEditPhotoPin/_wrSavePhotoPinEdit swap innerHTML on),
                capped and scrollable exactly like the other tip boxes. -->
-          <div class="wr-tier-tip wr-photo-pin-tip" style="display:none;position:absolute;top:50%;left:calc(100% + 9px);--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift), calc(-50% + var(--wr-tip-vshift)));width:min(220px,70vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:9999;overflow:hidden">
+          <div class="wr-tier-tip wr-photo-pin-tip" style="display:none;position:absolute;top:50%;left:calc(100% + 9px);--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift), calc(-50% + var(--wr-tip-vshift)));width:min(260px,82vw);box-sizing:border-box;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 12px 28px -6px rgba(0,0,0,.85);z-index:9999;overflow:hidden">
             <div id="wr-pin-view-${pin.id}" class="wr-tip-scroll" style="padding:10px 11px;max-height:min(240px,40vh);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:none">
               <style>.wr-tip-scroll::-webkit-scrollbar{display:none}</style>
               ${pin.image ? `<img src="${pin.image}" style="width:100%;max-height:160px;object-fit:cover;border-radius:7px;display:block;margin-bottom:8px"/>` : ''}
