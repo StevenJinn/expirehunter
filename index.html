@@ -2882,12 +2882,16 @@ body.cam-open #page-catalog{
   .wr-tier-tip::-webkit-scrollbar-thumb{background:currentColor;opacity:.35;border-radius:3px}
   /* [NEW 2026-08-04] photo-pin edit mode — the top-left toggle button (now an edit-mode
      switch, not just "add") arms .wr-pin-edit-mode on the photo panel. While armed: existing
-     pin markers show a grab cursor + a small red delete badge, and are draggable to a new
-     spot (see _wrPinPointerDown). While NOT armed, pins are inert tap-to-read markers only. */
+     pin markers show a grab cursor and are draggable to a new spot (see _wrPinPointerDown);
+     a plain tap (no drag) opens the editor, which has its own confirm-gated delete button.
+     While NOT armed, pins are inert tap-to-read markers only. [FIX 2026-08-04] the on-photo
+     red ✕ delete badge that used to sit here was removed — see _wrEditPhotoPin. */
   .wr-photo-pin-wrap{touch-action:none}
   .rec-photo-panel.wr-pin-edit-mode .wr-photo-pin-dot{cursor:grab}
   .rec-photo-panel.wr-pin-edit-mode .wr-photo-pin-dot:active{cursor:grabbing}
-  .rec-photo-panel.wr-pin-edit-mode .wr-pin-del-badge{display:flex !important}
+  /* [FIX 2026-08-04] .wr-pin-del-badge (on-photo ✕ delete badge) removed — see markup
+     comment at the pin's wr-photo-pin-wrap block for why. Delete now lives inside the
+     edit panel only. */
   .wr-tier-badge{cursor:pointer;-webkit-tap-highlight-color:transparent}
   /* [FIX 2026-08-02] previous version still rendered the "i" as an actual text glyph
      (Georgia/Times serif character) inside the CSS-drawn circle. Even pinned to the
@@ -22792,7 +22796,8 @@ function _wrMergeCloudPhotoPins(cPins) {
 // [REVISED 2026-08-04] toggles "pin edit mode" on a photo panel — this single button now
 // covers add/move/delete instead of just "add": while armed, tapping empty photo area drops
 // a new pin (via _wrPhotoPanelClick below), existing pins can be dragged to a new spot
-// (_wrPinPointerDown), and each pin shows a small delete badge for one-tap removal. Stays
+// (_wrPinPointerDown), and a plain tap opens the editor, which has a confirm-gated delete
+// button (_wrEditPhotoPin/_wrDeletePhotoPin — no more one-tap on-photo delete badge). Stays
 // armed after each add/move/delete (unlike the old add-only mode, which auto-disarmed after
 // a single drop) so multiple pins can be placed/adjusted in one go — tap the button again to
 // turn editing off.
@@ -22804,7 +22809,7 @@ function _wrTogglePinEditMode(evt, btn) {
   _wrPinEditModeIdx = active ? _wrCurrentDetailIndex : -1; // remembered across the re-renders that add/move/delete trigger — see declaration above
   btn.style.background = active ? 'rgba(75,207,250,.92)' : 'rgba(0,0,0,.78)';
   btn.style.borderColor = active ? '#4bcffa' : '';
-  btn.title = active ? 'โหมดแก้ไข: แตะที่ว่างเพื่อปักหมุด, ลากหมุดเพื่อย้าย, แตะ ✕ เพื่อลบ — แตะปุ่มนี้อีกครั้งเพื่อปิด' : 'แก้ไข/ย้าย/ลบหมุดบนรูป';
+  btn.title = active ? 'โหมดแก้ไข: แตะที่ว่างเพื่อปักหมุด, ลากหมุดเพื่อย้าย, แตะหมุดเพื่อแก้ไข/ลบ — แตะปุ่มนี้อีกครั้งเพื่อปิด' : 'แก้ไข/ย้าย/ลบหมุดบนรูป';
 }
 // fires on any click that bubbles up to the panel itself (buttons and existing pins all
 // stopPropagation their own clicks, so this only sees clicks on empty photo area) — does
@@ -23041,9 +23046,17 @@ function _wrEditPhotoPin(pinId) {
     </button>
     <input type="file" accept="image/*" class="wr-pin-img-input" style="display:none">
     <textarea id="wr-pin-edit-ta" rows="3" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:7px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:12px;line-height:1.5;resize:vertical">${_wrEsc(pin.text)}</textarea>
-    <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px">
-      <button type="button" onclick="event.stopPropagation();_wrOpenDetail(_wrCurrentDetailIndex)" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#cfe9ff;font-size:10.5px;cursor:pointer">ยกเลิก</button>
-      <button type="button" id="wr-pin-edit-save-${pinId}" style="padding:5px 10px;border-radius:6px;border:none;background:#4bcffa;color:#04121e;font-weight:700;font-size:10.5px;cursor:pointer">บันทึก</button>
+    <div style="display:flex;gap:6px;justify-content:space-between;align-items:center;margin-top:6px">
+      <!-- [NEW 2026-08-04] delete moved here from the old on-photo ✕ badge (removed — see
+           markup comment at the pin's wr-photo-pin-wrap). This only appears inside the edit
+           panel, which itself only opens on a deliberate tap-not-drag while edit mode is
+           armed, and is now gated behind a confirm() — the old badge deleted immediately on
+           a single misplaced tap with no way to undo, which is the exact problem this fixes. -->
+      <button type="button" id="wr-pin-edit-delete-${pinId}" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(255,77,77,.4);background:rgba(255,77,77,.08);color:#ff8080;font-size:10.5px;cursor:pointer">ลบหมุด</button>
+      <div style="display:flex;gap:6px">
+        <button type="button" onclick="event.stopPropagation();_wrOpenDetail(_wrCurrentDetailIndex)" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#cfe9ff;font-size:10.5px;cursor:pointer">ยกเลิก</button>
+        <button type="button" id="wr-pin-edit-save-${pinId}" style="padding:5px 10px;border-radius:6px;border:none;background:#4bcffa;color:#04121e;font-weight:700;font-size:10.5px;cursor:pointer">บันทึก</button>
+      </div>
     </div>`;
   const ta = document.getElementById('wr-pin-edit-ta');
   if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
@@ -23075,6 +23088,13 @@ function _wrEditPhotoPin(pinId) {
   });
   const saveBtn = document.getElementById('wr-pin-edit-save-' + pinId);
   if (saveBtn) saveBtn.addEventListener('click', (e) => { e.stopPropagation(); _wrSavePhotoPinEdit(pinId, pendingImage); });
+  // [NEW 2026-08-04] confirm() before deleting — the old on-photo ✕ badge deleted instantly
+  // on a single tap with no undo, which is what this whole delete-button relocation is for.
+  const deleteBtn = document.getElementById('wr-pin-edit-delete-' + pinId);
+  if (deleteBtn) deleteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (confirm('ลบหมุดนี้? การลบไม่สามารถย้อนกลับได้')) _wrDeletePhotoPin(pinId);
+  });
 }
 function _wrSavePhotoPinEdit(pinId, pendingImage) {
   const ta = document.getElementById('wr-pin-edit-ta');
@@ -26656,7 +26676,7 @@ function _wrBuildDetailHTML(i) {
              _wrTogglePinEditMode) — while armed, tapping empty photo area still drops a new
              pin (_wrPhotoPanelClick → _wrStartNewPin), existing pins become draggable to a new
              spot, and a tap on one opens its editor directly (both in _wrPinPointerDown). -->
-        <button type="button" class="wr-pin-add-btn" onclick="_wrTogglePinEditMode(event,this)" title="${pinEditActive ? 'โหมดแก้ไข: แตะที่ว่างเพื่อปักหมุด, ลากหมุดเพื่อย้าย, แตะหมุดเพื่อแก้ไขข้อความ, แตะ ✕ เพื่อลบ — แตะปุ่มนี้อีกครั้งเพื่อปิด' : 'แก้ไข/ย้าย/ลบหมุดบนรูป'}"
+        <button type="button" class="wr-pin-add-btn" onclick="_wrTogglePinEditMode(event,this)" title="${pinEditActive ? 'โหมดแก้ไข: แตะที่ว่างเพื่อปักหมุด, ลากหมุดเพื่อย้าย, แตะหมุดเพื่อแก้ไข/ลบ — แตะปุ่มนี้อีกครั้งเพื่อปิด' : 'แก้ไข/ย้าย/ลบหมุดบนรูป'}"
           style="position:absolute;top:5px;left:5px;width:22px;height:22px;border-radius:7px;background:${pinEditActive ? 'rgba(75,207,250,.92)' : 'rgba(0,0,0,.78)'};border:1px solid ${pinEditActive ? '#4bcffa' : `rgba(${tierRgb},.4)`};display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V3h5"/><path d="M16 3h5v5"/><path d="M21 16v5h-5"/><path d="M8 21H3v-5"/><circle cx="12" cy="12" r="3.4"/><line x1="14.4" y1="14.4" x2="16.6" y2="16.6"/></svg>
         </button>
@@ -26674,14 +26694,15 @@ function _wrBuildDetailHTML(i) {
           <div class="wr-photo-pin-dot" data-wr-tip-trigger onclick="_wrTogglePhotoPinTip(event,this)" style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.75))"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </div>
-          <div class="wr-pin-del-badge" onclick="event.stopPropagation();_wrDeletePhotoPin('${pin.id}')" title="ลบหมุด" style="display:none;align-items:center;justify-content:center;position:absolute;top:-6px;right:-6px;width:15px;height:15px;border-radius:50%;background:#ff4d4d;border:1.5px solid #0a0e18;cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,.5);z-index:2">
-            <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
-          </div>
-          <!-- [FIX 2026-08-04] read-only view no longer shows "แก้ไข"/"ลบ" — once a pin is
-               saved, editing/deleting only happens through edit mode (top-left toggle): tapping
-               a pin while armed opens the editor directly (see _wrPinPointerDown's tap
-               fallback), and the red ✕ badge above handles delete. A plain tap outside edit
-               mode is now read-only, matching "once saved, no edit/delete [affordance] here". -->
+          <!-- [FIX 2026-08-04] the old red ✕ badge sitting right on top of the 26px pin dot
+               (top:-6px;right:-6px) was too easy to hit by accident — a slightly off tap on the
+               pin, or a drag that started a couple px into the badge's corner, fired an
+               IMMEDIATE, unconfirmed, unrecoverable delete (_wrDeletePhotoPin had no confirm
+               step). Removed entirely. Delete now only lives inside the edit panel itself
+               (_wrEditPhotoPin, opened by a deliberate tap-not-drag on the pin while edit mode
+               is armed) as an explicit "ลบหมุด" button, gated behind a confirm() — see there. -->
+          <!-- read-only view (edit mode off) stays tap-to-read only, no edit/delete affordance
+               here — editing/deleting only happens through edit mode (top-left toggle). -->
           <!-- [FIX 2026-08-04] pin note box had no height cap at all — unlike the classification/
                name tooltips (.wr-tip-scroll, max-height + overflow-y:auto), a long pin note just
                grew the box taller with no limit, so it could run off the bottom of the screen with
