@@ -22921,8 +22921,22 @@ function _wrEditCuratedTip(kind, key, viewId) {
       <button type="button" onclick="event.stopPropagation();_wrCancelCuratedTipEdit()" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#cfe9ff;font-size:11px;cursor:pointer;-webkit-tap-highlight-color:transparent">ยกเลิก</button>
       <button type="button" onclick="event.stopPropagation();_wrSaveCuratedTipEdit('${kind}','${key}')" style="padding:6px 12px;border-radius:7px;border:none;background:#4bcffa;color:#04121e;font-weight:700;font-size:11px;cursor:pointer;-webkit-tap-highlight-color:transparent">บันทึก</button>
     </div>`;
+  // [FIX] the vintage/name/tier edit form (header input + 8-row textarea + hint line + buttons)
+  // is much taller than the plain read view it replaces, so the tip box grows a lot right here.
+  // .wr-tier-tip boxes never re-run their on-screen clamp after the initial open (that only
+  // fires once, in _wrToggleTierTip/_wrTogglePhotoPinTip) — the photo-pin editor already re-runs
+  // _wrClampTip for this same reason whenever ITS box grows (see _wrEditPhotoPin), so do the
+  // same here instead of leaving the now-taller box to spill past the viewport edge.
+  _wrClampTip(view.closest('.wr-tier-tip'));
   const inp = document.getElementById('wr-curtip-header');
-  if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+  // [FIX] focus() on an input inside a small absolutely-positioned/scrolling overlay makes
+  // mobile browsers forcibly scroll+zoom the whole page to bring it into view, which is what
+  // actually produced the "screen glitch" — the page jumping/re-laying-out out from under the
+  // sheet right as it opened. preventScroll keeps focus local to the tip itself.
+  if (inp) {
+    try { inp.focus({ preventScroll: true }); } catch (e) { inp.focus(); }
+    inp.setSelectionRange(inp.value.length, inp.value.length);
+  }
 }
 // cancels a curated-tip edit without saving — just re-renders the whole sheet (no cache was
 // touched), same approach as _wrCancelNoteEdit.
@@ -26956,7 +26970,7 @@ function _wrBuildDetailHTML(i) {
         <span class="wr-tier-dot"></span>${_wrEsc(wineTier.label)}
         <span class="wr-info-ico" style="position:absolute;right:11px;top:50%;transform:translateY(-50%);opacity:.6"></span>
       </div>
-      <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);right:6px;z-index:999;width:min(280px,86vw);box-sizing:border-box;padding:13px 15px;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${tierColor}33, 0 0 22px -2px ${tierColor}55;font-family:'Prompt',sans-serif;font-size:12.5px;line-height:1.75;letter-spacing:.1px;color:#e7edfb">
+      <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);right:6px;z-index:999;width:min(280px,86vw);box-sizing:border-box;padding:13px 15px;border-radius:9px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${tierColor}33, 0 0 22px -2px ${tierColor}55;font-family:'Prompt',sans-serif;font-size:12.5px;line-height:1.75;letter-spacing:.1px;color:#e7edfb;--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift),var(--wr-tip-vshift))">
         <span style="position:absolute;top:-6px;right:10px;width:11px;height:11px;transform:rotate(45deg);background:#0e1220;border-left:1px solid ${tierColor}66;border-top:1px solid ${tierColor}66"></span>
         <span style="position:absolute;top:5px;left:5px;width:8px;height:8px;border-top:1.5px solid ${tierColor}bb;border-left:1.5px solid ${tierColor}bb;pointer-events:none"></span>
         <span style="position:absolute;bottom:5px;right:5px;width:8px;height:8px;border-bottom:1.5px solid ${tierColor}bb;border-right:1.5px solid ${tierColor}bb;pointer-events:none"></span>
@@ -26977,7 +26991,7 @@ function _wrBuildDetailHTML(i) {
         <span class="wr-tier-dot"></span>${_wrEsc(secondaryTag.label)}
         <span class="wr-info-ico" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);opacity:.6"></span>
       </div>
-      <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);right:6px;z-index:999;width:min(280px,86vw);box-sizing:border-box;padding:13px 15px;border-radius:9px;border:1px solid ${secondaryColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${secondaryColor}33, 0 0 22px -2px ${secondaryColor}55;font-family:'Prompt',sans-serif;font-size:12.5px;line-height:1.75;letter-spacing:.1px;color:#e7edfb">
+      <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);right:6px;z-index:999;width:min(280px,86vw);box-sizing:border-box;padding:13px 15px;border-radius:9px;border:1px solid ${secondaryColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${secondaryColor}33, 0 0 22px -2px ${secondaryColor}55;font-family:'Prompt',sans-serif;font-size:12.5px;line-height:1.75;letter-spacing:.1px;color:#e7edfb;--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift),var(--wr-tip-vshift))">
         <span style="position:absolute;top:-6px;right:9px;width:11px;height:11px;transform:rotate(45deg);background:#0e1220;border-left:1px solid ${secondaryColor}66;border-top:1px solid ${secondaryColor}66"></span>
         <span style="position:absolute;top:5px;left:5px;width:8px;height:8px;border-top:1.5px solid ${secondaryColor}bb;border-left:1.5px solid ${secondaryColor}bb;pointer-events:none"></span>
         <span style="position:absolute;bottom:5px;right:5px;width:8px;height:8px;border-bottom:1.5px solid ${secondaryColor}bb;border-right:1.5px solid ${secondaryColor}bb;pointer-events:none"></span>
@@ -27036,7 +27050,7 @@ function _wrBuildDetailHTML(i) {
         <!-- copy wine name — same bottom-right tap affordance as the barcode strip's ⧉ icon below -->
         <span onclick="event.stopPropagation();_wrCopyName('${_wrDisplayName(r).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" style="position:absolute;right:5px;bottom:-2px;opacity:.55;font-size:12px;line-height:1;cursor:pointer;padding:6px;margin:-6px;-webkit-tap-highlight-color:transparent" title="คัดลอกชื่อไวน์">⧉</span>
       </div>
-      <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);right:0;z-index:999;width:min(340px,92vw);max-width:100%;box-sizing:border-box;border-radius:10px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${tierColor}33, 0 0 22px -2px ${tierColor}55;overflow:hidden">
+      <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);right:0;z-index:999;width:min(340px,92vw);max-width:100%;box-sizing:border-box;border-radius:10px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${tierColor}33, 0 0 22px -2px ${tierColor}55;overflow:hidden;--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift),var(--wr-tip-vshift))">
         <!-- [FIX] frame + corner decorations now live on this OUTER, non-scrolling wrapper —
              it shrink-wraps the inner scroll region below, so its own box height is always
              exactly the true visible card height. Corner brackets anchored here (bottom:5px/
@@ -27105,7 +27119,7 @@ function _wrBuildDetailHTML(i) {
         <span class="wr-badge wr-badge-vt" data-wr-tip-trigger onclick="_wrToggleTierTip(event,this)" style="cursor:pointer;-webkit-tap-highlight-color:transparent;display:inline-flex;align-items:center;gap:4px">
           ${_wrEsc(vintage)}<span class="wr-info-ico" style="opacity:.6"></span>
         </span>
-        <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);left:0;z-index:999;width:min(300px,92vw);max-width:100%;box-sizing:border-box;border-radius:10px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${tierColor}33, 0 0 22px -2px ${tierColor}55;overflow:hidden">
+        <div class="wr-tier-tip" style="display:none;position:absolute;top:calc(100% + 9px);left:0;z-index:999;width:min(300px,92vw);max-width:100%;box-sizing:border-box;border-radius:10px;border:1px solid ${tierColor}88;background:linear-gradient(165deg, #12172a, #0a0e18);box-shadow:0 14px 34px -6px rgba(0,0,0,.85), 0 0 0 1px ${tierColor}33, 0 0 22px -2px ${tierColor}55;overflow:hidden;--wr-tip-shift:0px;--wr-tip-vshift:0px;transform:translate(var(--wr-tip-shift),var(--wr-tip-vshift))">
           <span style="position:absolute;top:-6px;left:14px;width:11px;height:11px;transform:rotate(45deg);background:#0e1220;border-left:1px solid ${tierColor}66;border-top:1px solid ${tierColor}66;z-index:2"></span>
           <span style="position:absolute;top:5px;left:5px;width:8px;height:8px;border-top:1.5px solid ${tierColor}bb;border-left:1.5px solid ${tierColor}bb;pointer-events:none;z-index:2"></span>
           <span style="position:absolute;bottom:5px;right:5px;width:8px;height:8px;border-bottom:1.5px solid ${tierColor}bb;border-right:1.5px solid ${tierColor}bb;pointer-events:none;z-index:2"></span>
