@@ -22730,7 +22730,27 @@ function _wrHighlightTip(escapedText, accentColor) {
   // the browser renders as literal text instead of a styled year.
   return String(escapedText)
     .replace(/"([^"\n]{2,60}?)"/g, `<span style="color:${accentColor}">"$1"</span>`)
-    .replace(/\b(1[5-9]\d{2}|20\d{2})\b/g, `<b style="color:${accentColor};font-weight:700">$1</b>`);
+    .replace(/\b(1[5-9]\d{2}|20\d{2})\b/g, `<b style="color:${accentColor};font-weight:700">$1</b>`)
+    // [NEW 2026-08-05] user-authored formatting, typed straight into the editable tooltip/note
+    // textarea: **text** → bold, ==text== → colored highlight (accent color, same one used for
+    // the automatic quote/year styling above, so it stays visually consistent per-tooltip).
+    // Runs LAST for the same reason the year pass runs after the quote pass — both new passes
+    // inject their own style="..." attribute, and if either ran before the quoted-phrase pass,
+    // that pass would wrongly match the attribute's own quote marks as a quoted phrase in the
+    // source text and corrupt the tag.
+    .replace(/\*\*([^\n*]{1,200}?)\*\*/g, '<b style="font-weight:700">$1</b>')
+    // [FIX 2026-08-05] the highlight pass runs AFTER the bold pass so **==text==** or
+    // ==**text**== both work (nested, both styles apply) — but that means by the time this
+    // regex runs, the string may already contain a `style="..."` attribute injected by the
+    // bold/year pass above sitting BETWEEN the two `==` markers (e.g. `==**text**==` becomes
+    // `==<b style="font-weight:700">text</b>==` after the bold pass). Originally this excluded
+    // `=` from the captured content (same idea as excluding `*` in the bold pass, to stop a
+    // non-greedy match from running past the intended closing `==`) — but `style="..."` itself
+    // contains a literal `=`, so that exclusion silently broke the match here specifically, and
+    // combined bold+highlight text just rendered with the `==`/`**` markers left in as plain
+    // text. Only newline is excluded now; the non-greedy `{1,200}?` still reliably stops at the
+    // nearest closing `==` on its own, without needing to exclude `=` from the content itself.
+    .replace(/==([^\n]{1,200}?)==/g, `<mark style="background:${accentColor}30;color:${accentColor};padding:0 2px;border-radius:3px;font-weight:600">$1</mark>`);
 }
 
 // ── tier/appellation tooltip body — WR_TIER_DESCRIPTIONS entries are usually a single
@@ -22895,6 +22915,7 @@ function _wrEditCuratedTip(kind, key, viewId) {
     <div style="margin-bottom:6px">
       <div style="font-family:'Prompt',sans-serif;font-size:9px;font-weight:800;letter-spacing:1px;color:#9fb4d9;text-transform:uppercase;margin-bottom:4px">${bodyLabel}</div>
       <textarea id="wr-curtip-body" rows="8" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:8px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:12.5px;line-height:1.6;resize:vertical">${_wrEsc(desc.join('\n\n'))}</textarea>
+      <div style="font-family:'Prompt',sans-serif;font-size:10px;color:#6b7fa3;margin-top:4px;line-height:1.7">พิมพ์ <code style="color:#9fb4d9">**ข้อความ**</code> เพื่อ<b>ตัวหนา</b> · <code style="color:#9fb4d9">==ข้อความ==</code> เพื่อ<mark style="background:#4bcffa30;color:#4bcffa;padding:0 2px;border-radius:3px">ไฮไลต์สี</mark> · ผสมกันได้ด้วย <code style="color:#9fb4d9">**==ข้อความ==**</code> → <b style="font-weight:700"><mark style="background:#4bcffa30;color:#4bcffa;padding:0 2px;border-radius:3px">ตัวหนา+ไฮไลต์</mark></b></div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button type="button" onclick="event.stopPropagation();_wrCancelCuratedTipEdit()" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#cfe9ff;font-size:11px;cursor:pointer;-webkit-tap-highlight-color:transparent">ยกเลิก</button>
@@ -26833,6 +26854,7 @@ function _wrEditNote() {
   const current = _wrGetCustomNote(_wrNoteKey(r));
   view.innerHTML = `
     <textarea id="wr-note-textarea" rows="5" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:8px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:12.5px;line-height:1.6;resize:vertical" placeholder="เขียนคำอธิบาย/บันทึกของคุณเอง — เว้นบรรทัดว่างเพื่อขึ้นย่อหน้าใหม่">${_wrEsc(current)}</textarea>
+    <div style="font-family:'Prompt',sans-serif;font-size:10px;color:#6b7fa3;margin-top:4px;line-height:1.7">พิมพ์ <code style="color:#9fb4d9">**ข้อความ**</code> เพื่อ<b>ตัวหนา</b> · <code style="color:#9fb4d9">==ข้อความ==</code> เพื่อ<mark style="background:#4bcffa30;color:#4bcffa;padding:0 2px;border-radius:3px">ไฮไลต์สี</mark> · ผสมกันได้ด้วย <code style="color:#9fb4d9">**==ข้อความ==**</code> → <b style="font-weight:700"><mark style="background:#4bcffa30;color:#4bcffa;padding:0 2px;border-radius:3px">ตัวหนา+ไฮไลต์</mark></b></div>
     <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end">
       <button type="button" onclick="event.stopPropagation();_wrCancelNoteEdit()" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#cfe9ff;font-size:11px;cursor:pointer;-webkit-tap-highlight-color:transparent">ยกเลิก</button>
       <button type="button" onclick="event.stopPropagation();_wrSaveNoteEdit()" style="padding:6px 12px;border-radius:7px;border:none;background:#4bcffa;color:#04121e;font-weight:700;font-size:11px;cursor:pointer;-webkit-tap-highlight-color:transparent">บันทึก</button>
