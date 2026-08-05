@@ -7740,16 +7740,20 @@ document.body.style.overflow = 'hidden';
      stars get pushed further than background stars (classic parallax depth cue); the nebula
      itself stays put so there's no risk of it not covering an edge. */
   let targetTiltX=0, targetTiltY=0, curTiltX=0, curTiltY=0;
-  const TILT_MAX = 16; // px of travel at full tilt, tuned to feel like a subtle drift not a shove
+  // [FIX 2026-08-05] ทำตามคำขอ: ให้ตอบสนองการขยับเครื่องชัดขึ้นและมีชั้นความลึกมากขึ้น
+  // TILT_MAX 16→26 (ระยะเคลื่อนที่ตอนเอียงสุด), easing .05→.08 (ตามทันเซนเซอร์เร็วขึ้น แต่ยัง
+  // เป็นการดริฟท์นุ่มๆ ไม่ใช่ 1:1 jitter) — ปรับสองค่านี้คู่กันเพื่อให้ "เคลื่อนมากขึ้น" แต่ยังนุ่มอยู่
+  const TILT_MAX = 26; // px of travel at full tilt (was 16)
 
   function _clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
 
   function _onOrientation(e){
     if (e.gamma==null || e.beta==null) return;
     // gamma: left/right tilt (-90..90), beta: front/back tilt (0..180, ~45 when comfortably
-    // holding the phone up to look at) — both normalized to roughly [-1,1] around that resting pose
-    targetTiltX = _clamp(e.gamma/28, -1, 1);
-    targetTiltY = _clamp((e.beta-45)/28, -1, 1);
+    // holding the phone up to look at) — both normalized to roughly [-1,1] around that resting
+    // pose. [FIX 2026-08-05] หาร 28→22 — เอียงเครื่องน้อยลงก็ถึงระยะสุดได้เร็วขึ้น (ไวต่อการขยับมากขึ้น)
+    targetTiltX = _clamp(e.gamma/22, -1, 1);
+    targetTiltY = _clamp((e.beta-45)/22, -1, 1);
   }
   // [FIX 2026-08-04] this used to be wired up ONLY from a pointerdown on #auth-gate-overlay —
   // but that gesture-gating is only actually required on iOS 13+ (DeviceOrientationEvent.
@@ -7784,7 +7788,9 @@ document.body.style.overflow = 'hidden';
     targetTiltY = _clamp((e.clientY/innerHeight-.5)*2, -1, 1);
   }, { passive:true });
 
-  /* ── star field: 2 layers for parallax depth ── */
+  /* [FIX 2026-08-05] star field: 4 layers for parallax depth (was 2) — deepest layer barely
+     moves, nearest layer gets the full TILT_MAX travel, with two layers in between so the
+     depth gradient reads as continuous rather than a single "flat/near" jump */
   function mkStars(n, rMin, rMax, aMin, aMax){
     return Array.from({length:n}, ()=>({
       x:Math.random(), y:Math.random(),
@@ -7795,8 +7801,10 @@ document.body.style.overflow = 'hidden';
       hue: Math.random()<.15 ? (Math.random()<.5?200:30) : 0, // blue giants / orange giants
     }));
   }
-  const STARS_BG = mkStars(280, .4, 1.2, .3, .85);
-  const STARS_FG = mkStars(80,  .8, 2.0, .5, 1.0);
+  const STARS_DEEP = mkStars(160, .3, .8,  .2, .6);  // furthest — barely drifts
+  const STARS_BG   = mkStars(220, .4, 1.2, .3, .85);
+  const STARS_MID  = mkStars(140, .6, 1.5, .4, .9);
+  const STARS_FG   = mkStars(70,  .8, 2.0, .5, 1.0); // nearest — full travel
 
   /* ── nebula cloud blobs ── */
   const CLOUDS = [
@@ -7810,16 +7818,22 @@ document.body.style.overflow = 'hidden';
     { cx:.85, cy:.45, rx:.18, ry:.13, hue:15,  sat:80, lig:45, a:.06 },
   ];
 
-  /* pre-compute nebula once to offscreen canvas for perf */
+  /* pre-compute nebula once to offscreen canvas for perf
+     [FIX 2026-08-05] added NEB_PAD margin around the cached canvas so the nebula can now get
+     a small parallax offset too (deepest layer, barely moves) — previously the nebula was the
+     one thing on screen that never moved at all, even though the whole point of this canvas
+     was multi-depth motion. Padding is comfortably larger than the tiny offset it ever needs
+     (see nebOx/nebOy in draw()), so the cached image always fully covers the visible canvas. */
+  const NEB_PAD = 48;
   let nebulaCache = null;
   function buildNebula(W, H){
     const oc = document.createElement('canvas');
-    oc.width=W; oc.height=H;
+    oc.width=W+NEB_PAD*2; oc.height=H+NEB_PAD*2;
     const oc2 = oc.getContext('2d');
     oc2.fillStyle='#00000e';
-    oc2.fillRect(0,0,W,H);
+    oc2.fillRect(0,0,oc.width,oc.height);
     CLOUDS.forEach(c=>{
-      const gx=c.cx*W, gy=c.cy*H, grx=c.rx*W, gry=c.ry*H;
+      const gx=NEB_PAD+c.cx*W, gy=NEB_PAD+c.cy*H, grx=c.rx*W, gry=c.ry*H;
       // draw elliptical radial gradient (scale + translate trick)
       oc2.save();
       oc2.translate(gx,gy);
@@ -7878,15 +7892,30 @@ document.body.style.overflow = 'hidden';
     if (now - _slLast < 50) { requestAnimationFrame(draw); return; } // cap 20fps
     _slLast = now;
     // ease current tilt toward target — slow heavy drift, not 1:1 sensor jitter
-    curTiltX += (targetTiltX-curTiltX)*.05;
-    curTiltY += (targetTiltY-curTiltY)*.05;
-    const bgOx=curTiltX*TILT_MAX*.4, bgOy=curTiltY*TILT_MAX*.4; // background layer — subtle
-    const fgOx=curTiltX*TILT_MAX,    fgOy=curTiltY*TILT_MAX;    // foreground layer — full travel
+    curTiltX += (targetTiltX-curTiltX)*.08;
+    curTiltY += (targetTiltY-curTiltY)*.08;
+    // [FIX 2026-08-05] 4 depth layers now instead of 2 (nebula included as the deepest layer) —
+    // fractions of TILT_MAX from furthest to nearest: nebula .10 → deep stars .15 → bg .35 →
+    // mid .65 → fg 1.0 (full travel). Milky Way band gets its own subtle .22 fraction so it
+    // reads as sitting between the deep and background star layers.
+    const nebOx=curTiltX*TILT_MAX*.10,  nebOy=curTiltY*TILT_MAX*.10;
+    const deepOx=curTiltX*TILT_MAX*.15, deepOy=curTiltY*TILT_MAX*.15;
+    const bgOx=curTiltX*TILT_MAX*.35,   bgOy=curTiltY*TILT_MAX*.35;
+    const midOx=curTiltX*TILT_MAX*.65,  midOy=curTiltY*TILT_MAX*.65;
+    const fgOx=curTiltX*TILT_MAX,       fgOy=curTiltY*TILT_MAX;
+    const milkyOx=curTiltX*TILT_MAX*.22, milkyOy=curTiltY*TILT_MAX*.22;
     const W=cv.width, H=cv.height;
     if(W!==lastW||H!==lastH||!nebulaCache){ nebulaCache=buildNebula(W,H); lastW=W; lastH=H; }
 
-    /* nebula (static, from cache) */
-    ctx.drawImage(nebulaCache,0,0);
+    /* nebula (cached image, now with a small parallax offset — deepest layer) */
+    ctx.drawImage(nebulaCache, -NEB_PAD+nebOx, -NEB_PAD+nebOy);
+
+    /* ── deepest stars (new layer, barely drifts) ── */
+    STARS_DEEP.forEach(s=>{
+      const a = s.a*(0.5+0.5*Math.sin(frame*s.twinkleSpeed+s.twinklePhase));
+      ctx.fillStyle= s.hue===200 ? `rgba(100,180,255,${a})` : s.hue===30 ? `rgba(255,200,100,${a})` : `rgba(255,255,255,${a})`;
+      ctx.beginPath();ctx.arc(s.x*W+deepOx,s.y*H+deepOy,s.r,0,Math.PI*2);ctx.fill();
+    });
 
     /* ── background stars ── */
     STARS_BG.forEach(s=>{
@@ -7895,7 +7924,14 @@ document.body.style.overflow = 'hidden';
       ctx.beginPath();ctx.arc(s.x*W+bgOx,s.y*H+bgOy,s.r,0,Math.PI*2);ctx.fill();
     });
 
-    /* ── foreground stars (slightly brighter) ── */
+    /* ── mid stars (new layer, between bg and fg) ── */
+    STARS_MID.forEach(s=>{
+      const a = s.a*(0.55+0.45*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+.5));
+      ctx.fillStyle= s.hue===200 ? `rgba(100,180,255,${a})` : s.hue===30 ? `rgba(255,200,100,${a})` : `rgba(255,255,255,${a})`;
+      ctx.beginPath();ctx.arc(s.x*W+midOx,s.y*H+midOy,s.r,0,Math.PI*2);ctx.fill();
+    });
+
+    /* ── foreground stars (nearest layer, slightly brighter, full tilt travel) ── */
     STARS_FG.forEach(s=>{
       const a = s.a*(0.6+0.4*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+1));
       ctx.fillStyle=`rgba(255,255,255,${a})`;
@@ -7911,7 +7947,7 @@ document.body.style.overflow = 'hidden';
 
     /* ── Milky Way band (faint diagonal strip) ── */
     {
-      const cx2=W*.5,cy2=H*.5,len=Math.max(W,H)*1.4,bw=H*.22;
+      const cx2=W*.5+milkyOx,cy2=H*.5+milkyOy,len=Math.max(W,H)*1.4,bw=H*.22;
       ctx.save();ctx.translate(cx2,cy2);ctx.rotate(-.32);
       const mg=ctx.createLinearGradient(0,-bw*.5,0,bw*.5);
       mg.addColorStop(0,'transparent');
@@ -8067,6 +8103,12 @@ document.body.style.overflow = 'hidden';
     // guard ต่อไว้เพราะเสียงาน GPU/battery เปล่าๆ วาดสิ่งที่มองไม่เห็นอยู่ดี ไม่ใช่เพื่อกันกระพริบแล้ว
     // — ยังคง schedule เฟรมถัดไปไว้ (ไม่ cancel loop) เพื่อกลับมาวาดต่อทันทีที่ปิด UES
     if(document.body.classList.contains('ues-open-frozen')){_bgRafId=requestAnimationFrame(loop);return;}
+    // [FIX 2026-08-05] เจอสาเหตุที่เครื่องร้อนหลังเปิด Wholesale ทิ้งไว้ 1-2 นาที — canvas ฝนพื้นหลัง
+    // นี้เต็มจอ วาดทุกเฟรมตลอดเวลาที่แอปเปิดอยู่ เดิมเช็คแค่ cam-open/ues-open-frozen ไม่เคยเช็ค
+    // wholesale-open เลย ทั้งที่ Wholesale เป็น modal เต็มจอเหมือนกัน จึงวาดฝนพื้นหลังที่มองไม่เห็น
+    // (โดนบังสนิท) ต่อเนื่อง 12fps อยู่ข้างหลังตลอด — ตัวเดียวกับที่ comment ด้านล่างบอกว่าเป็นตัวกิน
+    // ซีพียู/แบตเตอรี่หลักที่ทำให้เครื่องร้อนอยู่แล้ว แค่ไม่เคย extend guard มาถึง wholesale-open
+    if(document.body.classList.contains('wholesale-open')){_bgRafId=requestAnimationFrame(loop);return;}
     // [PERF FIX] ลด fps จาก 20 → 12 — canvas นี้วาดเต็มจอตลอดเวลาที่แอปเปิดอยู่ (ยกเว้นตอนแท็บซ่อน/
     // กล้องเปิด/UES เปิด) เป็นตัวกินซีพียู/แบตเตอรี่หลักที่ทำให้เครื่องร้อน ลด fps ลงยังคงเอฟเฟกต์ฝนไว้
     // แต่ลดงานวาดต่อวินาทีลงเกือบ 40%
@@ -8444,6 +8486,9 @@ document.body.style.overflow = 'hidden';
         if(document.hidden){_sonarRafId=null;_sonarLast=0;return;} // หยุดจริงเมื่อซ่อน
         // [FIX 2026-08-01 v12] เช็คเพิ่มเหมือน ECG loop — เดิมไม่เช็ค ues-open-frozen เลย
         if(document.body.classList.contains('ues-open-frozen')){_sonarRafId=requestAnimationFrame(drawSonar);return;}
+        // [FIX 2026-08-05] เหตุผลเดียวกับ bg rain loop — เพิ่ม wholesale-open guard กันวาด sonar
+        // ต่อเนื่องตอนโดน Wholesale modal บังเต็มจอ (ดู [FIX 2026-08-05] ใน bg rain loop ด้านบน)
+        if(document.body.classList.contains('wholesale-open')){_sonarRafId=requestAnimationFrame(drawSonar);return;}
         var _sNow=performance.now();
         var _dt=_sonarLast?Math.min(_sNow-_sonarLast,50):16.667;
         _sonarLast=_sNow;
@@ -8617,6 +8662,9 @@ document.body.style.overflow = 'hidden';
         // เกิดขึ้นจริงทุก ~1s นี้เองที่ไปกวน compositor บน Android จนเห็นเป็นกระพริบเป็นจังหวะ
         // ทั้งที่ตัว ECG เองไม่ได้อยู่ในเฟรมที่มองเห็นด้วยซ้ำ — พักลูปนี้ไปพร้อมกับหน้าที่เหลือ */
         if(document.body.classList.contains('ues-open-frozen')){_ecgRafId=requestAnimationFrame(frame);return;}
+        // [FIX 2026-08-05] เหตุผลเดียวกับ bg rain loop — เพิ่ม wholesale-open guard กันวาด ECG
+        // ต่อเนื่องตอนโดน Wholesale modal บังเต็มจอ (ดู [FIX 2026-08-05] ใน bg rain loop ด้านบน)
+        if(document.body.classList.contains('wholesale-open')){_ecgRafId=requestAnimationFrame(frame);return;}
         if(!last){ last = now; _ecgRafId=requestAnimationFrame(frame); return; }
         var dt = Math.min(now - last, 40);
         last = now;
@@ -12710,6 +12758,9 @@ function renderRecords() {
       function frameFast(){
         if(document.hidden){window._nxHexRaf=null;return;} // หยุดจริง ไม่ re-queue
         if(document.body.classList.contains('ues-open-frozen')){window._nxHexRaf=requestAnimationFrame(frameFast);return;}
+        // [FIX 2026-08-05] เหตุผลเดียวกับ bg rain loop — เพิ่ม wholesale-open guard กันวาด hex bg
+        // ต่อเนื่องตอนโดน Wholesale modal บังเต็มจอ (ดู [FIX 2026-08-05] ใน bg rain loop ด้านบน)
+        if(document.body.classList.contains('wholesale-open')){window._nxHexRaf=requestAnimationFrame(frameFast);return;}
         var _hNow=performance.now();
         if(_hNow-_hexLast<50){window._nxHexRaf=requestAnimationFrame(frameFast);return;} // cap 20fps
         _hexLast=_hNow;
@@ -12766,6 +12817,9 @@ function renderRecords() {
       // หยุด RAF จริงเมื่อ page ซ่อนอยู่ (tab เปลี่ยน / screen ดับ)
       if(document.hidden){ window._nxHexRaf=null; return; }
       if(document.body.classList.contains('ues-open-frozen')){ window._nxHexRaf=requestAnimationFrame(frame); return; }
+      // [FIX 2026-08-05] เหตุผลเดียวกับ bg rain loop — เพิ่ม wholesale-open guard กันวาด hex bg
+      // ต่อเนื่องตอนโดน Wholesale modal บังเต็มจอ (ดู [FIX 2026-08-05] ใน bg rain loop ด้านบน)
+      if(document.body.classList.contains('wholesale-open')){ window._nxHexRaf=requestAnimationFrame(frame); return; }
       const now=performance.now();
       if(now-_hexFullLast<50){window._nxHexRaf=requestAnimationFrame(frame);return;} // cap 20fps
       _hexFullLast=now;
