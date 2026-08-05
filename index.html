@@ -22810,11 +22810,11 @@ function _wrNoteParas(text) {
 // (shared by both the primary classification ribbon and any secondary AOC/DOCG/DOCa tag,
 // since both look up WR_TIER_DESCRIPTIONS by the same tier key).
 const WR_TIP_OVERRIDES_KEY = 'wholesale-tip-overrides';
-let _wrTipOverrides = { name: {}, tier: {} };
+let _wrTipOverrides = { name: {}, tier: {}, vintage: {} };
 (function _wrLoadTipOverrides(){
   try {
     const saved = JSON.parse(localStorage.getItem(WR_TIP_OVERRIDES_KEY) || 'null');
-    if (saved && typeof saved === 'object') _wrTipOverrides = { name: saved.name || {}, tier: saved.tier || {} };
+    if (saved && typeof saved === 'object') _wrTipOverrides = { name: saved.name || {}, tier: saved.tier || {}, vintage: saved.vintage || {} };
   } catch (e) { /* keep defaults */ }
 })();
 function _wrGetTipOverride(kind, key) {
@@ -22847,7 +22847,7 @@ function _wrSaveTipOverride(kind, key, header, bodyText) {
 // _wrMergeCloudNotes above.
 function _wrMergeCloudTipOverrides(cOverrides) {
   if (!cOverrides || typeof cOverrides !== 'object') return;
-  _wrTipOverrides = { name: cOverrides.name || {}, tier: cOverrides.tier || {} };
+  _wrTipOverrides = { name: cOverrides.name || {}, tier: cOverrides.tier || {}, vintage: cOverrides.vintage || {} };
   try { localStorage.setItem(WR_TIP_OVERRIDES_KEY, JSON.stringify(_wrTipOverrides)); } catch (e) {}
   if (typeof _wrClearDetailCache === 'function') _wrClearDetailCache();
   if (typeof _wrCurrentDetailIndex === 'number' && _wrCurrentDetailIndex >= 0 && typeof _wrOpenDetail === 'function') {
@@ -22870,17 +22870,30 @@ function _wrEditCuratedTip(kind, key, viewId) {
     fallbackHeader = t ? (t.tipTitle || t.short) : '';
     const d = WR_TIER_DESCRIPTIONS[key];
     fallbackDesc = Array.isArray(d) ? d : (d ? [d] : []);
+  } else if (kind === 'vintage') {
+    // [NEW 2026-08-05] key format "<nameTipKey>:<year>" — quote (château-specific critic line)
+    // maps onto the header field, why (shared per-year growing-season note) onto the body, so
+    // this reuses the exact same header+textarea edit form as name/tier with no new UI needed.
+    const [ntKey, year] = key.split(':');
+    const set = WR_VINTAGE_TIPS[ntKey];
+    fallbackHeader = (set && set[year]) || '';
+    const why = WR_VINTAGE_YEAR_WHY[year];
+    fallbackDesc = why ? [why] : [];
   }
   const override = _wrGetTipOverride(kind, key);
   const header = override ? override.header : fallbackHeader;
   const desc = (override ? override.desc : fallbackDesc) || [];
+  const headerLabel = kind === 'vintage' ? 'คำวิจารณ์/คะแนน (เฉพาะชาโตว์นี้)' : 'หัวข้อ';
+  const bodyLabel = kind === 'vintage'
+    ? 'เรื่องราวฤดูกาลปลูก (ปีนี้ — ใช้ร่วมกันทุกชาโตว์) — เว้นบรรทัดว่างเพื่อขึ้นย่อหน้าใหม่'
+    : 'คำอธิบาย — เว้นบรรทัดว่างเพื่อขึ้นย่อหน้าใหม่';
   view.innerHTML = `
     <div style="margin-bottom:8px">
-      <div style="font-family:'Prompt',sans-serif;font-size:9px;font-weight:800;letter-spacing:1px;color:#9fb4d9;text-transform:uppercase;margin-bottom:4px">หัวข้อ</div>
+      <div style="font-family:'Prompt',sans-serif;font-size:9px;font-weight:800;letter-spacing:1px;color:#9fb4d9;text-transform:uppercase;margin-bottom:4px">${headerLabel}</div>
       <input id="wr-curtip-header" type="text" value="${_wrEsc(header)}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:8px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:13px"/>
     </div>
     <div style="margin-bottom:6px">
-      <div style="font-family:'Prompt',sans-serif;font-size:9px;font-weight:800;letter-spacing:1px;color:#9fb4d9;text-transform:uppercase;margin-bottom:4px">คำอธิบาย — เว้นบรรทัดว่างเพื่อขึ้นย่อหน้าใหม่</div>
+      <div style="font-family:'Prompt',sans-serif;font-size:9px;font-weight:800;letter-spacing:1px;color:#9fb4d9;text-transform:uppercase;margin-bottom:4px">${bodyLabel}</div>
       <textarea id="wr-curtip-body" rows="8" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:8px;color:#e7edfb;font-family:'Prompt',sans-serif;font-size:12.5px;line-height:1.6;resize:vertical">${_wrEsc(desc.join('\n\n'))}</textarea>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -27047,9 +27060,18 @@ function _wrBuildDetailHTML(i) {
         // and classification badges above (_wrToggleTierTip reused as-is) — but only when this
         // product is one of the WR_NAME_TIPS 5 AND the vintage is one of the covered iconic
         // years in WR_VINTAGE_TIPS. Any other wine/vintage falls back to the plain badge.
+        // [NEW 2026-08-05] now override-aware — reuses the same curated-tip-override system as
+        // the name/tier tooltips (_wrGetTipOverride/_wrEditCuratedTip), keyed by "nameTipKey:year"
+        // since a vintage tip only exists in the context of one of the 5 curated châteaux.
         const vNameTip = _wrNameTip(product);
+        const vintageKey = vNameTip ? (vNameTip.key + ':' + vintage) : '';
+        const vOverride = vintageKey ? _wrGetTipOverride('vintage', vintageKey) : null;
         const vTip = _wrVintageTip(vNameTip && vNameTip.key, vintage);
-        if (!vTip) return `<span class="wr-badge wr-badge-vt">${_wrEsc(vintage)}</span>`;
+        if (!vTip && !vOverride) return `<span class="wr-badge wr-badge-vt">${_wrEsc(vintage)}</span>`;
+        const vQuote = vOverride ? vOverride.header : (vTip ? vTip.quote : '');
+        const vWhyParas = vOverride ? vOverride.desc : (vTip && vTip.why ? [vTip.why] : []);
+        const curatedVintageEditId = 'wr-curtip-vintage-' + vintageKey.replace(/[^a-z0-9]/gi, '_');
+        const vParaHtml = p => `<div style="padding-left:10px;border-left:2px solid ${tierColor}45">${_wrHighlightTip(_wrEsc(p), tierColor)}</div>`;
         // [FIX 2026-07-29] this used to be wrapped in its own `position:relative` span sized to
         // just the small year badge, with the tip anchored to THAT — since the year badge sits
         // partway across the row (after the type badge), a fixed ~300px-wide tip anchored there
@@ -27069,10 +27091,13 @@ function _wrBuildDetailHTML(i) {
             <style>.wr-tip-scroll::-webkit-scrollbar{display:none}</style>
             <div style="position:sticky;top:-13px;margin:-13px -15px 9px;padding:13px 15px 8px;background:linear-gradient(165deg, #12172a, #0a0e18);display:flex;align-items:center;gap:6px;padding-bottom:7px;border-bottom:1px solid ${tierColor}33;z-index:1">
               <span style="width:4px;height:4px;flex-shrink:0;background:${tierColor};box-shadow:0 0 5px ${tierColor}"></span>
-              <span style="font-family:'Prompt',sans-serif;font-size:13.5px;font-weight:700;letter-spacing:.3px;color:${tierColor}">VINTAGE ${_wrEsc(vintage)}</span>
+              <span style="font-family:'Prompt',sans-serif;font-size:13.5px;font-weight:700;letter-spacing:.3px;color:${tierColor};flex:1;min-width:0">VINTAGE ${_wrEsc(vintage)}</span>
+              <span onclick="event.stopPropagation();_wrEditCuratedTip('vintage','${vintageKey}','${curatedVintageEditId}')" style="cursor:pointer;font-size:11px;color:${tierColor};opacity:.85;padding:4px 6px;margin:-4px -6px;flex-shrink:0;-webkit-tap-highlight-color:transparent" title="แก้ไขคำวิจารณ์/เรื่องราวฤดูกาลปลูก">✎</span>
             </div>
-            <div style="padding-left:10px;border-left:2px solid ${tierColor}45">${_wrHighlightTip(_wrEsc(vTip.quote), tierColor)}</div>
-            ${vTip.why ? `<div style="height:12px"></div><div style="padding-left:10px;border-left:2px solid ${tierColor}45">${_wrHighlightTip(_wrEsc(vTip.why), tierColor)}</div>` : ''}
+            <div id="${curatedVintageEditId}">
+              ${vQuote ? vParaHtml(vQuote) : ''}
+              ${vWhyParas.length ? `<div style="height:12px"></div>${vWhyParas.map(vParaHtml).join('<div style="height:12px"></div>')}` : ''}
+            </div>
           </div>
         </div>`;
       })()}
