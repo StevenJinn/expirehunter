@@ -7792,22 +7792,33 @@ document.body.style.overflow = 'hidden';
      (~1,150 stars vs ~590 before) and one more rung added at each end (a barely-there
      ULTRADEEP layer behind DEEP, and a NEARFG layer between MID and FG) so the depth gradient
      reads as even more continuous, plus every layer just has more stars in it than before. */
-  function mkStars(n, rMin, rMax, aMin, aMax){
+  /* [FIX 2026-08-06 v2] ทำตามคำขอ: ให้เป็น "มุมมอง perspective" จริง แทนที่จะเป็นการเลื่อน 6 ชั้น
+     แบบเป็นก้อนๆ (คูณด้วยสัดส่วนคงที่ทีละชั้น) — ตอนนี้ดาวแต่ละดวงมีระยะ z ของตัวเอง (สุ่มต่อเนื่องอยู่
+     ในช่วงของชั้นนั้นๆ ไม่ใช่ก้อนเดียวกันทั้งชั้น) แล้วคำนวณระยะเคลื่อนที่จริงแบบกล้อง 3 มิติ:
+     offset = TILT_MAX * tilt / z — เหมือนกล้องเลื่อนด้านข้างมองผ่านระนาบที่ระยะต่างกัน วัตถุใกล้กล้อง
+     (z น้อย) เคลื่อนที่มากกว่าวัตถุไกล (z มาก) ตามสัดส่วนผกผัน ให้ความรู้สึกเป็นมิติ/ทะลุมิติจริง ไม่ใช่
+     ภาพเลื่อนเป็นแผ่นๆ ซ้อนกัน — ดู perspOffset() ด้านล่างที่ draw() เรียกใช้ */
+  function mkStars(n, rMin, rMax, aMin, aMax, zMin, zMax){
     return Array.from({length:n}, ()=>({
       x:Math.random(), y:Math.random(),
       r:rMin+Math.random()*(rMax-rMin),
       a:aMin+Math.random()*(aMax-aMin),
+      z:zMin+Math.random()*(zMax-zMin), // virtual camera-distance — drives perspective offset, not a fixed layer bucket
       twinkleSpeed:.003+Math.random()*.008,
       twinklePhase:Math.random()*Math.PI*2,
       hue: Math.random()<.15 ? (Math.random()<.5?200:30) : 0, // blue giants / orange giants
     }));
   }
-  const STARS_ULTRADEEP = mkStars(220, .2, .6,  .15, .45); // furthest of all — barely drifts
-  const STARS_DEEP      = mkStars(240, .3, .8,  .2,  .6);
-  const STARS_BG        = mkStars(320, .4, 1.2, .3,  .85);
-  const STARS_MID       = mkStars(220, .6, 1.5, .4,  .9);
-  const STARS_NEARFG    = mkStars(130, .7, 1.7, .45, .95);
-  const STARS_FG        = mkStars(100, .8, 2.0, .5,  1.0); // nearest — full travel
+  // z ranges overlap slightly layer-to-layer on purpose so the depth reads as one continuous
+  // gradient from far to near rather than 6 visibly distinct "speed bands"
+  const STARS_ULTRADEEP = mkStars(220, .2, .6,  .15, .45, 8.5, 12);  // furthest of all — barely drifts
+  const STARS_DEEP      = mkStars(240, .3, .8,  .2,  .6,  5.5, 8.5);
+  const STARS_BG        = mkStars(320, .4, 1.2, .3,  .85, 3.6, 5.5);
+  const STARS_MID       = mkStars(220, .6, 1.5, .4,  .9,  2.3, 3.6);
+  const STARS_NEARFG    = mkStars(130, .7, 1.7, .45, .95, 1.5, 2.3);
+  const STARS_FG        = mkStars(100, .8, 2.0, .5,  1.0, 1.0, 1.5); // nearest — most travel
+  const NEB_Z = 13;   // nebula sits behind even the ultradeep stars — moves the least of anything
+  const MILKY_Z = 6.5; // Milky Way band sits between ultradeep and deep
 
   /* ── nebula cloud blobs ── */
   const CLOUDS = [
@@ -7899,65 +7910,66 @@ document.body.style.overflow = 'hidden';
     // TILT_MAX/orientation-divisor bumps above) while still easing rather than snapping
     curTiltX += (targetTiltX-curTiltX)*.13;
     curTiltY += (targetTiltY-curTiltY)*.13;
-    // [FIX 2026-08-06] 6 depth layers now instead of 4 (nebula still included as the deepest
-    // layer of all) — fractions of TILT_MAX from furthest to nearest: nebula .08 → ultradeep
-    // .12 → deep stars .22 → bg .40 → mid .62 → nearfg .82 → fg 1.0 (full travel). Milky Way
-    // band keeps its own subtle fraction, nudged to sit between ultradeep and deep now that
-    // there's a layer on either side of where it used to be.
-    const nebOx=curTiltX*TILT_MAX*.08,      nebOy=curTiltY*TILT_MAX*.08;
-    const ultraOx=curTiltX*TILT_MAX*.12,    ultraOy=curTiltY*TILT_MAX*.12;
-    const deepOx=curTiltX*TILT_MAX*.22,     deepOy=curTiltY*TILT_MAX*.22;
-    const bgOx=curTiltX*TILT_MAX*.40,       bgOy=curTiltY*TILT_MAX*.40;
-    const midOx=curTiltX*TILT_MAX*.62,      midOy=curTiltY*TILT_MAX*.62;
-    const nearFgOx=curTiltX*TILT_MAX*.82,   nearFgOy=curTiltY*TILT_MAX*.82;
-    const fgOx=curTiltX*TILT_MAX,           fgOy=curTiltY*TILT_MAX;
-    const milkyOx=curTiltX*TILT_MAX*.17,    milkyOy=curTiltY*TILT_MAX*.17;
+    // [FIX 2026-08-06 v2] perspective projection — replaces the old fixed per-layer fraction
+    // constants. Every star (and the nebula/Milky Way, via their own fixed pseudo-z) now gets
+    // its screen offset from this single camera-distance law instead of being snapped into one
+    // of 6 discrete speed bands, so the whole scene reads as actual depth rather than layered
+    // cardboard cutouts sliding at different fixed speeds.
+    function perspOffset(z){ return { x: curTiltX*TILT_MAX/z, y: curTiltY*TILT_MAX/z }; }
+    const nebO = perspOffset(NEB_Z), nebOx = nebO.x, nebOy = nebO.y;
+    const milkyO = perspOffset(MILKY_Z), milkyOx = milkyO.x, milkyOy = milkyO.y;
     const W=cv.width, H=cv.height;
     if(W!==lastW||H!==lastH||!nebulaCache){ nebulaCache=buildNebula(W,H); lastW=W; lastH=H; }
 
     /* nebula (cached image, now with a small parallax offset — deepest layer) */
     ctx.drawImage(nebulaCache, -NEB_PAD+nebOx, -NEB_PAD+nebOy);
 
-    /* ── ultra-deep stars (new layer, furthest of all, barely drifts) ── */
+    /* ── ultra-deep stars (furthest of all, barely drifts) ── */
     STARS_ULTRADEEP.forEach(s=>{
       const a = s.a*(0.5+0.5*Math.sin(frame*s.twinkleSpeed+s.twinklePhase));
       ctx.fillStyle= s.hue===200 ? `rgba(100,180,255,${a})` : s.hue===30 ? `rgba(255,200,100,${a})` : `rgba(255,255,255,${a})`;
-      ctx.beginPath();ctx.arc(s.x*W+ultraOx,s.y*H+ultraOy,s.r,0,Math.PI*2);ctx.fill();
+      const o=perspOffset(s.z);
+      ctx.beginPath();ctx.arc(s.x*W+o.x,s.y*H+o.y,s.r,0,Math.PI*2);ctx.fill();
     });
 
     /* ── deepest stars ── */
     STARS_DEEP.forEach(s=>{
       const a = s.a*(0.5+0.5*Math.sin(frame*s.twinkleSpeed+s.twinklePhase));
       ctx.fillStyle= s.hue===200 ? `rgba(100,180,255,${a})` : s.hue===30 ? `rgba(255,200,100,${a})` : `rgba(255,255,255,${a})`;
-      ctx.beginPath();ctx.arc(s.x*W+deepOx,s.y*H+deepOy,s.r,0,Math.PI*2);ctx.fill();
+      const o=perspOffset(s.z);
+      ctx.beginPath();ctx.arc(s.x*W+o.x,s.y*H+o.y,s.r,0,Math.PI*2);ctx.fill();
     });
 
     /* ── background stars ── */
     STARS_BG.forEach(s=>{
       const a = s.a*(0.5+0.5*Math.sin(frame*s.twinkleSpeed+s.twinklePhase));
       ctx.fillStyle= s.hue===200 ? `rgba(100,180,255,${a})` : s.hue===30 ? `rgba(255,200,100,${a})` : `rgba(255,255,255,${a})`;
-      ctx.beginPath();ctx.arc(s.x*W+bgOx,s.y*H+bgOy,s.r,0,Math.PI*2);ctx.fill();
+      const o=perspOffset(s.z);
+      ctx.beginPath();ctx.arc(s.x*W+o.x,s.y*H+o.y,s.r,0,Math.PI*2);ctx.fill();
     });
 
     /* ── mid stars (between bg and fg) ── */
     STARS_MID.forEach(s=>{
       const a = s.a*(0.55+0.45*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+.5));
       ctx.fillStyle= s.hue===200 ? `rgba(100,180,255,${a})` : s.hue===30 ? `rgba(255,200,100,${a})` : `rgba(255,255,255,${a})`;
-      ctx.beginPath();ctx.arc(s.x*W+midOx,s.y*H+midOy,s.r,0,Math.PI*2);ctx.fill();
+      const o=perspOffset(s.z);
+      ctx.beginPath();ctx.arc(s.x*W+o.x,s.y*H+o.y,s.r,0,Math.PI*2);ctx.fill();
     });
 
-    /* ── near-foreground stars (new layer, between mid and fg) ── */
+    /* ── near-foreground stars (between mid and fg) ── */
     STARS_NEARFG.forEach(s=>{
       const a = s.a*(0.58+0.42*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+.8));
       ctx.fillStyle= s.hue===200 ? `rgba(100,180,255,${a})` : s.hue===30 ? `rgba(255,200,100,${a})` : `rgba(255,255,255,${a})`;
-      ctx.beginPath();ctx.arc(s.x*W+nearFgOx,s.y*H+nearFgOy,s.r,0,Math.PI*2);ctx.fill();
+      const o=perspOffset(s.z);
+      ctx.beginPath();ctx.arc(s.x*W+o.x,s.y*H+o.y,s.r,0,Math.PI*2);ctx.fill();
     });
 
-    /* ── foreground stars (nearest layer, slightly brighter, full tilt travel) ── */
+    /* ── foreground stars (nearest layer, slightly brighter, most travel) ── */
     STARS_FG.forEach(s=>{
       const a = s.a*(0.6+0.4*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+1));
       ctx.fillStyle=`rgba(255,255,255,${a})`;
-      const sx=s.x*W+fgOx, sy=s.y*H+fgOy;
+      const o=perspOffset(s.z);
+      const sx=s.x*W+o.x, sy=s.y*H+o.y;
       ctx.beginPath();ctx.arc(sx,sy,s.r,0,Math.PI*2);ctx.fill();
       /* subtle cross-hair flare on bright stars */
       if(s.r>1.4){
