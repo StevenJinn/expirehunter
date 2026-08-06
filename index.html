@@ -4,6 +4,7 @@
 <!-- ════════════════════════════════════════════════════════════════
      @MAP — CODE ZONE INDEX (17 zones) — ctrl+F "@ZONE:" to jump between them
      ⚠ ก่อนแก้ @ZONE:CLOUD-SYNC ดู TDZ-ORDER rule ในคอมเมนต์ตรงนั้นก่อนเสมอ
+     ⚠ ทุก AI ที่แก้ไฟล์นี้: อ่าน @NOTE:AI-EDIT-PROTOCOL ด้านล่างก่อนแก้โค้ดใดๆ ทั้งหมด (บังคับ)
      ดูแผนผังเต็ม + ประวัติบั๊ก ที่ ExpireHunter-CodeMap.md (Obsidian)
        @ZONE:BOOT-CONFIG        title/meta/CDN scripts/fonts
        @ZONE:NAV-SHELL          bottom nav, page containers, switchTab, FAB
@@ -30,6 +31,95 @@
      not just eyeball the source or confirm JS syntax is valid. Syntax being valid does not
      mean the rendered/computed result matches intent (e.g. opacity+filter silently
      flattening transform-style:preserve-3d is a real trap this file already hit once). -->
+<!-- ════════════════════════════════════════════════════════════════
+     @NOTE:AI-EDIT-PROTOCOL — MANDATORY for ANY AI agent editing this file (any model,
+     any tool, any session). Applies to every zone, every edit, not just performance work.
+     This is a single-file production app with no test suite and no build step — every
+     mistake ships directly. Read this fully before touching any code below.
+
+     ── 0. NAVIGATE FIRST ──
+     Consult @MAP above to identify which @ZONE(s) the task touches. If the task spans
+     unfamiliar territory, grep the zone name first and read its full extent before editing
+     anything inside it. @ZONE:CLOUD-SYNC is TDZ-order-sensitive — read its own banner
+     comment (search "TDZ-ORDER") before reordering ANYTHING near it, even edits that look
+     unrelated to Firebase.
+
+     ── 1. FIND EVERY SIBLING BEFORE FIXING ANY ONE INSTANCE ──
+     If the task is "fix bug X" and X is a pattern (a loop shape, a missing guard, a naming
+     bug, a copy-pasted block), grep the WHOLE file for that pattern first
+     (requestAnimationFrame(, setInterval(, getUserMedia(, classList.contains(', addEventListener(,
+     the exact broken snippet, etc.) and enumerate every occurrence before writing any fix.
+     Fixing only the reported instance while identical siblings remain broken elsewhere in
+     the file is treated as an incomplete/failed task, not a partial success.
+
+     ── 2. REUSE ESTABLISHED VOCABULARY — DO NOT INVENT PARALLEL MECHANISMS ──
+     This file already has a fixed vocabulary for common concerns. Grep for these before
+     adding a new one with a different name for the same concept:
+       • Overlay/sheet-frozen guard classes checked via classList.contains(...) before heavy
+         work: 'ues-open-frozen', 'wholesale-open', 'cam-open', 'wc-frozen', 'wc-open'.
+       • rAF fps-cap idiom (reused across starfield/sonar/ecg/hex/particle loops):
+           if (now - _last < THRESHOLD_MS) { rafId = requestAnimationFrame(fn); return; }
+           _last = now;
+         Reuse this exact shape for any new capped loop instead of a different throttle
+         pattern (setTimeout-based throttling, lodash.throttle, etc.).
+       • visibilitychange + document.hidden pairing to pause/resume rAF chains and detach
+         sensor listeners (deviceorientation, camera tracks) — see #sl-canvas / _starfieldStop
+         as the canonical example of "actually detach, don't just skip drawing".
+       • Comment tag style: "// [FIX YYYY-MM-DD vN]" or "// [PERF FIX YYYY-MM-DD]" followed by
+         a Thai explanation of (a) what was broken, (b) why it was broken, (c) what changed.
+         All in-code comments in this file are Thai; keep new ones Thai too, EXCEPT meta/
+         protocol notes like this one and @NOTE:CLAUDE-VERIFY which stay in English for
+         cross-model portability.
+
+     ── 3. FRAME-RATE / TIMING CHANGES: THE dt-SCALING RULE ──
+     Before adding or changing an fps cap on any rAF loop, check whether the per-frame state
+     mutations inside it are frame-counted (`x += vx`, `angle += angularV`, `pulse += pulseV`)
+     or time-scaled (`x += vx * dt`). If frame-counted and you cap/lower the loop's effective
+     fps, ALL such mutations must be multiplied by a delta-time factor
+     (dt = (now - lastFrameTime) / 16.6667, clamped to guard against huge gaps after the tab
+     was hidden) or the on-screen animation speed will silently slow down in proportion to
+     the fps drop. This is a visual-quality regression, not just a perf tweak — verify it
+     explicitly, do not assume a fps cap is "free."
+
+     ── 4. SCOPE DISCIPLINE ──
+     Change only what the task requires. Do not refactor unrelated code, rename working
+     variables, or "clean up" adjacent logic as a side effect — this file has been hand-
+     tuned over many sessions and an unrelated diff is itself a risk. If touching shared
+     state (globals declared once and read by multiple @ZONE blocks), confirm every reader
+     before changing its shape/type.
+
+     ── 5. VERIFY BEFORE CLAIMING DONE ──
+       a. Extract every inline script element individually (split on each SCRIPT-tag pair,
+          not just the first/last) and run `node --check` on each — a
+          syntax error in one block does not surface by eyeballing another. Check ALL of
+          them, every time, even when only one block was touched (a stray unescaped
+          backtick/brace can leak across a block boundary during editing).
+       b. Re-run the grep from step 1 to confirm zero remaining unfixed siblings.
+       c. For any visual/CSS/animation/UI claim, follow @NOTE:CLAUDE-VERIFY — actually
+          render and inspect, don't infer from source.
+       d. If the edit touches @ZONE:CLOUD-SYNC or anything using `let`/`const` near it,
+          re-check TDZ ordering (see the 2026-06-24 sonar/threat-matrix-disappears bug
+          referenced in that zone's banner as the precedent for what goes wrong).
+
+     ── 6. REPORT HONESTLY, INCLUDING TRADE-OFFS ──
+     State plainly: what was changed and why; what was checked and deliberately left alone
+     (with reasoning); any behavioral, timing, or visual side effect the change introduces,
+     however minor. Never omit a known trade-off to make a report look cleaner. If a
+     trade-off's desirability is ambiguous (e.g. detection latency vs. battery life), ask
+     before deciding unilaterally.
+
+     ── HARD PROHIBITIONS ──
+       • NEVER fix only the reported instance when grep shows siblings with the same defect.
+       • NEVER cap/throttle a frame-based loop without auditing and, if needed, applying
+         dt-scaling per section 3.
+       • NEVER invent a new guard-class/global/flag name for a concept this file already
+         names (section 2) — grep first.
+       • NEVER declare a task complete without `node --check` on every script block.
+       • NEVER change a resolution/interval/timing constant without a comment noting the old
+         value and the reason for the new one.
+       • NEVER reorder or "simplify" code inside/near @ZONE:CLOUD-SYNC without reading its
+         TDZ-ORDER banner first.
+     ════════════════════════════════════════════════════════════════ -->
 <!-- @ZONE:BOOT-CONFIG — title/meta/CDN scripts (xlsx/zxing/firebase)/Google Fonts -->
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
@@ -7784,12 +7874,55 @@ document.body.style.overflow = 'hidden';
     window.addEventListener('deviceorientation', _onOrientation);
   }
   // desktop / no-motion-sensor fallback — pointer position relative to screen center
-  window.addEventListener('pointermove', (e)=>{
+  // [FIX 2026-08-06 v4] named (was an inline arrow) so it can be removeEventListener'd by
+  // _starfieldStop() below — see the heat/battery note near draw().
+  function _onPointerMove(e){
     const overlayForTilt = document.getElementById('auth-gate-overlay');
     if (overlayForTilt && overlayForTilt.style.display==='none') return;
     targetTiltX = _clamp((e.clientX/innerWidth-.5)*2.6, -1, 1);
     targetTiltY = _clamp((e.clientY/innerHeight-.5)*2.6, -1, 1);
-  }, { passive:true });
+  }
+  window.addEventListener('pointermove', _onPointerMove, { passive:true });
+
+  /* [FIX 2026-08-06 v4] real "off switch" for the whole starfield subsystem — stops the rAF
+     chain outright (not just skipping the draw) and detaches the deviceorientation listener,
+     which is the part that actually matters for heat/battery: it keeps the phone's motion
+     sensor hardware polling continuously for as long as it's attached, regardless of how cheap
+     the JS callback itself is. Called the instant login finishes (see _authGateSyncDone, which
+     calls this directly) and again defensively from draw() itself in case the overlay gets
+     hidden through some other path. _starfieldResume() undoes it — wired to the sign-out
+     branch of onAuthStateChanged, the only place the overlay is shown again. */
+  let _slRunning = true;
+  function _starfieldStop(){
+    if (!_slRunning) return; // already stopped — avoid double-removing listeners
+    _slRunning = false;
+    window.removeEventListener('deviceorientation', _onOrientation);
+    window.removeEventListener('pointermove', _onPointerMove);
+  }
+  function _starfieldResume(){
+    if (_slRunning) return; // already running
+    _slRunning = true;
+    window.addEventListener('deviceorientation', _onOrientation);
+    window.addEventListener('pointermove', _onPointerMove, { passive:true });
+    _slLast = 0; // don't let a stale timestamp gate the very next frame
+    requestAnimationFrame(draw);
+  }
+  window._starfieldStop = _starfieldStop;
+  window._starfieldResume = _starfieldResume;
+
+  /* [NEW 2026-08-06] "warp" burst — เรียกตอนล็อคอินผ่าน (จาก _authGateSyncDone) ให้ฉากรู้สึก
+     เหมือนกำลังเคลื่อนที่พุ่งไปข้างหน้าผ่านหมู่ดาว ก่อนที่ overlay จะ fade ออกไปเจอ dashboard
+     — หลักการ: ดาวแต่ละดวงมี z (ระยะจากกล้อง) อยู่แล้ว ใช้ z นั้นคำนวณระยะพุ่งออกจากจุดศูนย์กลางจอ
+     แบบ perspective จริง (ดาวใกล้กล้อง/z น้อย พุ่งเร็ว+ไกลกว่าดาวไกล/z มาก เหมือนบินทะลุอวกาศ) แล้ว
+     วาดเป็นเส้น "ลาก" (streak) จากตำแหน่งเดิมไปตำแหน่งใหม่แทนจุดกลม ให้เห็นเป็นเส้นแสงพุ่งผ่านตา
+     ต่อเนื่องตลอดช่วง warpDuration ไม่ใช่แค่กระตุกครั้งเดียว — ความเร็วขยับขึ้นแบบ ease-in ตลอดช่วง
+     (เริ่มช้า เร่งไว) ให้ความรู้สึกเหมือนยานเร่งเครื่องเข้าสู่ warp speed */
+  let warpActive=false, warpStart=0, warpDuration=900, warpMaxK=46;
+  function _starfieldWarp(ms, maxK){
+    warpActive=true; warpStart=performance.now();
+    if(ms) warpDuration=ms; if(maxK) warpMaxK=maxK;
+  }
+  window._starfieldWarp = _starfieldWarp;
 
   /* [FIX 2026-08-06] star field: 6 layers for parallax depth now (was 4) — denser overall
      (~1,150 stars vs ~590 before) and one more rung added at each end (a barely-there
@@ -7840,15 +7973,25 @@ document.body.style.overflow = 'hidden';
       // cartoon-saturated.
       const sat = Math.max(0, Math.min(1, (r-.35)/2.0)) * .62;
       const [sr,sg,sb] = pickSpectral();
+      // [PERF 2026-08-06] quantize each channel to steps of 12 and precompute the resulting
+      // "colour key" string ONCE per star at creation time, instead of building a fresh rgba()
+      // string from scratch for every star on every single frame. This is what lets draw()
+      // batch many stars sharing a (colour, twinkle-brightness) bucket into one fillStyle +
+      // one fill() call instead of ~1,450 individual ones — see drawStarLayer() below, the
+      // actual fix for the frame-drop/stutter this was causing on lower-end phones. Quantizing
+      // to steps of 12 on a 0-255 channel is well under the ~1-step-per-2-3-levels a human eye
+      // can distinguish on a dot this small, so there's no visible banding.
+      const q = v => Math.round(v/12)*12;
+      const qcr = q(Math.round(255+(sr-255)*sat));
+      const qcg = q(Math.round(255+(sg-255)*sat));
+      const qcb = q(Math.round(255+(sb-255)*sat));
       return {
         x:Math.random(), y:Math.random(),
         r, a:aMin+Math.random()*(aMax-aMin),
         z:zMin+Math.random()*(zMax-zMin), // virtual camera-distance — drives perspective offset, not a fixed layer bucket
         twinkleSpeed:.003+Math.random()*.008,
         twinklePhase:Math.random()*Math.PI*2,
-        cr: Math.round(255+(sr-255)*sat),
-        cg: Math.round(255+(sg-255)*sat),
-        cb: Math.round(255+(sb-255)*sat),
+        cr:qcr, cg:qcg, cb:qcb, ck: qcr+'_'+qcg+'_'+qcb,
       };
     });
   }
@@ -7938,6 +8081,81 @@ document.body.style.overflow = 'hidden';
   // than fully stopped) so sign-out — which flips the overlay back to display:flex (see
   // onAuthStateChanged above) — makes the starfield reappear immediately with no extra wiring.
   var _slLast=0;
+  // [PERF 2026-08-06] cache the overlay element reference once instead of calling
+  // document.getElementById() on every single animation frame (was happening twice per frame:
+  // once here, once in the pointermove handler above). DOM lookups are cheap individually but
+  // add up at a steady 20fps for the lifetime of the login screen.
+  const _overlayElCache = document.getElementById('auth-gate-overlay');
+  // hoisted out of draw() so it isn't re-created as a brand-new function object every single
+  // frame — small, but it's one more thing GC has to chase for no benefit.
+  function perspOffset(z){ return { x: curTiltX*TILT_MAX/z, y: curTiltY*TILT_MAX/z }; }
+  let milkyGradient = null; // rebuilt only on resize, alongside nebulaCache — see draw()
+  /* [PERF 2026-08-06] the real fix for the stutter: batch each star layer into buckets keyed
+     by (quantized colour, quantized twinkle-brightness) and draw every star in a bucket as ONE
+     shared subpath under ONE fillStyle + ONE fill() call, instead of the previous per-star
+     beginPath+fillStyle+arc+fill (≈1,450 individual fillStyle assignments + fill() calls per
+     frame across all 8 layers — each fillStyle assignment reparses an rgba() string and each
+     fill() is a separate rasterize/composite step, which is what was dropping frames on
+     weaker phones once the layer count and star count doubled). Stars with a≈0 (twinkled all
+     the way down) are skipped outright rather than drawn invisibly. flareR, if given, also
+     collects the (rare) big stars into a second lightweight pass for the cross-hair flare —
+     kept per-star since so few stars qualify that batching it wouldn't help. */
+  /* [NEW 2026-08-06] curWarpK — set once per frame in draw() (0 = ปกติ, ไม่มี warp) และอ่านตรงนี้
+     เพื่อยืดดาวแต่ละดวงเป็นเส้นลาก (streak) พุ่งออกจากจุดศูนย์กลางจอ ระยะยืดคำนวณจาก s.z ของดาวเอง
+     (perspective จริง: z น้อย/ดาวใกล้กล้อง ยืดไกลกว่า z มาก/ดาวไกล) ให้ความรู้สึกบินทะลุหมู่ดาว */
+  let curWarpK = 0, warpCX = 0, warpCY = 0;
+  function drawStarLayer(list, W, H, ampBase, ampVar, phaseOff, flareR){
+    const buckets = {};
+    const flares = flareR ? [] : null;
+    const wk = curWarpK;
+    for(let i=0;i<list.length;i++){
+      const s = list[i];
+      const a = s.a*(ampBase+ampVar*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+phaseOff));
+      if(a<=0.008) continue; // effectively invisible this frame — skip the draw entirely
+      const o = perspOffset(s.z);
+      const sx = s.x*W+o.x, sy = s.y*H+o.y;
+      const ab = Math.max(1, Math.round(a*16)); // 16 brightness steps — plenty smooth for a twinkle
+      const key = s.ck+'_'+ab;
+      let bucket = buckets[key];
+      if(!bucket) bucket = buckets[key] = { cr:s.cr, cg:s.cg, cb:s.cb, a:ab/16, pts:[], streaks: wk>0.02 ? [] : null };
+      bucket.pts.push(sx, sy, s.r);
+      if(wk>0.02){
+        // ยืดจากจุดเดิมออกไปตามเวกเตอร์ (จุดเดิม - จุดศูนย์กลาง) คูณด้วย wk/z — ดาวใกล้กล้อง (z น้อย)
+        // ยืดไกลกว่าดาวไกล (z มาก) มาก ให้ความลึกสมจริงเหมือนพุ่งผ่านอวกาศจริง
+        const stretch = wk / s.z;
+        const tx = sx + (sx-warpCX)*stretch, ty = sy + (sy-warpCY)*stretch;
+        bucket.streaks.push(sx, sy, tx, ty, Math.max(.4, s.r*.85));
+      }
+      if(flareR && s.r>flareR) flares.push(sx, sy, s.cr, s.cg, s.cb, a);
+    }
+    for(const key in buckets){
+      const b = buckets[key];
+      if(b.streaks && b.streaks.length){
+        // เส้นลาก วาดก่อนจุดดาว (จุดดาวจะทับปลายเส้นให้ดูเป็นหัวลำแสง)
+        ctx.strokeStyle=`rgba(${b.cr},${b.cg},${b.cb},${b.a*.85})`;
+        ctx.lineCap='round';
+        const st=b.streaks;
+        for(let j=0;j<st.length;j+=5){
+          ctx.lineWidth=st[j+4];
+          ctx.beginPath();ctx.moveTo(st[j],st[j+1]);ctx.lineTo(st[j+2],st[j+3]);ctx.stroke();
+        }
+      }
+      ctx.fillStyle=`rgba(${b.cr},${b.cg},${b.cb},${b.a})`;
+      ctx.beginPath();
+      const pts=b.pts;
+      for(let j=0;j<pts.length;j+=3){ ctx.moveTo(pts[j]+pts[j+2],pts[j+1]); ctx.arc(pts[j],pts[j+1],pts[j+2],0,Math.PI*2); }
+      ctx.fill();
+    }
+    if(wk>0.02) ctx.lineCap='butt'; // คืนค่า default — กันไม่ให้ไปกระทบเส้น crosshair flare ด้านล่าง
+    if(flares){
+      for(let i=0;i<flares.length;i+=6){
+        const sx=flares[i], sy=flares[i+1], cr=flares[i+2], cg=flares[i+3], cb=flares[i+4], a=flares[i+5];
+        ctx.strokeStyle=`rgba(${cr},${cg},${cb},${a*.25})`; ctx.lineWidth=.5;
+        ctx.beginPath();ctx.moveTo(sx-4,sy);ctx.lineTo(sx+4,sy);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(sx,sy-4);ctx.lineTo(sx,sy+4);ctx.stroke();
+      }
+    }
+  }
   function draw(now){
     // [FIX 2026-08-01 v13] เจอตัวการใหญ่จริง: draw() นี้ไม่มี guard อะไรเลยแม้แต่ document.hidden —
     // วาดดาว 280 ดวง+เนบิวลา (สร้าง gradient ใหม่ทุกเฟรมสำหรับ Milky Way band) เต็ม 60fps ตลอดเวลา
@@ -7947,121 +8165,78 @@ document.body.style.overflow = 'hidden';
     if(document.hidden || document.body.classList.contains('ues-open-frozen')){
       requestAnimationFrame(draw); return;
     }
-    // [FIX 2026-08-04] real fix — see comment block above. Overlay hidden (login already done)
-    // → skip all star/nebula work, just keep the chain alive cheaply so sign-out can resume it.
-    const overlayEl = document.getElementById('auth-gate-overlay');
-    if (overlayEl && overlayEl.style.display === 'none') {
-      requestAnimationFrame(draw); return;
+    // [FIX 2026-08-06 v4] "เมื่อล็อคอินเสร็จ ต้องปิดทุกส่วนจริงๆ ไม่ใช่แค่ข้ามการวาด" — ก่อนหน้านี้
+    // แค่ return โดยไม่วาด แต่ยัง requestAnimationFrame(draw) ต่อไปเรื่อยๆ (เดินที่ native refresh
+    // rate ตลอด session แม้เบาแต่ก็ยังทำงานอยู่จริง) และที่สำคัญกว่านั้นคือ deviceorientation
+    // listener (เซนเซอร์ gyro/accelerometer) ไม่เคยถูกถอดออกเลย — sensor hardware ยังถูก poll
+    // ต่อเนื่องตลอดทั้ง session ซึ่งเป็นตัวกินแบตเตอรี่/ทำให้เครื่องร้อนตัวจริงที่มีการยืนยันแล้ว
+    // (ไม่ใช่แค่ JS callback ที่เบา). ตอนนี้ตรวจแล้วเรียก _starfieldStop() ทันที ซึ่ง: ยกเลิก rAF
+    // chain (ไม่เรียก requestAnimationFrame ต่ออีก) + removeEventListener ทั้ง deviceorientation
+    // และ pointermove จริงๆ — ปิดสนิท ไม่ใช่แค่ idle. (_authGateSyncDone() ก็เรียกฟังก์ชันนี้ตรงๆ
+    // ทันทีที่ overlay ถูกซ่อนด้วย ไม่ต้องรอ frame ถัดไปมาตรวจจับเอง — ดู @ZONE นั้น)
+    if (_overlayElCache && _overlayElCache.style.display === 'none') {
+      _starfieldStop();
+      return;
     }
-    if (now - _slLast < 50) { requestAnimationFrame(draw); return; } // cap 20fps
+    // [NEW 2026-08-06] ระหว่าง warp burst ให้วิ่งเต็มอัตรารีเฟรชจอ (ไม่ cap 20fps) — เส้นลาก
+    // ของดาวต้องขยับทุกเฟรมจริงๆ ไม่งั้นจะดูเป็นการกระตุกเป็นสเต็ปแทนที่จะเป็นการไหลลื่นต่อเนื่อง
+    if (!warpActive && now - _slLast < 50) { requestAnimationFrame(draw); return; } // cap 20fps (ปกติ)
     _slLast = now;
     // ease current tilt toward target — slow heavy drift, not 1:1 sensor jitter
     // [FIX 2026-08-06] .08→.13, catches up to the sensor noticeably faster (paired with the
     // TILT_MAX/orientation-divisor bumps above) while still easing rather than snapping
     curTiltX += (targetTiltX-curTiltX)*.13;
     curTiltY += (targetTiltY-curTiltY)*.13;
+    // [NEW 2026-08-06] คำนวณ warp progress ของเฟรมนี้ — ease-in (progress²) ให้เริ่มช้าแล้วเร่งไว
+    // เหมือนยานเร่งเครื่องเข้าสู่ warp speed แทนที่จะกระโดดไปความเร็วสูงสุดทันที
+    if (warpActive){
+      const elapsed = now - warpStart;
+      if (elapsed >= warpDuration){ warpActive=false; curWarpK=0; }
+      else { const p = elapsed/warpDuration; curWarpK = warpMaxK * p * p; }
+    } else { curWarpK = 0; }
     // [FIX 2026-08-06 v2] perspective projection — replaces the old fixed per-layer fraction
     // constants. Every star (and the nebula/Milky Way, via their own fixed pseudo-z) now gets
     // its screen offset from this single camera-distance law instead of being snapped into one
     // of 6 discrete speed bands, so the whole scene reads as actual depth rather than layered
-    // cardboard cutouts sliding at different fixed speeds.
-    function perspOffset(z){ return { x: curTiltX*TILT_MAX/z, y: curTiltY*TILT_MAX/z }; }
+    // cardboard cutouts sliding at different fixed speeds. (perspOffset itself is now hoisted
+    // above draw() — see [PERF 2026-08-06] note.)
     const nebO = perspOffset(NEB_Z), nebOx = nebO.x, nebOy = nebO.y;
     const milkyO = perspOffset(MILKY_Z), milkyOx = milkyO.x, milkyOy = milkyO.y;
     const W=cv.width, H=cv.height;
-    if(W!==lastW||H!==lastH||!nebulaCache){ nebulaCache=buildNebula(W,H); lastW=W; lastH=H; }
+    warpCX = W*.5; warpCY = H*.5; // จุดศูนย์กลางที่เส้นลากของ warp พุ่งออกจากตรงนี้
+    if(W!==lastW||H!==lastH||!nebulaCache){
+      nebulaCache=buildNebula(W,H); lastW=W; lastH=H;
+      // [PERF 2026-08-06] Milky Way gradient used to be rebuilt (new CanvasGradient object +
+      // 5 addColorStop calls) on EVERY frame even though it only actually depends on canvas
+      // height, which only changes on resize. Now cached alongside the nebula and only rebuilt
+      // when that changes.
+      const bw=H*.22;
+      milkyGradient = ctx.createLinearGradient(0,-bw*.5,0,bw*.5);
+      milkyGradient.addColorStop(0,'transparent');
+      milkyGradient.addColorStop(.35,'rgba(180,190,220,.025)');
+      milkyGradient.addColorStop(.5,'rgba(200,210,240,.04)');
+      milkyGradient.addColorStop(.65,'rgba(180,190,220,.025)');
+      milkyGradient.addColorStop(1,'transparent');
+    }
 
     /* nebula (cached image, now with a small parallax offset — deepest layer) */
     ctx.drawImage(nebulaCache, -NEB_PAD+nebOx, -NEB_PAD+nebOy);
 
-    /* ── farthest stars (new, beyond ultradeep — near-static backdrop) ── */
-    STARS_FARTHEST.forEach(s=>{
-      const a = s.a*(0.5+0.5*Math.sin(frame*s.twinkleSpeed+s.twinklePhase));
-      ctx.fillStyle=`rgba(${s.cr},${s.cg},${s.cb},${a})`;
-      const o=perspOffset(s.z);
-      ctx.beginPath();ctx.arc(s.x*W+o.x,s.y*H+o.y,s.r,0,Math.PI*2);ctx.fill();
-    });
-
-    /* ── ultra-deep stars (barely drifts) ── */
-    STARS_ULTRADEEP.forEach(s=>{
-      const a = s.a*(0.5+0.5*Math.sin(frame*s.twinkleSpeed+s.twinklePhase));
-      ctx.fillStyle=`rgba(${s.cr},${s.cg},${s.cb},${a})`;
-      const o=perspOffset(s.z);
-      ctx.beginPath();ctx.arc(s.x*W+o.x,s.y*H+o.y,s.r,0,Math.PI*2);ctx.fill();
-    });
-
-    /* ── deepest stars ── */
-    STARS_DEEP.forEach(s=>{
-      const a = s.a*(0.5+0.5*Math.sin(frame*s.twinkleSpeed+s.twinklePhase));
-      ctx.fillStyle=`rgba(${s.cr},${s.cg},${s.cb},${a})`;
-      const o=perspOffset(s.z);
-      ctx.beginPath();ctx.arc(s.x*W+o.x,s.y*H+o.y,s.r,0,Math.PI*2);ctx.fill();
-    });
-
-    /* ── background stars ── */
-    STARS_BG.forEach(s=>{
-      const a = s.a*(0.5+0.5*Math.sin(frame*s.twinkleSpeed+s.twinklePhase));
-      ctx.fillStyle=`rgba(${s.cr},${s.cg},${s.cb},${a})`;
-      const o=perspOffset(s.z);
-      ctx.beginPath();ctx.arc(s.x*W+o.x,s.y*H+o.y,s.r,0,Math.PI*2);ctx.fill();
-    });
-
-    /* ── mid stars (between bg and fg) ── */
-    STARS_MID.forEach(s=>{
-      const a = s.a*(0.55+0.45*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+.5));
-      ctx.fillStyle=`rgba(${s.cr},${s.cg},${s.cb},${a})`;
-      const o=perspOffset(s.z);
-      ctx.beginPath();ctx.arc(s.x*W+o.x,s.y*H+o.y,s.r,0,Math.PI*2);ctx.fill();
-    });
-
-    /* ── near-foreground stars (between mid and fg) ── */
-    STARS_NEARFG.forEach(s=>{
-      const a = s.a*(0.58+0.42*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+.8));
-      ctx.fillStyle=`rgba(${s.cr},${s.cg},${s.cb},${a})`;
-      const o=perspOffset(s.z);
-      ctx.beginPath();ctx.arc(s.x*W+o.x,s.y*H+o.y,s.r,0,Math.PI*2);ctx.fill();
-    });
-
-    /* ── foreground stars (slightly brighter, more travel) ── */
-    STARS_FG.forEach(s=>{
-      const a = s.a*(0.6+0.4*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+1));
-      ctx.fillStyle=`rgba(${s.cr},${s.cg},${s.cb},${a})`;
-      const o=perspOffset(s.z);
-      const sx=s.x*W+o.x, sy=s.y*H+o.y;
-      ctx.beginPath();ctx.arc(sx,sy,s.r,0,Math.PI*2);ctx.fill();
-      /* subtle cross-hair flare on bright stars, tinted to the star's own colour */
-      if(s.r>1.4){
-        ctx.strokeStyle=`rgba(${s.cr},${s.cg},${s.cb},${a*.25})`;ctx.lineWidth=.5;
-        ctx.beginPath();ctx.moveTo(sx-4,sy);ctx.lineTo(sx+4,sy);ctx.stroke();
-        ctx.beginPath();ctx.moveTo(sx,sy-4);ctx.lineTo(sx,sy+4);ctx.stroke();
-      }
-    });
-
-    /* ── super-foreground stars (new — nearest layer of all, most parallax travel) ── */
-    STARS_SUPERFG.forEach(s=>{
-      const a = s.a*(0.62+0.38*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+1.3));
-      ctx.fillStyle=`rgba(${s.cr},${s.cg},${s.cb},${a})`;
-      const o=perspOffset(s.z);
-      const sx=s.x*W+o.x, sy=s.y*H+o.y;
-      ctx.beginPath();ctx.arc(sx,sy,s.r,0,Math.PI*2);ctx.fill();
-      if(s.r>1.8){
-        ctx.strokeStyle=`rgba(${s.cr},${s.cg},${s.cb},${a*.3})`;ctx.lineWidth=.6;
-        ctx.beginPath();ctx.moveTo(sx-5,sy);ctx.lineTo(sx+5,sy);ctx.stroke();
-        ctx.beginPath();ctx.moveTo(sx,sy-5);ctx.lineTo(sx,sy+5);ctx.stroke();
-      }
-    });
+    /* ── all 8 star layers, each batched in one pass (see drawStarLayer above) ── */
+    drawStarLayer(STARS_FARTHEST,  W, H, 0.5, 0.5, 0);
+    drawStarLayer(STARS_ULTRADEEP, W, H, 0.5, 0.5, 0);
+    drawStarLayer(STARS_DEEP,      W, H, 0.5, 0.5, 0);
+    drawStarLayer(STARS_BG,        W, H, 0.5, 0.5, 0);
+    drawStarLayer(STARS_MID,       W, H, 0.55, 0.45, .5);
+    drawStarLayer(STARS_NEARFG,    W, H, 0.58, 0.42, .8);
+    drawStarLayer(STARS_FG,        W, H, 0.6,  0.4,  1,   1.4);
+    drawStarLayer(STARS_SUPERFG,   W, H, 0.62, 0.38, 1.3, 1.8);
 
     /* ── Milky Way band (faint diagonal strip) ── */
     {
       const cx2=W*.5+milkyOx,cy2=H*.5+milkyOy,len=Math.max(W,H)*1.4,bw=H*.22;
       ctx.save();ctx.translate(cx2,cy2);ctx.rotate(-.32);
-      const mg=ctx.createLinearGradient(0,-bw*.5,0,bw*.5);
-      mg.addColorStop(0,'transparent');
-      mg.addColorStop(.35,'rgba(180,190,220,.025)');
-      mg.addColorStop(.5,'rgba(200,210,240,.04)');
-      mg.addColorStop(.65,'rgba(180,190,220,.025)');
-      mg.addColorStop(1,'transparent');
-      ctx.fillStyle=mg;ctx.fillRect(-len*.5,-bw*.5,len,bw);
+      ctx.fillStyle=milkyGradient;ctx.fillRect(-len*.5,-bw*.5,len,bw);
       ctx.restore();
     }
 
@@ -10832,6 +11007,10 @@ try {
     } else {
       _cloudReady = false;
       if (overlay) overlay.style.display = 'flex';
+      // [FIX 2026-08-06 v4] sign-out is the ONLY place the overlay comes back — resume the
+      // starfield (rAF chain + deviceorientation/pointermove listeners) that _starfieldStop()
+      // switched off right after login. See #sl-canvas @ZONE for _starfieldResume().
+      if (typeof window._starfieldResume === 'function') window._starfieldResume();
       document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
       const btnEl  = document.getElementById('auth-gate-google-btn');
@@ -10990,6 +11169,9 @@ function _authGateSyncDone(){
   if (barPct) barPct.textContent = '100%';
   if (barLbl) { barLbl.textContent = 'READY ✓'; barLbl.style.animation='none'; barLbl.style.color='#a0e8ff'; }
   if (detail) detail.textContent = '4 / 4 NODES · CHARTED';
+  // [NEW 2026-08-06] ล็อคอินผ่านแล้ว — เร่งเครื่องพุ่งไปข้างหน้าผ่านหมู่ดาว (900ms ครอบคลุมทั้งช่วง
+  // รอ 600ms ก่อน fade และช่วง fade-out .4s ของ overlay เอง ให้ความเร็วไต่ขึ้นต่อเนื่องจนภาพเลือนหายไป)
+  if (typeof window._starfieldWarp === 'function') window._starfieldWarp(900, 46);
   setTimeout(() => {
     if (overlay) {
       overlay.style.transition = 'opacity .4s ease';
@@ -10998,6 +11180,10 @@ function _authGateSyncDone(){
         overlay.style.display='none'; overlay.style.opacity=''; overlay.style.transition='';
         document.documentElement.style.overflow = '';
         document.body.style.overflow = '';
+        // [FIX 2026-08-06 v4] ปิด starfield subsystem ทันทีตรงนี้ (rAF chain +
+        // deviceorientation/pointermove listeners) แทนที่จะรอให้ draw() เฟรมถัดไปตรวจจับเอง —
+        // ดู _starfieldStop() ใน @ZONE ของ #sl-canvas
+        if (typeof window._starfieldStop === 'function') window._starfieldStop();
       }, 420);
     }
   }, 600);
@@ -16035,17 +16221,24 @@ async function startCam() {
       const detector = new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","qr_code","code_39"]});
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d",{willReadFrequently:true});
-      async function tickNative(){
+      // [FIX เครื่องร้อน] จุดที่สามในกลุ่มเดียวกับ nxStartBarcodeScanner / shelfCam tick — และหนักกว่า
+      // สองจุดนั้นอีก เพราะกล้องตัวนี้ร้องขอความละเอียดสูงสุด 1920x1080 (ดู constraints ด้านบน) ทำให้
+      // ทุกเฟรมที่ native refresh rate ต้อง drawImage + BarcodeDetector.detect() บนภาพ Full HD ต่อเนื่อง
+      // — เติม cap ~10fps เหมือนอีกสองจุด บาร์โค้ดนิ่งอยู่กับที่ ถอดรหัส 10 ครั้ง/วินาทีก็พอ
+      let _mainScanLast=0;
+      async function tickNative(now){
         if(!camActive) return;
+        if((now||0)-_mainScanLast<100){ rafId=requestAnimationFrame(tickNative); return; } // cap ~10fps
+        _mainScanLast=now||0;
         if(vid.readyState>=vid.HAVE_ENOUGH_DATA){
           canvas.width=vid.videoWidth; canvas.height=vid.videoHeight;
           ctx.drawImage(vid,0,0);
           try{
             const results = await detector.detect(canvas);
             if(results.length){
-              const code = results[0].rawValue; const now=Date.now();
-              if(code&&(code!==window._lastCode||now-(window._lastTime||0)>2000)){
-                window._lastCode=code; window._lastTime=now; onBarcode(code); return;
+              const code = results[0].rawValue; const now2=Date.now();
+              if(code&&(code!==window._lastCode||now2-(window._lastTime||0)>2000)){
+                window._lastCode=code; window._lastTime=now2; onBarcode(code); return;
               }
             }
           }catch(e){}
@@ -18987,16 +19180,22 @@ async function toggleShelfCam(){
       const det=new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","qr_code","code_39"]});
       const canvas=document.createElement("canvas");
       const ctx=canvas.getContext("2d",{willReadFrequently:true});
-      async function tick(){
+      // [FIX เครื่องร้อน] เดิม tick() นี้วนที่ native refresh rate (60fps ขึ้นไป) ทุกเฟรมวาดภาพกล้องเต็ม
+      // ความละเอียด + ถอดรหัสบาร์โค้ดต่อเนื่อง — เหมือนจุดเดียวกับ nxStartBarcodeScanner ด้านบน เติม
+      // cap ~10fps ด้วย timestamp เพราะบาร์โค้ดนิ่งอยู่กับที่ ถอดรหัส ~10 ครั้ง/วินาทีเพียงพอแล้ว
+      let _shelfScanLast=0;
+      async function tick(now){
         if(!shelfCamActive) return;
+        if((now||0)-_shelfScanLast<100){ shelfRafId=requestAnimationFrame(tick); return; } // cap ~10fps
+        _shelfScanLast=now||0;
         if(vid.readyState>=vid.HAVE_ENOUGH_DATA){
           canvas.width=vid.videoWidth; canvas.height=vid.videoHeight;
           ctx.drawImage(vid,0,0);
           try{
             const r=await det.detect(canvas);
-            if(r.length){ const code=r[0].rawValue; const now=Date.now();
-              if(code&&(code!==window._sLastCode||now-(window._sLastTime||0)>2500)){
-                window._sLastCode=code; window._sLastTime=now; onShelfBarcode(code); return;
+            if(r.length){ const code=r[0].rawValue; const now2=Date.now();
+              if(code&&(code!==window._sLastCode||now2-(window._sLastTime||0)>2500)){
+                window._sLastCode=code; window._sLastTime=now2; onShelfBarcode(code); return;
               }
             }
           }catch(e){}
@@ -28005,8 +28204,21 @@ function drawGrid(){
   qCtx.restore();
 }
 
-function particleTick(){
+let _particleLast=0;
+function particleTick(now){
   if(document.hidden){particleRAF=null;return;} // [PERF FIX] หยุดจริงเมื่อแท็บซ่อน — เดิมไม่เช็คเลย
+  // [FIX เครื่องร้อน] เดิม loop นี้วนที่ native refresh rate (60fps ขึ้นไป) ไม่มี cap เลย ทั้งที่ต่อเฟรม
+  // ทำงานหนัก: วาด particle ~150 ตัว + node เรืองแสงด้วย shadowBlur ~40 ตัว (shadowBlur คือ canvas op
+  // ที่กิน GPU/CPU มากเป็นพิเศษบนมือถือ) + gradient ของ data stream อีก 3 เส้นทุกเฟรม เติม cap ~20fps
+  // แบบเดียวกับ loop อื่นในแอป (starfield/bg-rain/sonar) ลดภาระลงกว่าครึ่งโดยตายังไม่รู้สึกกระตุก
+  if(now-_particleLast<50){particleRAF=requestAnimationFrame(particleTick);return;} // cap ~20fps
+  // [FIX ความสวยงาม] เดิม (ตอน cap รอบแรก) ทุกการขยับ/pulse บวกทีละ "1 เฟรม" ตรงๆ (p.x+=p.vx เป็นต้น)
+  // พอลด fps จาก native (60-120) เหลือ 20 ความเร็วที่ตาเห็นจะช้าลงตามสัดส่วน (ช้าลง 3-6 เท่า) — ตอนนี้
+  // คูณด้วย dt (สเกลเทียบกับกรอบอ้างอิง 60fps เดิม) ทุกจุดที่มีการขยับตำแหน่ง/มุม/pulse/decay เพื่อให้
+  // ความเร็วภาพเท่าของเดิมทุกประการ ถึงจะวาดจริงน้อยครั้งลงต่อวินาทีก็ตาม (clamp กันกระโดดตอนเพิ่งเริ่ม/
+  // กลับมาจากแท็บซ่อนนานๆ ที่ timestamp ห่างผิดปกติ)
+  const dt = _particleLast ? Math.min((now-_particleLast)/16.6667, 6) : 1;
+  _particleLast=now;
   qCtx.clearRect(0,0,W,H);
   drawGrid();
   drawConnections();
@@ -28022,16 +28234,16 @@ function particleTick(){
     qCtx.strokeStyle=grad;qCtx.lineWidth=.8;
     qCtx.beginPath();qCtx.moveTo(ds.x,ds.y);qCtx.lineTo(ds.x,ds.y+ds.length);qCtx.stroke();
     qCtx.restore();
-    ds.y+=ds.vy;
+    ds.y+=ds.vy*dt;
     if(ds.y>H+ds.length){ds.y=-ds.length;}
   });
 
   // particles
   for(let i=particles.length-1;i>=0;i--){
     const p=particles[i];
-    p.x+=p.vx; p.y+=p.vy;
-    p.rot+=p.rotV; p.pulse+=p.pulseV;
-    p.life-=p.decay;
+    p.x+=p.vx*dt; p.y+=p.vy*dt;
+    p.rot+=p.rotV*dt; p.pulse+=p.pulseV*dt;
+    p.life-=p.decay*dt;
     p.alpha = p.maxAlpha * Math.sin(p.life*Math.PI);
     drawParticle(p);
     if(p.life<=0||p.x<-10||p.x>W+10||p.y<-10||p.y>H+10){
@@ -28041,7 +28253,7 @@ function particleTick(){
 
   // nodes
   nodes.forEach(n=>{
-    n.pulse+=n.pulseV;
+    n.pulse+=n.pulseV*dt;
     const a=n.alpha*(.7+.3*Math.sin(n.pulse));
     const [r,g,b]=n.col;
     qCtx.save();
@@ -30136,16 +30348,24 @@ function nxStartBarcodeScanner(vid){
     var detector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','qr_code','code_39']});
     var canvas=document.createElement('canvas');
     var ctx=canvas.getContext('2d',{willReadFrequently:true});
-    function tick(){
+    // [FIX เครื่องร้อน] เดิม tick() นี้วนที่ native refresh rate ของจอ (60fps ขึ้นไป บางเครื่อง 120fps)
+    // ทุกเฟรมมีการ drawImage เฟรมกล้องเต็มความละเอียดลง canvas + เรียก BarcodeDetector.detect()
+    // (งานถอดรหัสภาพ) ต่อเนื่องตลอดที่กล้องเปิดอยู่ — เป็นภาระ CPU/GPU ต่อเนื่องตัวใหญ่ที่สุดตัวหนึ่งในแอป
+    // ความจริงบาร์โค้ดนิ่งอยู่กับที่ ถอดรหัส ~10 ครั้ง/วินาทีก็เพียงพอและตอบสนองไวพอแล้ว จึงเติม cap
+    // ~10fps ด้วย timestamp เหมือน loop อื่นๆ ในแอป (starfield/sonar/ecg ก็ cap แบบนี้)
+    var _nxScanLast=0;
+    function tick(now){
       if(!nxCamActive)return;
+      if(now-_nxScanLast<100){nxRafId=requestAnimationFrame(tick);return;} // cap ~10fps
+      _nxScanLast=now;
       if(vid.readyState>=vid.HAVE_ENOUGH_DATA){
         canvas.width=vid.videoWidth;canvas.height=vid.videoHeight;
         ctx.drawImage(vid,0,0);
         detector.detect(canvas).then(function(results){
           if(results&&results.length){
-            var code=results[0].rawValue;var now=Date.now();
-            if(code&&(code!==nxLastCode||now-nxLastTime>3000)){
-              nxLastCode=code;nxLastTime=now;nxOnLiveBarcode(code);return;
+            var code=results[0].rawValue;var now2=Date.now();
+            if(code&&(code!==nxLastCode||now2-nxLastTime>3000)){
+              nxLastCode=code;nxLastTime=now2;nxOnLiveBarcode(code);return;
             }
           }
           nxRafId=requestAnimationFrame(tick);
