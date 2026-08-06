@@ -8168,9 +8168,11 @@ document.body.style.overflow = 'hidden';
       _starfieldStop();
       return;
     }
-    // [NEW 2026-08-06] ระหว่าง warp burst ให้วิ่งเต็มอัตรารีเฟรชจอ (ไม่ cap 20fps) — เส้นลาก
-    // ของดาวต้องขยับทุกเฟรมจริงๆ ไม่งั้นจะดูเป็นการกระตุกเป็นสเต็ปแทนที่จะเป็นการไหลลื่นต่อเนื่อง
-    if (!warpActive && now - _slLast < 50) { requestAnimationFrame(draw); return; } // cap 20fps (ปกติ)
+    // [FIX 2026-08-06 v4] "ดาว login กระตุก ใส่ fps เพิ่มมากๆ" — เอา cap 20fps ออกทั้งหมดสำหรับ
+    // หน้าจอ login เพราะหน้านี้แสดงอยู่แค่ช่วงสั้นๆ (ไม่ใช่ตลอด session — หยุดสนิทโดย
+    // _starfieldStop() ทันทีที่ login เสร็จ ดู @ZONE ด้านบน) จึงไม่คุ้มที่จะแลกความลื่นทิ้งไปเพื่อ
+    // ประหยัดแบตในช่วงเวลาสั้นแค่นี้ — ตอนนี้วิ่งเต็มอัตรารีเฟรชจอ (60-120fps ตามเครื่อง) ตลอดเวลา
+    // ที่ overlay แสดงอยู่ ไม่ใช่แค่ตอน warp burst เหมือนก่อนหน้านี้
     _slLast = now;
     // ease current tilt toward target — slow heavy drift, not 1:1 sensor jitter
     // [FIX 2026-08-06] .08→.13, catches up to the sensor noticeably faster (paired with the
