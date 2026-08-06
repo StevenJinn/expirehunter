@@ -62,9 +62,10 @@
            _last = now;
          Reuse this exact shape for any new capped loop instead of a different throttle
          pattern (setTimeout-based throttling, lodash.throttle, etc.).
-       • visibilitychange + document.hidden pairing to pause/resume rAF chains and detach
-         sensor listeners (deviceorientation, camera tracks) — see #sl-canvas / _starfieldStop
-         as the canonical example of "actually detach, don't just skip drawing".
+       • visibilitychange + document.hidden pairing to pause/resume rAF chains — see #sl-canvas /
+         _starfieldStop as the canonical example of "actually stop the rAF chain, don't just
+         skip drawing" (it no longer has sensor listeners to detach — see @ZONE:SCAN-CAMERA for
+         the canonical "detach a live sensor/camera track on hide" example instead).
        • Comment tag style: "// [FIX YYYY-MM-DD vN]" or "// [PERF FIX YYYY-MM-DD]" followed by
          a Thai explanation of (a) what was broken, (b) why it was broken, (c) what changed.
          All in-code comments in this file are Thai; keep new ones Thai too, EXCEPT meta/
@@ -7836,90 +7837,36 @@ document.body.style.overflow = 'hidden';
   addEventListener('resize', _debouncedResize);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', _debouncedResize);
 
-  /* [NEW 2026-08-04] parallax tilt — the star field has always had 2 depth layers (BG/FG)
-     but nothing actually drove them apart; both sat perfectly still. This drives a small
-     (targetTiltX, targetTiltY) in the range [-1,1] from whichever input source is available
-     — phone tilt (deviceorientation) first, falling back to drag/mouse-move for desktop or
-     devices without a motion sensor — and eases toward it each frame so the motion reads as
-     a slow, heavy drift rather than a jittery 1:1 tracking of every sensor sample. Foreground
-     stars get pushed further than background stars (classic parallax depth cue); the nebula
-     itself stays put so there's no risk of it not covering an edge. */
-  let targetTiltX=0, targetTiltY=0, curTiltX=0, curTiltY=0;
-  // [FIX 2026-08-06] ทำตามคำขอรอบสอง: หนาแน่นขึ้นอีก + ไวต่อการขยับมากขึ้นอีก + เพิ่มชั้นความลึก
-  // TILT_MAX 26→38 (ระยะเคลื่อนที่ตอนเอียงสุด), easing .08→.13 (ตามทันเซนเซอร์เร็วขึ้นอีกขั้น แต่ยัง
-  // กันไม่ให้เป็น 1:1 jitter ด้วยการ ease อยู่) — ปรับคู่กันเพื่อให้ "เคลื่อนมากขึ้นและไวขึ้น" แต่ยังนุ่มอยู่
-  // [FIX 2026-08-06 v3] ทำตามคำขอรอบสาม: "ความ sensitive อีกเท่าตัว" — เพิ่มระยะเคลื่อนที่สูงสุดเป็น 2
-  // เท่า (38→72) และเพิ่ม easing (.13→.20) ให้ตามทันเซนเซอร์ไวขึ้นอีกขั้นแต่ยังไม่ถึงขั้น 1:1 jitter,
-  // ลดตัวหารมุมเอียง/ตำแหน่งเมาส์ลงอีกเล็กน้อยเพื่อให้ถึงระยะสุดได้ด้วยการขยับที่น้อยลง
-  const TILT_MAX = 72; // px of travel at full tilt (was 38 — doubled per request)
-
-  function _clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
-
-  function _onOrientation(e){
-    if (e.gamma==null || e.beta==null) return;
-    // gamma: left/right tilt (-90..90), beta: front/back tilt (0..180, ~45 when comfortably
-    // holding the phone up to look at) — both normalized to roughly [-1,1] around that resting
-    // pose. [FIX 2026-08-06] หาร 22→15 — เอียงเครื่องน้อยลงอีกก็ถึงระยะสุดได้เร็วขึ้น (ไวต่อการขยับมากขึ้นอีกขั้น)
-    targetTiltX = _clamp(e.gamma/11, -1, 1);
-    targetTiltY = _clamp((e.beta-45)/11, -1, 1);
-  }
-  // [FIX 2026-08-04] this used to be wired up ONLY from a pointerdown on #auth-gate-overlay —
-  // but that gesture-gating is only actually required on iOS 13+ (DeviceOrientationEvent.
-  // requestPermission must be called from a user gesture there, or it throws/does nothing).
-  // Everywhere else (Android, desktop) needs no permission at all — addEventListener alone is
-  // enough — so gating it behind a tap meant: if the session auto-signs-in (persisted Firebase
-  // login, overlay never actually tapped) or that one tap didn't land where expected, the
-  // listener was never attached and the stars just sat still forever with no error to notice.
-  // Now the plain path attaches immediately, unconditionally, on script load; only the iOS
-  // permission-prompt path still waits for a gesture (required by the platform, not a choice).
-  if (typeof DeviceOrientationEvent === 'undefined') {
-    // no motion API at all (most desktop browsers) — pointermove fallback below covers this
-  } else if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // iOS 13+ — needs a real user gesture to grant motion access. Wired to the FIRST tap
-    // anywhere in the document (not just the login overlay) so it still works even if the
-    // overlay is skipped entirely by an auto-login.
-    const _wireIOS = () => {
-      DeviceOrientationEvent.requestPermission().then(state=>{
-        if (state==='granted') window.addEventListener('deviceorientation', _onOrientation);
-      }).catch(()=>{});
-    };
-    document.addEventListener('pointerdown', _wireIOS, { once:true, passive:true });
-  } else {
-    // Android / anything else that doesn't gate motion behind a permission prompt
-    window.addEventListener('deviceorientation', _onOrientation);
-  }
-  // desktop / no-motion-sensor fallback — pointer position relative to screen center
-  // [FIX 2026-08-06 v4] named (was an inline arrow) so it can be removeEventListener'd by
-  // _starfieldStop() below — see the heat/battery note near draw().
-  function _onPointerMove(e){
-    const overlayForTilt = document.getElementById('auth-gate-overlay');
-    if (overlayForTilt && overlayForTilt.style.display==='none') return;
-    targetTiltX = _clamp((e.clientX/innerWidth-.5)*2.6, -1, 1);
-    targetTiltY = _clamp((e.clientY/innerHeight-.5)*2.6, -1, 1);
-  }
-  window.addEventListener('pointermove', _onPointerMove, { passive:true });
+  /* [FIX 2026-08-06 v6] "เปลี่ยนจากเอียงตามมือถือ เป็นค่อยๆไปข้างหน้าช้าๆตลอดจนเข้าแอป" — เอาระบบ
+     parallax tilt (deviceorientation/pointermove ขับ targetTiltX/Y แล้ว ease เข้า curTiltX/Y ผ่าน
+     perspOffset()) ออกทั้งหมด แทนที่ด้วยการบินไปข้างหน้าคงที่ ไม่ขึ้นกับเซนเซอร์/เมาส์เลย — ดาวแต่ละดวง
+     มี z (ระยะจากกล้อง) ของตัวเองอยู่แล้ว (mkStars ด้านบน) ตอนนี้ z นั้นค่อยๆลดลงทุกเฟรม (ดู DRIFT_
+     PER_SEC + drawStarLayer() ด้านล่าง) ทำให้ตำแหน่งจุดดาวไหลออกจากศูนย์กลางจอทีละนิดอย่างต่อเนื่อง
+     เหมือนบินผ่านอวกาศไปข้างหน้าจริงๆ — ดาวใกล้กล้อง (z เดิมน้อย เช่น STARS_SUPERFG) ถึง threshold
+     เร็วแล้ว "เกิดใหม่" ที่ตำแหน่งเดิม (z=zHi) วนต่อ ส่วนดาวไกล (STARS_FARTHEST) ใช้เวลานับนาทีกว่าจะ
+     ขยับเห็นได้ชัด — ให้ผลเหมือน parallax หลายชั้นแบบเดิมแต่ตัวขับเป็นเวลาแทนเซนเซอร์ ไม่มี input ใดๆ
+     ต้องผูก/ถอดอีกต่อไป (ไม่มี deviceorientation permission wiring, ไม่มี pointermove listener) */
+  const DRIFT_PER_SEC = 0.15;  // z units/sec ที่แต่ละดวงดาวเข้าใกล้กล้อง — ค่าน้อย = "ช้าๆ" ตามคำขอ
+  const DRIFT_RESPAWN_Z = 0.12; // ต่ำกว่า zMin ของทุกชั้น (ชั้นใกล้สุดคือ .5) — ถึงจุดนี้แล้ว "เกิดใหม่"
 
   /* [FIX 2026-08-06 v4] real "off switch" for the whole starfield subsystem — stops the rAF
-     chain outright (not just skipping the draw) and detaches the deviceorientation listener,
-     which is the part that actually matters for heat/battery: it keeps the phone's motion
-     sensor hardware polling continuously for as long as it's attached, regardless of how cheap
-     the JS callback itself is. Called the instant login finishes (see _authGateSyncDone, which
-     calls this directly) and again defensively from draw() itself in case the overlay gets
-     hidden through some other path. _starfieldResume() undoes it — wired to the sign-out
-     branch of onAuthStateChanged, the only place the overlay is shown again. */
+     chain outright (not just skipping the draw). Called the instant login finishes (see
+     _authGateSyncDone, which calls this directly) and again defensively from draw() itself in
+     case the overlay gets hidden through some other path. _starfieldResume() undoes it — wired
+     to the sign-out branch of onAuthStateChanged, the only place the overlay is shown again.
+     [FIX 2026-08-06 v6] used to also attach/detach the deviceorientation + pointermove
+     listeners here (the actual battery-relevant part, since sensor hardware keeps polling for
+     as long as a listener is attached) — both listeners are gone now that tilt-driven parallax
+     was replaced by the time-based drift above, so this is purely the rAF chain on/off switch. */
   let _slRunning = true;
   function _starfieldStop(){
-    if (!_slRunning) return; // already stopped — avoid double-removing listeners
+    if (!_slRunning) return; // already stopped
     _slRunning = false;
-    window.removeEventListener('deviceorientation', _onOrientation);
-    window.removeEventListener('pointermove', _onPointerMove);
   }
   function _starfieldResume(){
     if (_slRunning) return; // already running
     _slRunning = true;
-    window.addEventListener('deviceorientation', _onOrientation);
-    window.addEventListener('pointermove', _onPointerMove, { passive:true });
-    _slLast = 0; // don't let a stale timestamp gate the very next frame
+    _slLast = 0; // don't let a stale timestamp produce a huge dt on the very next frame
     requestAnimationFrame(draw);
   }
   window._starfieldStop = _starfieldStop;
@@ -7945,10 +7892,10 @@ document.body.style.overflow = 'hidden';
      reads as even more continuous, plus every layer just has more stars in it than before. */
   /* [FIX 2026-08-06 v2] ทำตามคำขอ: ให้เป็น "มุมมอง perspective" จริง แทนที่จะเป็นการเลื่อน 6 ชั้น
      แบบเป็นก้อนๆ (คูณด้วยสัดส่วนคงที่ทีละชั้น) — ตอนนี้ดาวแต่ละดวงมีระยะ z ของตัวเอง (สุ่มต่อเนื่องอยู่
-     ในช่วงของชั้นนั้นๆ ไม่ใช่ก้อนเดียวกันทั้งชั้น) แล้วคำนวณระยะเคลื่อนที่จริงแบบกล้อง 3 มิติ:
-     offset = TILT_MAX * tilt / z — เหมือนกล้องเลื่อนด้านข้างมองผ่านระนาบที่ระยะต่างกัน วัตถุใกล้กล้อง
-     (z น้อย) เคลื่อนที่มากกว่าวัตถุไกล (z มาก) ตามสัดส่วนผกผัน ให้ความรู้สึกเป็นมิติ/ทะลุมิติจริง ไม่ใช่
-     ภาพเลื่อนเป็นแผ่นๆ ซ้อนกัน — ดู perspOffset() ด้านล่างที่ draw() เรียกใช้ */
+     ในช่วงของชั้นนั้นๆ ไม่ใช่ก้อนเดียวกันทั้งชั้น) ดาวใกล้กล้อง (z น้อย) เคลื่อนที่มากกว่าวัตถุไกล (z มาก)
+     ตามสัดส่วนผกผัน ให้ความรู้สึกเป็นมิติ/ทะลุมิติจริง ไม่ใช่ภาพเลื่อนเป็นแผ่นๆ ซ้อนกัน [FIX 2026-08-06 v6]
+     ตัวขับ offset นี้เดิมคือ tilt (เอียงมือถือ/เมาส์) ผ่าน perspOffset() — เอาออกแล้ว เปลี่ยนเป็น z ของ
+     แต่ละดวงลดลงเองตามเวลา (DRIFT_PER_SEC) แทน ดู drawStarLayer() ด้านล่างที่คำนวณ zHi/z โดยตรง */
   /* [FIX 2026-08-06 v3] realistic star colour — researched from real spectral-class statistics
      and human night-vision physiology instead of the old "15% chance of one of 2 arbitrary
      hues" coin flip:
@@ -8003,7 +7950,11 @@ document.body.style.overflow = 'hidden';
       return {
         x:Math.random(), y:Math.random(),
         r, a:aMin+Math.random()*(aMax-aMin),
-        z:zMin+Math.random()*(zMax-zMin), // virtual camera-distance — drives perspective offset, not a fixed layer bucket
+        z:zMin+Math.random()*(zMax-zMin), // current depth — decays over time now, see DRIFT_PER_SEC in draw()
+        zHi:zMax, // [NEW 2026-08-06 v6] "rest" depth (this star's own upper z bound) — the position
+        // formula scales screen-offset by zHi/z, so a freshly-spawned/respawned star (z===zHi) sits
+        // exactly at its assigned (x,y) slot, then drifts outward as z shrinks toward camera — see
+        // drawStarLayer() below, replaces the old tilt-driven perspOffset() entirely
         twinkleSpeed:.003+Math.random()*.008,
         twinklePhase:Math.random()*Math.PI*2,
         cr:qcr, cg:qcg, cb:qcb, ck: qcr+'_'+qcg+'_'+qcb,
@@ -8025,7 +7976,9 @@ document.body.style.overflow = 'hidden';
   const STARS_NEARFG    = mkStars(130, .7, 1.7, .45, .95, 1.5, 2.3);
   const STARS_FG        = mkStars(100, .8, 2.0, .5,  1.0, 1.0, 1.5);
   const STARS_SUPERFG   = mkStars(45,  1.0, 2.6, .55, 1.0, .5,  1.0); // new — nearest of all, most travel
-  const MILKY_Z = 6.5; // Milky Way band sits between ultradeep and deep
+  // [FIX 2026-08-06 v6] MILKY_Z (เดิมใช้กับ perspOffset(MILKY_Z) เพื่อขยับแถบ Milky Way ตาม tilt)
+  // เอาออก — แถบนี้อยู่นิ่งกับที่แล้วตอนนี้ (ดู milkyOx/milkyOy ใน draw() ด้านล่าง), ไม่มีใครเรียกใช้ค่านี้
+  // อีก (เช็คด้วย grep ตาม AI-EDIT-PROTOCOL ข้อ 1 ก่อนลบ)
 
   // [FIX 2026-08-06 v5] "ใช้รูปทางช้างเผือกจริงเป็นฉากหลัง เอา nebula วาดเอง + ดวงอาทิตย์ออก" —
   // buildNebula()/CLOUDS (nebula cloud blobs, opaque #00000e fill) และ buildSun() (ดวงอาทิตย์
@@ -8067,8 +8020,12 @@ document.body.style.overflow = 'hidden';
   const _overlayElCache = document.getElementById('auth-gate-overlay');
   // hoisted out of draw() so it isn't re-created as a brand-new function object every single
   // frame — small, but it's one more thing GC has to chase for no benefit.
-  function perspOffset(z){ return { x: curTiltX*TILT_MAX/z, y: curTiltY*TILT_MAX/z }; }
   let milkyGradient = null; // rebuilt only on resize — see draw()
+  // [FIX 2026-08-06 v6] set once per draw() call (see draw() below) from the previous frame's
+  // timestamp, then read by every drawStarLayer() call this frame — dt-seconds since last
+  // frame, used to advance each star's z at a constant real-world speed (DRIFT_PER_SEC)
+  // regardless of the device's refresh rate (60/90/120fps all drift at the same visual speed).
+  let _driftDtSec = 0;
   /* [PERF 2026-08-06] the real fix for the stutter: batch each star layer into buckets keyed
      by (quantized colour, quantized twinkle-brightness) and draw every star in a bucket as ONE
      shared subpath under ONE fillStyle + ONE fill() call, instead of the previous per-star
@@ -8088,15 +8045,23 @@ document.body.style.overflow = 'hidden';
     const buckets = {};
     const flares = flareR ? [] : null;
     const wk = curWarpK;
+    const cx = W*.5, cy = H*.5;
     for(let i=0;i<list.length;i++){
       const s = list[i];
       const a = s.a*(ampBase+ampVar*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+phaseOff));
       if(a<=0.008) continue; // effectively invisible this frame — skip the draw entirely
-      const o = perspOffset(s.z);
-      let sx = s.x*W+o.x, sy = s.y*H+o.y;
+      // [FIX 2026-08-06 v6] "ไปข้างหน้าช้าๆตลอด" แทน tilt — z ของดาวลดลงเรื่อยๆ ตามเวลาจริง (dt-scaled,
+      // ไม่ใช่นับเฟรม ตามกฎ dt-scaling ของไฟล์นี้) พอถึง threshold ก็ "เกิดใหม่" กลับไป z=zHi (ตำแหน่ง
+      // ตั้งต้นเดิม) แล้ววนเข้าใกล้กล้องอีกรอบ — ดาวแต่ละดวง desync กันเองเพราะ z เริ่มต้นสุ่มต่างกัน จึง
+      // ไม่มีจังหวะ "เกิดใหม่พร้อมกันเป็นชุด" ให้เห็น
+      s.z -= DRIFT_PER_SEC*_driftDtSec;
+      if(s.z <= DRIFT_RESPAWN_Z) s.z = s.zHi;
+      const k = s.zHi/s.z; // 1 ตอนเกิดใหม่ (อยู่ตำแหน่งเดิมพอดี) แล้วโตขึ้นเรื่อยๆ ตามที่ z หดเข้าใกล้กล้อง
+      let sx = cx+(s.x*W-cx)*k, sy = cy+(s.y*H-cy)*k;
       if(wk>0.001){
         // เลื่อนออกจากศูนย์กลางจอตามเวกเตอร์ (จุดเดิม - จุดศูนย์กลาง) คูณด้วย wk/z — ดาวใกล้กล้อง
         // (z น้อย) เลื่อนมากกว่าดาวไกล (z มาก) ให้ความลึกสมจริงเหมือนเคลื่อนผ่านอวกาศไปข้างหน้า
+        // (นี่คือ warp burst ตอนล็อคอินสำเร็จ — เป็นการเร่งเพิ่มเติมทับการไหลไปข้างหน้าปกติด้านบน)
         const stretch = wk / s.z;
         sx = warpCX + (sx-warpCX)*(1+stretch);
         sy = warpCY + (sy-warpCY)*(1+stretch);
@@ -8136,13 +8101,12 @@ document.body.style.overflow = 'hidden';
     }
     // [FIX 2026-08-06 v4] "เมื่อล็อคอินเสร็จ ต้องปิดทุกส่วนจริงๆ ไม่ใช่แค่ข้ามการวาด" — ก่อนหน้านี้
     // แค่ return โดยไม่วาด แต่ยัง requestAnimationFrame(draw) ต่อไปเรื่อยๆ (เดินที่ native refresh
-    // rate ตลอด session แม้เบาแต่ก็ยังทำงานอยู่จริง) และที่สำคัญกว่านั้นคือ deviceorientation
-    // listener (เซนเซอร์ gyro/accelerometer) ไม่เคยถูกถอดออกเลย — sensor hardware ยังถูก poll
-    // ต่อเนื่องตลอดทั้ง session ซึ่งเป็นตัวกินแบตเตอรี่/ทำให้เครื่องร้อนตัวจริงที่มีการยืนยันแล้ว
-    // (ไม่ใช่แค่ JS callback ที่เบา). ตอนนี้ตรวจแล้วเรียก _starfieldStop() ทันที ซึ่ง: ยกเลิก rAF
-    // chain (ไม่เรียก requestAnimationFrame ต่ออีก) + removeEventListener ทั้ง deviceorientation
-    // และ pointermove จริงๆ — ปิดสนิท ไม่ใช่แค่ idle. (_authGateSyncDone() ก็เรียกฟังก์ชันนี้ตรงๆ
-    // ทันทีที่ overlay ถูกซ่อนด้วย ไม่ต้องรอ frame ถัดไปมาตรวจจับเอง — ดู @ZONE นั้น)
+    // rate ตลอด session แม้เบาแต่ก็ยังทำงานอยู่จริง) ตอนนี้ตรวจแล้วเรียก _starfieldStop() ทันที ซึ่ง
+    // ยกเลิก rAF chain (ไม่เรียก requestAnimationFrame ต่ออีก) ปิดสนิท ไม่ใช่แค่ idle. (_authGateSync
+    // Done() ก็เรียกฟังก์ชันนี้ตรงๆ ทันทีที่ overlay ถูกซ่อนด้วย ไม่ต้องรอ frame ถัดไปมาตรวจจับเอง — ดู
+    // @ZONE นั้น) [FIX 2026-08-06 v6] เดิม comment นี้พูดถึงการถอด deviceorientation listener ด้วย —
+    // ตอนนี้ไม่มี sensor listener ให้ถอดแล้ว (tilt ถูกเอาออก เปลี่ยนเป็น time-based drift แทน) จุดสำคัญ
+    // ที่เหลือของ _starfieldStop() คือหยุด rAF chain เท่านั้น
     if (_overlayElCache && _overlayElCache.style.display === 'none') {
       _starfieldStop();
       return;
@@ -8152,12 +8116,15 @@ document.body.style.overflow = 'hidden';
     // _starfieldStop() ทันทีที่ login เสร็จ ดู @ZONE ด้านบน) จึงไม่คุ้มที่จะแลกความลื่นทิ้งไปเพื่อ
     // ประหยัดแบตในช่วงเวลาสั้นแค่นี้ — ตอนนี้วิ่งเต็มอัตรารีเฟรชจอ (60-120fps ตามเครื่อง) ตลอดเวลา
     // ที่ overlay แสดงอยู่ ไม่ใช่แค่ตอน warp burst เหมือนก่อนหน้านี้
+    // [FIX 2026-08-06 v6] _slLast ตอนนี้ทำหน้าที่คู่: (เดิม) เก็บ timestamp เฟรมก่อนหน้าไว้เฉยๆ, (ใหม่)
+    // ใช้คำนวณ dt-seconds สำหรับ drift ของดาว (DRIFT_PER_SEC ต้องการเวลาจริงเป็นวินาที ไม่ใช่นับเฟรม —
+    // ตามกฎ dt-scaling ในโปรโตคอลของไฟล์นี้ ไม่งั้นความเร็วจะต่างกันตาม fps ของแต่ละเครื่อง) prevT ใช้
+    // now เองเป็นค่า fallback ตอน _slLast ยังเป็น 0 (เฟรมแรก หรือเพิ่ง _starfieldResume มา) ให้ dt=0
+    // ในเฟรมนั้นแทนที่จะกลายเป็น dt มหาศาลจากการลบกับ timestamp เก่าที่ค้างอยู่นานเป็นนาที/ชั่วโมง —
+    // ยัง clamp เพดานไว้ที่ .1 วิ ป้องกันกรณีแท็บถูกซ่อนไปนาน (document.hidden) แล้วกลับมาด้วย
+    const _driftPrevT = _slLast || now;
     _slLast = now;
-    // ease current tilt toward target — slow heavy drift, not 1:1 sensor jitter
-    // [FIX 2026-08-06] .08→.13, catches up to the sensor noticeably faster (paired with the
-    // TILT_MAX/orientation-divisor bumps above) while still easing rather than snapping
-    curTiltX += (targetTiltX-curTiltX)*.13;
-    curTiltY += (targetTiltY-curTiltY)*.13;
+    _driftDtSec = Math.min(0.1, Math.max(0, (now-_driftPrevT)/1000));
     // [NEW 2026-08-06] คำนวณ warp progress ของเฟรมนี้ — ease-in (progress²) ให้เริ่มช้าแล้วเร่งไว
     // เหมือนยานเร่งเครื่องเข้าสู่ warp speed แทนที่จะกระโดดไปความเร็วสูงสุดทันที
     if (warpActive){
@@ -8167,13 +8134,10 @@ document.body.style.overflow = 'hidden';
       if (elapsed >= warpDuration){ warpActive=false; curWarpK=0; }
       else { curWarpK = warpMaxK * (elapsed/warpDuration); }
     } else { curWarpK = 0; }
-    // [FIX 2026-08-06 v2] perspective projection — replaces the old fixed per-layer fraction
-    // constants. Every star (and the nebula/Milky Way, via their own fixed pseudo-z) now gets
-    // its screen offset from this single camera-distance law instead of being snapped into one
-    // of 6 discrete speed bands, so the whole scene reads as actual depth rather than layered
-    // cardboard cutouts sliding at different fixed speeds. (perspOffset itself is now hoisted
-    // above draw() — see [PERF 2026-08-06] note.)
-    const milkyO = perspOffset(MILKY_Z), milkyOx = milkyO.x, milkyOy = milkyO.y;
+    // [FIX 2026-08-06 v6] Milky Way band เดิมได้ offset จาก perspOffset(MILKY_Z) (ขับด้วย tilt) —
+    // tilt ถูกเอาออกแล้ว แถบนี้จางมาก (alpha สูงสุด ~.04) เป็นแค่ผิวบรรยากาศคงที่ ไม่จำเป็นต้องขยับตาม
+    // การบินไปข้างหน้าเหมือนดวงดาว จึงปล่อยให้อยู่นิ่งกับที่ (offset 0,0) แทนที่จะสร้างกลไกใหม่ให้มันด้วย
+    const milkyOx = 0, milkyOy = 0;
     const W=cv.width, H=cv.height;
     warpCX = W*.5; warpCY = H*.5; // จุดศูนย์กลางที่ดาวเลื่อนออกจากตรงนี้ระหว่าง warp
     if(W!==lastW||H!==lastH||!milkyGradient){
@@ -10983,8 +10947,9 @@ try {
       _cloudReady = false;
       if (overlay) overlay.style.display = 'flex';
       // [FIX 2026-08-06 v4] sign-out is the ONLY place the overlay comes back — resume the
-      // starfield (rAF chain + deviceorientation/pointermove listeners) that _starfieldStop()
-      // switched off right after login. See #sl-canvas @ZONE for _starfieldResume().
+      // starfield rAF chain that _starfieldStop() switched off right after login. See
+      // #sl-canvas @ZONE for _starfieldResume(). [FIX 2026-08-06 v6] used to also re-attach
+      // deviceorientation/pointermove listeners here — removed along with tilt-driven parallax.
       if (typeof window._starfieldResume === 'function') window._starfieldResume();
       document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
@@ -11155,9 +11120,8 @@ function _authGateSyncDone(){
         overlay.style.display='none'; overlay.style.opacity=''; overlay.style.transition='';
         document.documentElement.style.overflow = '';
         document.body.style.overflow = '';
-        // [FIX 2026-08-06 v4] ปิด starfield subsystem ทันทีตรงนี้ (rAF chain +
-        // deviceorientation/pointermove listeners) แทนที่จะรอให้ draw() เฟรมถัดไปตรวจจับเอง —
-        // ดู _starfieldStop() ใน @ZONE ของ #sl-canvas
+        // [FIX 2026-08-06 v4] ปิด starfield subsystem ทันทีตรงนี้ (rAF chain) แทนที่จะรอให้ draw()
+        // เฟรมถัดไปตรวจจับเอง — ดู _starfieldStop() ใน @ZONE ของ #sl-canvas
         if (typeof window._starfieldStop === 'function') window._starfieldStop();
       }, 420);
     }
