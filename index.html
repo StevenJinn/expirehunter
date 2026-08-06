@@ -7910,19 +7910,19 @@ document.body.style.overflow = 'hidden';
   window._starfieldStop = _starfieldStop;
   window._starfieldResume = _starfieldResume;
 
-  /* [NEW 2026-08-06] "warp" burst — เรียกตอนล็อคอินผ่าน (จาก _authGateSyncDone) ให้ฉากรู้สึก
-     เหมือนกำลังเคลื่อนที่พุ่งไปข้างหน้าผ่านหมู่ดาว ก่อนที่ overlay จะ fade ออกไปเจอ dashboard
-     — หลักการ: ดาวแต่ละดวงมี z (ระยะจากกล้อง) อยู่แล้ว ใช้ z นั้นคำนวณระยะพุ่งออกจากจุดศูนย์กลางจอ
-     แบบ perspective จริง (ดาวใกล้กล้อง/z น้อย พุ่งเร็ว+ไกลกว่าดาวไกล/z มาก เหมือนบินทะลุอวกาศ) แล้ว
-     วาดเป็นเส้น "ลาก" (streak) จากตำแหน่งเดิมไปตำแหน่งใหม่แทนจุดกลม ให้เห็นเป็นเส้นแสงพุ่งผ่านตา
-     ต่อเนื่องตลอดช่วง warpDuration ไม่ใช่แค่กระตุกครั้งเดียว — ความเร็วขยับขึ้นแบบ ease-in ตลอดช่วง
-     (เริ่มช้า เร่งไว) ให้ความรู้สึกเหมือนยานเร่งเครื่องเข้าสู่ warp speed */
-  let warpActive=false, warpStart=0, warpDuration=900, warpMaxK=46;
+  /* [NEW 2026-08-06, v3: 2026-08-06] "warp" burst — เรียกตอนล็อคอินผ่าน (จาก _authGateSyncDone)
+     ให้ฉากรู้สึกเหมือนกำลังเคลื่อนที่ผ่านหมู่ดาวไปข้างหน้าช้าๆ ก่อนที่ overlay จะ fade ออกไปเจอ
+     dashboard — หลักการ: ดาวแต่ละดวงมี z (ระยะจากกล้อง) อยู่แล้ว ใช้ z นั้นเลื่อน "ตำแหน่งจุดดาว"
+     (จุดกลมเดิม ไม่ใช่เส้นลาก) ออกจากจุดศูนย์กลางจอทีละนิดทุกเฟรมแบบ perspective จริง (ดาวใกล้กล้อง/
+     z น้อย เลื่อนมากกว่าดาวไกล/z มาก เหมือนบินผ่านอวกาศ) ไล่ระดับความเร็วขึ้นแบบเส้นตรงตลอดช่วง
+     warpDuration ให้เห็นการเคลื่อนที่ต่อเนื่องนุ่มนวล ไม่ใช่กระตุกครั้งเดียวหรือพุ่งเร็วจัด */
+  let warpActive=false, warpStart=0, warpDuration=1800, warpMaxK=4.5;
   function _starfieldWarp(ms, maxK){
     warpActive=true; warpStart=performance.now();
     if(ms) warpDuration=ms; if(maxK) warpMaxK=maxK;
   }
   window._starfieldWarp = _starfieldWarp;
+
 
   /* [FIX 2026-08-06] star field: 6 layers for parallax depth now (was 4) — denser overall
      (~1,150 stars vs ~590 before) and one more rung added at each end (a barely-there
@@ -8100,9 +8100,10 @@ document.body.style.overflow = 'hidden';
      the way down) are skipped outright rather than drawn invisibly. flareR, if given, also
      collects the (rare) big stars into a second lightweight pass for the cross-hair flare —
      kept per-star since so few stars qualify that batching it wouldn't help. */
-  /* [NEW 2026-08-06] curWarpK — set once per frame in draw() (0 = ปกติ, ไม่มี warp) และอ่านตรงนี้
-     เพื่อยืดดาวแต่ละดวงเป็นเส้นลาก (streak) พุ่งออกจากจุดศูนย์กลางจอ ระยะยืดคำนวณจาก s.z ของดาวเอง
-     (perspective จริง: z น้อย/ดาวใกล้กล้อง ยืดไกลกว่า z มาก/ดาวไกล) ให้ความรู้สึกบินทะลุหมู่ดาว */
+  /* [FIX 2026-08-06 v3] "ไม่ใช่เส้นลาก ให้เคลื่อนผ่านไปช้าๆ" — เอาเอฟเฟกต์เส้นลาก (streak) ออกทั้งหมด
+     เปลี่ยนเป็นขยับ "ตำแหน่งจุดดาว" จริงๆ ออกจากศูนย์กลางจอทีละนิดทุกเฟรม (ตาม s.z ของดาวเอง — ดาวใกล้
+     กล้อง/z น้อย ขยับมากกว่าดาวไกล/z มาก) ยังคงเป็นจุดกลมตามปกติ ไม่ใช่เส้น แค่ตำแหน่งเลื่อนไปเรื่อยๆ
+     อย่างนุ่มนวลระหว่าง warp burst ให้ความรู้สึกเหมือนเคลื่อนผ่านหมู่ดาวไปข้างหน้าช้าๆ จริงๆ */
   let curWarpK = 0, warpCX = 0, warpCY = 0;
   function drawStarLayer(list, W, H, ampBase, ampVar, phaseOff, flareR){
     const buckets = {};
@@ -8113,40 +8114,29 @@ document.body.style.overflow = 'hidden';
       const a = s.a*(ampBase+ampVar*Math.sin(frame*s.twinkleSpeed+s.twinklePhase+phaseOff));
       if(a<=0.008) continue; // effectively invisible this frame — skip the draw entirely
       const o = perspOffset(s.z);
-      const sx = s.x*W+o.x, sy = s.y*H+o.y;
+      let sx = s.x*W+o.x, sy = s.y*H+o.y;
+      if(wk>0.001){
+        // เลื่อนออกจากศูนย์กลางจอตามเวกเตอร์ (จุดเดิม - จุดศูนย์กลาง) คูณด้วย wk/z — ดาวใกล้กล้อง
+        // (z น้อย) เลื่อนมากกว่าดาวไกล (z มาก) ให้ความลึกสมจริงเหมือนเคลื่อนผ่านอวกาศไปข้างหน้า
+        const stretch = wk / s.z;
+        sx = warpCX + (sx-warpCX)*(1+stretch);
+        sy = warpCY + (sy-warpCY)*(1+stretch);
+      }
       const ab = Math.max(1, Math.round(a*16)); // 16 brightness steps — plenty smooth for a twinkle
       const key = s.ck+'_'+ab;
       let bucket = buckets[key];
-      if(!bucket) bucket = buckets[key] = { cr:s.cr, cg:s.cg, cb:s.cb, a:ab/16, pts:[], streaks: wk>0.02 ? [] : null };
+      if(!bucket) bucket = buckets[key] = { cr:s.cr, cg:s.cg, cb:s.cb, a:ab/16, pts:[] };
       bucket.pts.push(sx, sy, s.r);
-      if(wk>0.02){
-        // ยืดจากจุดเดิมออกไปตามเวกเตอร์ (จุดเดิม - จุดศูนย์กลาง) คูณด้วย wk/z — ดาวใกล้กล้อง (z น้อย)
-        // ยืดไกลกว่าดาวไกล (z มาก) มาก ให้ความลึกสมจริงเหมือนพุ่งผ่านอวกาศจริง
-        const stretch = wk / s.z;
-        const tx = sx + (sx-warpCX)*stretch, ty = sy + (sy-warpCY)*stretch;
-        bucket.streaks.push(sx, sy, tx, ty, Math.max(.4, s.r*.85));
-      }
       if(flareR && s.r>flareR) flares.push(sx, sy, s.cr, s.cg, s.cb, a);
     }
     for(const key in buckets){
       const b = buckets[key];
-      if(b.streaks && b.streaks.length){
-        // เส้นลาก วาดก่อนจุดดาว (จุดดาวจะทับปลายเส้นให้ดูเป็นหัวลำแสง)
-        ctx.strokeStyle=`rgba(${b.cr},${b.cg},${b.cb},${b.a*.85})`;
-        ctx.lineCap='round';
-        const st=b.streaks;
-        for(let j=0;j<st.length;j+=5){
-          ctx.lineWidth=st[j+4];
-          ctx.beginPath();ctx.moveTo(st[j],st[j+1]);ctx.lineTo(st[j+2],st[j+3]);ctx.stroke();
-        }
-      }
       ctx.fillStyle=`rgba(${b.cr},${b.cg},${b.cb},${b.a})`;
       ctx.beginPath();
       const pts=b.pts;
       for(let j=0;j<pts.length;j+=3){ ctx.moveTo(pts[j]+pts[j+2],pts[j+1]); ctx.arc(pts[j],pts[j+1],pts[j+2],0,Math.PI*2); }
       ctx.fill();
     }
-    if(wk>0.02) ctx.lineCap='butt'; // คืนค่า default — กันไม่ให้ไปกระทบเส้น crosshair flare ด้านล่าง
     if(flares){
       for(let i=0;i<flares.length;i+=6){
         const sx=flares[i], sy=flares[i+1], cr=flares[i+2], cg=flares[i+3], cb=flares[i+4], a=flares[i+5];
@@ -8191,8 +8181,10 @@ document.body.style.overflow = 'hidden';
     // เหมือนยานเร่งเครื่องเข้าสู่ warp speed แทนที่จะกระโดดไปความเร็วสูงสุดทันที
     if (warpActive){
       const elapsed = now - warpStart;
+      // [FIX 2026-08-06 v2] progress เชิงเส้น (ตัดกำลังสองออก) — ไล่ระดับความเร็วสม่ำเสมอ นุ่มนวล
+      // แทนที่จะเร่งพรวดตอนท้าย ให้ความรู้สึก "เคลื่อนช้าๆ" ต่อเนื่อง ไม่ใช่ทะยานเข้าสู่ warp speed
       if (elapsed >= warpDuration){ warpActive=false; curWarpK=0; }
-      else { const p = elapsed/warpDuration; curWarpK = warpMaxK * p * p; }
+      else { curWarpK = warpMaxK * (elapsed/warpDuration); }
     } else { curWarpK = 0; }
     // [FIX 2026-08-06 v2] perspective projection — replaces the old fixed per-layer fraction
     // constants. Every star (and the nebula/Milky Way, via their own fixed pseudo-z) now gets
@@ -8203,7 +8195,7 @@ document.body.style.overflow = 'hidden';
     const nebO = perspOffset(NEB_Z), nebOx = nebO.x, nebOy = nebO.y;
     const milkyO = perspOffset(MILKY_Z), milkyOx = milkyO.x, milkyOy = milkyO.y;
     const W=cv.width, H=cv.height;
-    warpCX = W*.5; warpCY = H*.5; // จุดศูนย์กลางที่เส้นลากของ warp พุ่งออกจากตรงนี้
+    warpCX = W*.5; warpCY = H*.5; // จุดศูนย์กลางที่ดาวเลื่อนออกจากตรงนี้ระหว่าง warp
     if(W!==lastW||H!==lastH||!nebulaCache){
       nebulaCache=buildNebula(W,H); lastW=W; lastH=H;
       // [PERF 2026-08-06] Milky Way gradient used to be rebuilt (new CanvasGradient object +
@@ -11169,9 +11161,9 @@ function _authGateSyncDone(){
   if (barPct) barPct.textContent = '100%';
   if (barLbl) { barLbl.textContent = 'READY ✓'; barLbl.style.animation='none'; barLbl.style.color='#a0e8ff'; }
   if (detail) detail.textContent = '4 / 4 NODES · CHARTED';
-  // [NEW 2026-08-06] ล็อคอินผ่านแล้ว — เร่งเครื่องพุ่งไปข้างหน้าผ่านหมู่ดาว (900ms ครอบคลุมทั้งช่วง
-  // รอ 600ms ก่อน fade และช่วง fade-out .4s ของ overlay เอง ให้ความเร็วไต่ขึ้นต่อเนื่องจนภาพเลือนหายไป)
-  if (typeof window._starfieldWarp === 'function') window._starfieldWarp(900, 46);
+  // [FIX 2026-08-06 v3] "ไม่ใช่เส้นลาก ให้เคลื่อนผ่านไปช้าๆ" — เอาเส้นลากออกแล้ว เหลือแค่จุดดาวขยับ
+  // ตำแหน่งช้าๆ ต่อเนื่อง (maxK ลดลงอีก 7→4.5, duration ยืดขึ้น 1600→1800ms ให้นุ่มนวลขึ้นอีกขั้น)
+  if (typeof window._starfieldWarp === 'function') window._starfieldWarp(1800, 4.5);
   setTimeout(() => {
     if (overlay) {
       overlay.style.transition = 'opacity .4s ease';
