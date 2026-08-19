@@ -22944,21 +22944,9 @@ function _wrDisplayName(r) {
   const sizeRe = /(\d+(?:\.\d+)?)\s*(ml\.?|litre?s?\.?|ltr\.?|l\.?|cl\.?)\b/i;
   if (!producer || !region) {
     const isNV = vintage === 'NV' || vintage === 'N/V';
+    const yearPrefix = (vintage && !isNV && !yearRe.test(product)) ? vintage + ' ' : '';
     const sizeSuffix = sizeRe.test(product) ? '' : ` ${_wrBottleSize(product)}`;
-    if (vintage && !isNV) {
-      // [FIX 2026-08-19] Imported rows (e.g. from an XLSX "Fine Wines" sheet) often already
-      // carry the vintage INSIDE the raw product text, usually trailing at the end
-      // ("Chateau Margaux, AOC Margaux, 1er Grand Cru Classe A,  2010"). The previous version
-      // only added a vintage prefix when the year was totally absent from the text, so these
-      // rows lost the "{vintage} {name}..." lead-in that every other card has, and looked
-      // inconsistent (name-first instead of vintage-first). Now we always lead with the
-      // vintage and strip a redundant trailing occurrence of that same year from the product
-      // text first, so it isn't duplicated.
-      const trailingYearRe = new RegExp('[\\s,]*\\b' + vintage.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&') + '\\b\\s*$');
-      const cleanedProduct = product.replace(trailingYearRe, '').replace(/,\s*$/, '');
-      return `${vintage} ${cleanedProduct}${sizeSuffix}`;
-    }
-    return `${product}${sizeSuffix}`;
+    return `${yearPrefix}${product}${sizeSuffix}`;
   }
   const name = producer.replace(/\bChateau\b/g, 'Château'); // word-boundary avoids "Chateauneuf"
   const parent = _wrParentRegion(r);
@@ -25912,7 +25900,7 @@ function _wrBuildResultCard(r, i) {
         <!-- PRODUCT PHOTO (tap camera to save) -->
         <div class="rec-photo-panel" data-prod-photo-bc="${barcode || ''}" style="width:72px;max-height:420px;flex-shrink:0;border-radius:8px;overflow:hidden;position:relative;cursor:default;border:1px solid rgba(${tierRgb},.25);background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px rgba(${tierRgb},.08)">
           ${_wrThumb
-            ? `<img src="${_wrThumb}" style="width:100%;height:100%;object-fit:contain;object-position:center;display:block;pointer-events:none"/>`
+            ? `<img src="${_wrThumb}" style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;pointer-events:none"/>`
             : `<svg width="26" height="30" viewBox="0 0 24 28" fill="none" stroke="${tierColor}" stroke-width="1.3" style="opacity:.55;pointer-events:none"><path d="M9 1h6v5l2.4 3.6c.4.6.6 1.3.6 2V25a2 2 0 01-2 2H8a2 2 0 01-2-2V11.6c0-.7.2-1.4.6-2L9 6V1z"/><line x1="8.5" y1="10" x2="15.5" y2="10"/></svg>`
           }
           <button type="button" onclick="event.stopPropagation();_openRecordPhotoMenu('${barcode}')"
@@ -27437,7 +27425,7 @@ function _wrBuildDetailHTML(i) {
              this inner wrapper exactly fills the panel, so the image crop/rounding looks identical. -->
         <div style="position:absolute;inset:0;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;pointer-events:none">
           ${_wrDetailPhoto
-            ? `<img src="${_wrDetailPhoto}" style="width:100%;height:100%;object-fit:contain;object-position:center;display:block;pointer-events:none"/>`
+            ? `<img src="${_wrDetailPhoto}" style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;pointer-events:none"/>`
             : `<div style="display:flex;flex-direction:column;align-items:center;gap:5px;opacity:.4;pointer-events:none"><svg width="28" height="33" viewBox="0 0 24 28" fill="none" stroke="${tierColor}" stroke-width="1.2"><path d="M9 1h6v5l2.4 3.6c.4.6.6 1.3.6 2V25a2 2 0 01-2 2H8a2 2 0 01-2-2V11.6c0-.7.2-1.4.6-2L9 6V1z"/><line x1="8.5" y1="10" x2="15.5" y2="10"/></svg><span style="font-family:'IBM Plex Mono',monospace;font-size:6px;letter-spacing:1px;color:${tierColor};font-weight:700">NO PHOTO</span></div>`
           }
           <div style="position:absolute;top:5px;left:5px;width:8px;height:8px;border-top:2px solid rgba(${tierRgb},.6);border-left:2px solid rgba(${tierRgb},.6);pointer-events:none"></div>
