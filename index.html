@@ -2933,6 +2933,45 @@ body.cam-open #page-catalog{
     0%{max-height:var(--card-h);margin-bottom:10px;opacity:0}
     100%{max-height:0px;margin-bottom:0px;padding-top:0;padding-bottom:0;opacity:0}
   }
+  /* ── CRUMPLE & TOSS DELETE ANIMATION ── */
+  @keyframes recTrashBounce{
+    0%{transform:scale(1) rotate(0deg)}
+    35%{transform:scale(1.24) rotate(-7deg)}
+    60%{transform:scale(.9) rotate(4deg)}
+    100%{transform:scale(1) rotate(0deg)}
+  }
+  .rec-trash-bounce{animation:recTrashBounce .4s cubic-bezier(.34,1.56,.64,1)}
+  @keyframes recUndoRing{from{stroke-dashoffset:0}to{stroke-dashoffset:75.4}}
+  .rec-trash-badge{
+    position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;padding:0 4px;
+    border-radius:9px;background:#ff4d4d;color:#fff;font-size:9.5px;font-weight:800;
+    display:none;align-items:center;justify-content:center;box-shadow:0 0 0 2px #0f1117;
+    font-family:'Prompt',sans-serif;line-height:1;
+  }
+  #rec-undo-toast{
+    position:fixed;left:16px;right:16px;bottom:86px;z-index:10001;
+    display:flex;align-items:center;gap:10px;
+    background:rgba(10,14,26,.97);border:1px solid rgba(0,212,170,.25);
+    border-radius:14px;padding:9px 10px 9px 14px;
+    box-shadow:0 10px 34px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.04);
+    backdrop-filter:blur(14px);
+    transform:translateY(140%);opacity:0;
+    transition:transform .3s cubic-bezier(.2,.8,.2,1), opacity .3s ease;
+    pointer-events:none;max-width:480px;margin:0 auto;font-family:'Prompt',sans-serif;
+  }
+  #rec-undo-toast.show{transform:translateY(0);opacity:1;pointer-events:auto}
+  #rec-undo-toast .rec-undo-dot{width:7px;height:7px;border-radius:50%;background:#ff6b6b;flex-shrink:0;box-shadow:0 0 8px rgba(255,107,107,.75)}
+  #rec-undo-toast .rec-undo-text{flex:1;min-width:0;font-size:12.5px;color:#8a91b0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #rec-undo-toast .rec-undo-name{color:#e8eaf6;font-weight:700}
+  #rec-undo-toast button.rec-undo-btn{
+    flex-shrink:0;background:rgba(0,212,170,.14);border:1px solid rgba(0,212,170,.35);
+    color:#00d4aa;font-weight:800;font-size:12px;padding:7px 12px;border-radius:9px;
+    cursor:pointer;font-family:'Prompt',sans-serif;
+  }
+  #rec-undo-toast button.rec-undo-btn:active{background:rgba(0,212,170,.28)}
+  #rec-undo-toast .rec-undo-ring{flex-shrink:0}
+  #rec-undo-toast .rec-undo-ring-fg{animation:none;transition:none}
+  #rec-undo-toast.show .rec-undo-ring-fg{animation:recUndoRing 4.5s linear forwards}
   @keyframes recEnterNew{
     0%{opacity:0;transform:translateX(-16px) scaleX(.96);filter:brightness(1.5) saturate(1.5)}
     40%{opacity:1;filter:brightness(1.15)}
@@ -8264,6 +8303,15 @@ document.body.style.overflow = 'hidden';
 </div>
 
 <div id="toast"></div>
+<div id="rec-undo-toast">
+  <span class="rec-undo-dot"></span>
+  <span class="rec-undo-text">ลบ <span class="rec-undo-name"></span> แล้ว</span>
+  <button class="rec-undo-btn" onclick="_recUndoToastClick()">↩ Undo</button>
+  <svg class="rec-undo-ring" width="26" height="26" viewBox="0 0 28 28">
+    <circle cx="14" cy="14" r="12" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="2.5"/>
+    <circle class="rec-undo-ring-fg" cx="14" cy="14" r="12" fill="none" stroke="#00d4aa" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="75.4" stroke-dashoffset="0" transform="rotate(-90 14 14)"/>
+  </svg>
+</div>
 
 <!-- ══ GENERATIVE BACKGROUND ══ -->
 <canvas id="bgCanvas" style="position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.85"></canvas>
@@ -9719,9 +9767,10 @@ document.body.style.overflow = 'hidden';
           <path d="M12 2v20M17 5.5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
         </svg>
       </button>
-      <button onclick="openDeleteHistory()" class="rec-del-hist-btn">
+      <button onclick="openDeleteHistory()" class="rec-del-hist-btn" id="rec-trash-target">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
         ประวัติลบ
+        <span class="rec-trash-badge" id="rec-trash-badge">0</span>
       </button>
     </div>
 
@@ -12687,6 +12736,7 @@ function setFilter(f) {
 }
 function renderRecords() {
   renderStockSummaryAll();
+  _recUpdateTrashBadge();
   // chips — นับจาก records ทั้งหมด ไม่กรอง qty ก่อน เพื่อให้ตัวเลขรวมถูกต้อง
   const total=records.length;
   const oos=records.filter(r=>r.qty===0).length;
@@ -14119,44 +14169,148 @@ function _renderCalDayDetail(key, items) {
   }
 }
 
+// ── crumple a card into a paper ball and toss it into the trash icon ──
+function _recTossToTrash(cardEl, targetEl) {
+  const rect = cardEl.getBoundingClientRect();
+  const trect = targetEl ? targetEl.getBoundingClientRect()
+    : { left: window.innerWidth - 40, top: 20, width: 20, height: 20 };
+  if (rect.width === 0 || rect.height === 0) return;
+
+  const fromX = rect.left + rect.width / 2;
+  const fromY = rect.top + rect.height / 2;
+  const toX = trect.left + trect.width / 2;
+  const toY = trect.top + trect.height / 2;
+  const spin = (Math.random() > .5 ? 1 : -1) * (480 + Math.random() * 260);
+  const arcH = 80 + Math.random() * 40;
+
+  const clone = cardEl.cloneNode(true);
+  clone.removeAttribute('id');
+  clone.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;
+    height:${rect.height}px;margin:0;z-index:10002;pointer-events:none;overflow:hidden;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);transform-origin:center center;
+    transition:transform .17s cubic-bezier(.4,0,.6,1),border-radius .17s ease,filter .17s ease;`;
+  document.body.appendChild(clone);
+
+  // phase 1 — crumple into a ball, in place
+  requestAnimationFrame(() => {
+    clone.style.transform = 'scale(.22)';
+    clone.style.borderRadius = '50%';
+    clone.style.filter = 'brightness(1.3) saturate(.5)';
+  });
+
+  // phase 2 — arc-toss toward the trash icon
+  setTimeout(() => {
+    clone.style.left = (fromX - rect.width / 2) + 'px';
+    clone.style.top = (fromY - rect.height / 2) + 'px';
+    clone.style.transition = '';
+    const DUR = 420;
+    const t0 = performance.now();
+    function frame(now) {
+      const t = Math.min(1, (now - t0) / DUR);
+      const ease = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const dx = (toX - fromX) * ease;
+      const dy = (toY - fromY) * ease - arcH * Math.sin(Math.PI * t);
+      const scale = Math.max(.03, .22 - .17 * t);
+      clone.style.transform = `translate(${dx}px,${dy}px) scale(${scale}) rotate(${spin * t}deg)`;
+      clone.style.filter = `brightness(${1.3 + t * .3}) saturate(${.5 - t * .3})`;
+      if (t < 1) requestAnimationFrame(frame);
+      else {
+        clone.remove();
+        if (targetEl) {
+          targetEl.classList.add('rec-trash-bounce');
+          setTimeout(() => targetEl.classList.remove('rec-trash-bounce'), 400);
+        }
+        _recSpawnDust(toX, toY);
+      }
+    }
+    requestAnimationFrame(frame);
+  }, 170);
+}
+
+function _recSpawnDust(x, y) {
+  const n = 6;
+  for (let i = 0; i < n; i++) {
+    const ang = (Math.PI * 2 * i / n) + Math.random() * .4;
+    const dist = 13 + Math.random() * 10;
+    const p = document.createElement('div');
+    p.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:5px;height:5px;border-radius:50%;
+      background:rgba(0,212,170,.8);pointer-events:none;z-index:10002;transform:translate(-50%,-50%);`;
+    document.body.appendChild(p);
+    const dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist;
+    p.animate([
+      { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 },
+      { transform: `translate(${dx - 2.5}px,${dy - 2.5}px) scale(.2)`, opacity: 0 }
+    ], { duration: 380, easing: 'cubic-bezier(.2,.8,.3,1)' }).onfinish = () => p.remove();
+  }
+}
+
+function _recUpdateTrashBadge() {
+  const b = document.getElementById('rec-trash-badge');
+  if (!b) return;
+  let hist = [];
+  try { hist = JSON.parse(localStorage.getItem('expiry-delete-history') || '[]'); } catch (e) {}
+  const n = hist.length;
+  b.textContent = n > 99 ? '99+' : String(n);
+  b.style.display = n > 0 ? 'flex' : 'none';
+}
+
+let _recUndoToastTimer = null;
+function _recShowUndoToast(id, name) {
+  const el = document.getElementById('rec-undo-toast');
+  if (!el) return;
+  clearTimeout(_recUndoToastTimer);
+  el.dataset.recId = id;
+  const nameEl = el.querySelector('.rec-undo-name');
+  if (nameEl) nameEl.textContent = name || '';
+  el.classList.remove('show');
+  void el.offsetWidth; // restart transition/ring animation
+  el.classList.add('show');
+  _recUndoToastTimer = setTimeout(() => { el.classList.remove('show'); }, 4600);
+}
+function _recUndoToastClick() {
+  const el = document.getElementById('rec-undo-toast');
+  const id = el && el.dataset.recId;
+  if (!id) return;
+  clearTimeout(_recUndoToastTimer);
+  el.classList.remove('show');
+  _recUndoLastDeleted(id);
+}
+function _recUndoLastDeleted(id) {
+  let hist = [];
+  try { hist = JSON.parse(localStorage.getItem('expiry-delete-history') || '[]'); } catch (e) {}
+  const idx = hist.findIndex(h => h.id === id);
+  if (idx > -1) restoreDeletedRecord(idx);
+}
+
 function deleteRecord(id) {
   const cardEl = document.querySelector('[data-record-id="' + id + '"]');
+  const r = records.find(x => x.id === id);
+  const trashTarget = document.getElementById('rec-trash-target');
+
   if (cardEl) {
     const h = cardEl.offsetHeight;
-    cardEl.style.setProperty('--card-h', h + 'px');
     cardEl.style.pointerEvents = 'none';
-    cardEl.style.overflow = 'hidden';
-
-    // ── white flash overlay ──
-    const flash = document.createElement('div');
-    flash.style.cssText = `
-      position:absolute;inset:0;z-index:999;border-radius:inherit;
-      background:#fff;pointer-events:none;
-      animation:tvFlash .22s ease-out forwards;
-    `;
     cardEl.style.position = 'relative';
-    cardEl.appendChild(flash);
 
-    // ── Phase 2: shrink to line → dot (starts at 80ms, peak at ~120ms) ──
+    // crumple + arc-toss a clone into the trash icon
+    _recTossToTrash(cardEl, trashTarget);
+
+    // meanwhile, collapse the row so the list closes the gap
+    cardEl.style.overflow = 'hidden';
+    cardEl.style.transition = 'opacity .12s ease';
+    cardEl.style.opacity = '0';
     setTimeout(() => {
-      cardEl.style.transformOrigin = 'center center';
-      cardEl.style.animation = 'tvShrink .45s cubic-bezier(.4,0,1,1) forwards';
-
-      // ── Phase 3: collapse height after TV dot gone ──
-      setTimeout(() => {
-        cardEl.style.animation = 'none';
-        cardEl.style.transform = 'scaleY(0)';
-        cardEl.style.transition = 'max-height .18s cubic-bezier(.4,0,1,1), margin .18s ease';
-        cardEl.style.maxHeight = h + 'px';
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-          cardEl.style.maxHeight = '0';
-          cardEl.style.marginBottom = '0';
-          setTimeout(() => { cardEl.remove(); }, 200);
-        }));
-      }, 460);
-    }, 60);
+      cardEl.style.transition = 'max-height .18s cubic-bezier(.4,0,1,1), margin .18s ease';
+      cardEl.style.maxHeight = h + 'px';
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        cardEl.style.maxHeight = '0';
+        cardEl.style.marginBottom = '0';
+        setTimeout(() => { cardEl.remove(); }, 200);
+      }));
+    }, 90);
   }
   _doDeleteRecord(id);
+  _recShowUndoToast(id, r ? r.name : '');
 }
 
 function _doDeleteRecord(id) {
@@ -14167,6 +14321,7 @@ function _doDeleteRecord(id) {
       hist.unshift({...r, _deletedAt: Date.now()});
       if (hist.length > 200) hist.length = 200;
       localStorage.setItem('expiry-delete-history', JSON.stringify(hist));
+      _recUpdateTrashBadge();
     } catch(e) {}
   }
   records = records.filter(r=>r.id!==id);
@@ -14317,6 +14472,7 @@ function restoreDeletedRecord(histIdx) {
     saveRecordsLS();
     hist.splice(histIdx, 1);
     try { localStorage.setItem('expiry-delete-history', JSON.stringify(hist)); } catch(e) {}
+    _recUpdateTrashBadge();
     _renderRecDebounced(); _renderDashDebounced();
     if (hist.length === 0) {
       document.getElementById('delete-history-modal').style.display = 'none';
@@ -14358,6 +14514,7 @@ function restoreDeletedRecord(histIdx) {
 function clearDeleteHistory() {
   if (!confirm('ล้างประวัติการลบทั้งหมด?')) return;
   try { localStorage.removeItem('expiry-delete-history'); } catch(e) {}
+  _recUpdateTrashBadge();
   openDeleteHistory();
   showToast('ล้างประวัติแล้ว');
 }
