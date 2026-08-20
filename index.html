@@ -22612,8 +22612,14 @@ async function _wrHandleUpload(input) {
     // silently disappearing into the new database.
     const noBarcodeRows = [];   // has a product name, but column A wasn't a usable barcode
     const noPriceRows = [];     // row imported fine, but all 3 price columns came out blank
+    // [FIX] Some monthly exports (e.g. Aug 2026 file) added a "Full List" summary sheet that
+    // simply concatenates every country sheet that follows it. It isn't a real region, and
+    // importing it on top of the per-country sheets doubles every record in the database
+    // (this was the "การ์ดสินค้าเพี้ยน" bug). Skip any sheet whose name is a known
+    // summary/cover label rather than an actual product region.
+    const SUMMARY_SHEET_NAMES = ['cover', 'full list', 'summary', 'all', 'master list', 'master'];
     wb.SheetNames.forEach(sn => {
-      if (sn.trim().toLowerCase() === 'cover') return;
+      if (SUMMARY_SHEET_NAMES.includes(sn.trim().toLowerCase())) return;
       const ws = wb.Sheets[sn];
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
       const country = sn.trim();
