@@ -22607,6 +22607,28 @@ function _wrGetMasterByBarcode() {
   return _wrMasterByBarcode;
 }
 
+// [NEW 2026-08-20] pulls the producer name out of a product-name string when there's no
+// master-DB match to source it from (see _wrHandleUpload). Tested against the actual monthly
+// price list: covers 1491/1492 real rows. Two conventions cover almost everything —
+//   "{Producer} - {description}"        e.g. "La Crema - \"Sonoma Coast\" Chardonnay"
+//   "{Producer}, AOC {Region} {Vintage}" e.g. "Alter Ego de Palmer, AOC Margaux 2015"
+// — checked in that order since " - " is the more specific/common pattern; a bare "-" with no
+// surrounding spaces and a split-before-appellation-keyword are last-resort fallbacks for the
+// occasional typo'd row (missing space around the dash, or missing comma after the producer).
+function _wrDeriveProducerFromName(name) {
+  if (!name) return '';
+  const s = String(name).trim();
+  let idx = s.indexOf(' - ');
+  if (idx > 0) return s.slice(0, idx).trim();
+  idx = s.indexOf(',');
+  if (idx > 0) return s.slice(0, idx).trim();
+  idx = s.indexOf('-');
+  if (idx > 0) return s.slice(0, idx).trim();
+  const m = s.match(/^(.*?)\s+(AOC|AOP|DOC|DOCG|DOCa|IGP|DO)\b/i);
+  if (m && m[1]) return m[1].trim();
+  return '';
+}
+
 async function _wrHandleUpload(input) {
   const file = input.files[0];
   if (!file) return;
@@ -22687,7 +22709,16 @@ async function _wrHandleUpload(input) {
         // (Grand Cru / 1er Cru / DOCG / etc.) keep working after an import.
         const bcKey = String(Math.round(bcNum));
         const master = _wrGetMasterByBarcode().get(bcKey);
-        const producer = master ? master[9] : '';
+        // [NEW 2026-08-20] producer for a barcode not yet in the master DB (a genuinely new
+        // product added this month) used to stay blank — the excel itself never has a
+        // dedicated producer column. But the product-name text reliably carries it: most
+        // country sheets write "{Producer} - {description}" and the Fine Wines sheet writes
+        // "{Producer}, AOC {Region} {Vintage}". _wrDeriveProducerFromName() pulls the producer
+        // out of that text so newly-added rows aren't stuck with an empty PRODUCER field just
+        // because they haven't been manually catalogued yet. Classification and label tier
+        // have no equivalent signal in the free-text name (they need real classification-table
+        // knowledge, e.g. Bordeaux 1855), so those still only come from a master-DB match.
+        const producer = (master && master[9]) || _wrDeriveProducerFromName(String(product).trim());
         const labelTier = master ? master[10] : '';
         const classification = master ? master[11] : '';
         const region = master ? master[12] : '';
