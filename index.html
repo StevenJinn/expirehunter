@@ -12623,28 +12623,15 @@ function syncQtyHeight(row) {
   if (!whiteBox) return;
   const h = whiteBox.offsetHeight + 'px';
   if (qtyPanel) { qtyPanel.style.minHeight = h; qtyPanel.style.height = h; }
-  if (photoPanel) {
-    // [FIX 2026-08-20] photoPanel isn't always a direct sibling of whiteBox — in the wholesale
-    // detail sheet, whiteBox sits at the very bottom of the whole metadata column (producer /
-    // grapes / classification / label-tier all stacked above it), so whiteBox.offsetHeight alone
-    // (just its own ~70px barcode box) is nowhere near that column's real height. Forcing
-    // minHeight down to that small number was silently defeating the panel's own CSS min-height
-    // floor (220px) for any row whose metadata is sparse — typically a brand-new item not yet
-    // enriched in the master catalog — making its photo end up visibly shorter than an
-    // already-enriched sibling vintage (e.g. an existing 2018 entry). Measure the real distance
-    // from the row's own top down to the barcode's bottom edge instead, and never shrink below
-    // whatever floor the panel already declared in markup (captured once, before this function
-    // ever touches it, so repeat calls — e.g. two barcode canvases in the plain records-list
-    // card — can't ratchet the floor down on themselves).
-    if (photoPanel.dataset.floorH === undefined) {
-      const declared = parseFloat(photoPanel.style.minHeight);
-      photoPanel.dataset.floorH = isNaN(declared) ? '0' : String(declared);
-    }
-    const floor = parseFloat(photoPanel.dataset.floorH) || 0;
-    const rowRect = row.getBoundingClientRect();
-    const wbRect = whiteBox.getBoundingClientRect();
-    const reach = Math.round(wbRect.bottom - rowRect.top);
-    photoPanel.style.minHeight = Math.max(reach, floor) + 'px';
+  // [FIX 2026-08-20] the wholesale detail-sheet photo (data-wr-fixed-h) is now a flat, constant
+  // height set directly in markup (see _wrBuildDetailHTML) so every product's photo is the same
+  // size regardless of how much metadata that row has — producer/grapes/classification/label-tier
+  // used to stretch it taller for well-documented wines and (via a since-removed height-matching
+  // hack here) let it collapse shorter for sparse rows like brand-new excel-import items, so no
+  // two products' photos were reliably the same size. Skip those panels entirely; only the plain
+  // records-list card's photo (no data-wr-fixed-h) still wants its height tied to the barcode row.
+  if (photoPanel && !photoPanel.hasAttribute('data-wr-fixed-h')) {
+    photoPanel.style.minHeight = h;
   }
 }
 
@@ -27480,7 +27467,7 @@ function _wrBuildDetailHTML(i) {
            enriched row's, making the same photo look oddly cropped/squished next to its sibling
            vintages. min-height keeps every photo panel a consistent size regardless of how much
            metadata that particular row happened to get. -->
-      <div class="rec-photo-panel${pinEditActive ? ' wr-pin-edit-mode' : ''}" data-prod-photo-bc="${barcode || ''}" onclick="_wrPhotoPanelClick(event)" style="width:104px;min-height:220px;max-height:480px;flex-shrink:0;border-radius:12px;overflow:visible;position:relative;cursor:default;border:1px solid rgba(${tierRgb},.25);background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(${tierRgb},.1)">
+      <div class="rec-photo-panel${pinEditActive ? ' wr-pin-edit-mode' : ''}" data-prod-photo-bc="${barcode || ''}" data-wr-fixed-h="1" onclick="_wrPhotoPanelClick(event)" style="width:104px;height:356px;flex-shrink:0;border-radius:12px;overflow:visible;position:relative;cursor:default;border:1px solid rgba(${tierRgb},.25);background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(${tierRgb},.1)">
         <!-- [FIX 2026-08-03] image + corner brackets now live in an INNER absolutely-positioned
              wrapper that carries its own overflow:hidden/border-radius — the outer panel switched
              to overflow:visible so photo pins (added below) can float their tap-to-read tip
