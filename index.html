@@ -13183,7 +13183,18 @@ function renderRecords() {
     if (r.qty===0) return false;
     if (currentFilter==="warn") { const d=r.expDate?diffDays(r.expDate):null; return d!==null&&d>=0&&d<=90; }
     return statusOf(r.expDate).key===currentFilter;
-  }).filter(r => !search || r.name.includes(search) || r.barcode.includes(search));
+  }).filter(r => {
+    if (!search) return true;
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    const nameMatch = (r.name||'').toLowerCase().includes(q);
+    // บาร์โค้ด: ค้นบางส่วนได้ทั้งแบบดิบและแบบ normalize (ตัด - / space / เลข 0 นำหน้าออก)
+    const barcodeRaw = (r.barcode||'').toLowerCase();
+    const barcodeNorm = normalizeBarcode(r.barcode).toLowerCase();
+    const qNorm = normalizeBarcode(search).toLowerCase();
+    const bcMatch = barcodeRaw.includes(q) || (qNorm && barcodeNorm.includes(qNorm));
+    return nameMatch || bcMatch;
+  });
 
   // Apply sort with direction
   const sd = (currentSortDir === 'asc') ? 1 : -1;
@@ -14532,7 +14543,7 @@ function editRecord(id) {
   const r = records.find(r=>r.id===id);
   if(!r) return;
   editingId = id;
-  document.getElementById("editName").textContent = r.name;
+  document.getElementById("editName").value = r.name;
   document.getElementById("editBarcode").textContent = r.barcode;
   document.getElementById("eQtyLabel").textContent = `จำนวน (${r.unit||"ชิ้น"}) *`;
   document.getElementById("eQty").value = r.qty;
@@ -14568,15 +14579,20 @@ function saveEdit() {
   const m=document.getElementById("eExpM").value;
   const y=document.getElementById("eExpY").value;
   const qty = parseInt(document.getElementById("eQty").value)||0;
+  const newName = (document.getElementById("editName").value||"").trim();
   if(!d||!m||!y||!qty) return showToast("กรอกวันหมดอายุและจำนวน","err");
+  if(!newName) return showToast("กรอกชื่อสินค้า","err");
   const safeDay = _clampExpDay(y, m, d);
   const expDate=`${y}-${m}-${safeDay}`;
   const idx = records.findIndex(r=>r.id===editingId);
   if(idx<0) return;
   const prevExpDate = records[idx].expDate;
   const prevQty     = records[idx].qty;
+  const prevName    = records[idx].name;
+  const nameChanged = newName !== prevName;
   records[idx].expDate = expDate;
   records[idx].qty = qty;
+  records[idx].name = newName;
   saveRecordsLS();
 
   // ── sync shelf items → single source of truth: item.qty = rec.qty ──
@@ -14587,6 +14603,7 @@ function saveEdit() {
     if(prevExpDate !== expDate){ i.expDate = expDate; _shelfSynced = true; }
     // qty จาก rec เสมอ
     if(i.qty !== qty){ i.qty = qty; _shelfSynced = true; }
+    if(nameChanged){ i.name = newName; _shelfSynced = true; }
     // ลบออกจาก grid ถ้า qty=0
     if(qty <= 0){
       s.grid = s.grid.map(row=>row.map(cell=>cell.filter(k=>k!==i.key)));
@@ -14596,6 +14613,18 @@ function saveEdit() {
   }));
 
   if(_shelfSynced) saveShelves();
+
+  // ── ชื่อสินค้าเปลี่ยน → sync ไปที่ catalog (ถ้ามีบาร์โค้ดตรงกัน) และ record อื่นๆ ที่บาร์โค้ดเดียวกัน ──
+  if(nameChanged && records[idx].barcode){
+    const _bc = records[idx].barcode;
+    let _catSynced = false;
+    const catIdx = catalog.findIndex(p=>p.barcode===_bc);
+    if(catIdx>=0 && catalog[catIdx].name!==newName){ catalog[catIdx]={...catalog[catIdx], name:newName}; _catSynced=true; }
+    if(_catSynced) saveCatalogLS();
+    records.forEach(r=>{ if(r.id!==editingId && r.barcode===_bc) r.name = newName; });
+    saveRecordsLS();
+  }
+
   closeEdit();
   renderRecords();
   renderDashboard();
@@ -15241,7 +15270,16 @@ function lookupProduct(code) {
       return ps===stripped || ps.endsWith(stripped) || stripped.endsWith(ps);
     });
   }
-  matchedProduct = found ? {...found, barcode:norm} : {barcode:norm,name:"",category:"",unit:"ชิ้น",notFound:true};
+  // ถ้าไม่ใช่ตัวเลขล้วน (พิมพ์เป็นชื่อ ไม่ใช่บาร์โค้ด) → ลองหาโดยชื่อสินค้าตรงๆ ก่อน
+  const isNameLike = !/^\d+$/.test(norm);
+  if (!found && isNameLike) {
+    found = catalog.find(p => (p.name||'').toLowerCase() === norm.toLowerCase());
+  }
+  // ไม่พบสินค้า: ถ้าพิมพ์เป็นชื่อ ให้เอาข้อความที่พิมพ์มาเติมช่อง "ชื่อสินค้า" ให้อัตโนมัติ
+  // แทนที่จะเอาไปใส่เป็นบาร์โค้ด (ป้องกันสับสน + ไม่ต้องพิมพ์ชื่อซ้ำ)
+  matchedProduct = found
+    ? {...found, barcode:norm}
+    : { barcode: isNameLike ? '' : norm, name: isNameLike ? code.trim() : '', category:"", unit:"ชิ้น", notFound:true };
   // ล้างค่า form เก่าออกจาก object ป้องกัน restore ข้ามสินค้า
   delete matchedProduct._d; delete matchedProduct._m; delete matchedProduct._y;
   delete matchedProduct._qty; delete matchedProduct._name;
@@ -15317,7 +15355,7 @@ function showMatchCard(draft) {
     }
   })();
   const _enEl=document.getElementById("matchNameEn"); if(_enEl) _enEl.textContent=(m.nameEn&&m.nameEn!==m.name)?m.nameEn:"";
-  document.getElementById("matchBarcode").textContent=m.barcode;
+  document.getElementById("matchBarcode").textContent=m.barcode||"ไม่มีบาร์โค้ด";
   document.getElementById("matchMeta").textContent=(m.category||"")+" · "+(m.unit||"");
   document.getElementById("fQtyLabel").textContent=`จำนวน (${m.unit||"ชิ้น"}) *`;
   document.getElementById("nameRow").style.display=m.notFound?"block":"none";
@@ -21532,7 +21570,9 @@ function _shelfPhotoMode(hasPhoto) {
             <div style="width:4px;height:4px;border-radius:50%;background:#ffd200;box-shadow:0 0 5px #ffd200;animation:recDotBlink 1.4s ease-in-out infinite"></div>
             <span style="font-size:7.5px;letter-spacing:2px;color:rgba(255,210,0,.7);font-weight:800;font-family:'IBM Plex Mono',monospace">EDIT · RECORD</span>
           </div>
-          <div id="editName" style="font-size:15px;font-weight:800;color:#f0f2ff;line-height:1.3;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+          <input id="editName" type="text"
+            style="width:100%;font-size:15px;font-weight:800;color:#f0f2ff;line-height:1.3;margin-bottom:3px;background:transparent;border:none;border-bottom:1.5px dashed rgba(255,210,0,.35);padding:2px 0 4px;outline:none;font-family:'Prompt',sans-serif;box-sizing:border-box"
+            onfocus="this.style.borderBottomColor='#ffd200'" onblur="this.style.borderBottomColor='rgba(255,210,0,.35)'"/>
           <div id="editBarcode" style="font-size:10px;color:rgba(0,212,170,.5);letter-spacing:.5px;font-family:'IBM Plex Mono',monospace"></div>
         </div>
         <button onclick="closeEdit()" style="background:linear-gradient(135deg,rgba(40,10,10,.9),rgba(60,10,10,.8));border:1px solid rgba(255,77,77,.35);color:#ff6b6b;font-size:14px;width:32px;height:32px;border-radius:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 12px rgba(255,60,60,.15);transition:.15s;font-weight:900;margin-left:10px">✕</button>
