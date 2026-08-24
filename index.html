@@ -13302,15 +13302,18 @@ function renderRecords() {
     });
   });
 
-  function _shelfTagsFor(r) {
+  function _shelfTagsFor(r, extraRightHtml) {
     const key="rec__"+r.id;
     const locs=_shelfMap[key]||[];
-    if(!locs.length) return '';
+    if(!locs.length) {
+      return extraRightHtml ? `<div style="margin-top:6px;display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap">${extraRightHtml}</div>` : '';
+    }
     let out='';
-    locs.forEach(l=>{
+    locs.forEach((l,idx)=>{
       const fl=l.rows-l.row+1;
       const posStr=l.row!==null?` · ชั้น ${fl} ช่อง ${l.col}`:'(ยังไม่ได้วาง)';
-      out+=`<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:11px;background:#0d2a1f;border:1px solid #00d4aa55;border-radius:20px;padding:3px 10px;color:#00d4aa;font-weight:700;cursor:pointer" onclick="event.stopPropagation();const _s=shelves.find(x=>x.id==='${l.shelfId}');if(_s){switchTab('shelf');setTimeout(()=>openShelfDetail(_s.id),50);}">${l.shelfName}${posStr}</span></div>`;
+      const rightHtml = idx===0 ? (extraRightHtml||'') : '';
+      out+=`<div style="margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap"><span style="font-size:11px;background:#0d2a1f;border:1px solid #00d4aa55;border-radius:20px;padding:3px 10px;color:#00d4aa;font-weight:700;cursor:pointer" onclick="event.stopPropagation();const _s=shelves.find(x=>x.id==='${l.shelfId}');if(_s){switchTab('shelf');setTimeout(()=>openShelfDetail(_s.id),50);}">${l.shelfName}${posStr}</span>${rightHtml}</div>`;
     });
     return out;
   }
@@ -13341,7 +13344,7 @@ function renderRecords() {
     const qtyPct = Math.min(100, Math.max(5, (r.qty/maxQty)*100));
 
     // shelf tags
-    const shelfTagsRaw = _shelfTagsFor(r);
+    // shelf tags + ราคาต้นทุน ถูกประกอบตอนท้าย (หลังรู้ค่า _costVal) — ดู _shelfTagsFor(r, priceBadge) ด้านล่าง
 
     // record ID short
     const recIdShort = String(r.id||'').slice(-6).toUpperCase();
@@ -13500,19 +13503,13 @@ function renderRecords() {
             <div class="rec-data-cell-unit" style="color:${daysColor}44">${isOOS?'—':d<0?'OVERDUE':d===0?'EXPIRES NOW':'REMAIN'}</div>
           </div>
         </div>
-        ${_costVal!==null ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;background:rgba(0,212,170,.05);border:1px solid rgba(0,212,170,.15);border-radius:8px;padding:6px 10px">
-          <span style="font-size:9px;font-family:'IBM Plex Mono',monospace;letter-spacing:1px;color:rgba(0,212,170,.5);font-weight:700;text-transform:uppercase">ต้นทุน/ชิ้น</span>
-          <span style="font-size:14px;font-weight:800;color:#00d4aa;text-shadow:0 0 8px rgba(0,212,170,.3)">${_costVal.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-        </div>` : ''}
         ${_stockOnHand!==null ? `<div style="font-size:9px;color:rgba(255,255,255,.28);margin-top:6px;font-family:'IBM Plex Mono',monospace;letter-spacing:.4px;display:flex;align-items:center;gap:5px">
           <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="1" y="7" width="22" height="14" rx="2"/><path d="M1 10h22M8 3v4M16 3v4"/></svg>
           คลังรวมล่าสุด (system): ${_stockOnHand.toLocaleString('th-TH')} ${r.unit||''}
         </div>` : ''}
 
-
-
-        <!-- shelf tags -->
-        ${shelfTagsRaw}
+        <!-- shelf tags (+ ราคาต้นทุนแบบสั้น ชิดขวาของแท็กแรก) -->
+        ${_shelfTagsFor(r, _costVal!==null ? `<span style="display:inline-flex;flex-direction:column;align-items:flex-end;line-height:1.15;background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.35);border-radius:12px;padding:3px 10px;white-space:nowrap"><span style="font-size:8px;font-weight:700;color:rgba(0,212,170,.6);letter-spacing:.5px">ต้นทุน</span><span style="font-size:13px;font-weight:900;color:#00d4aa">${_costVal.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></span>` : null)}
 
         <!-- note -->
         ${r.note?`<div style="font-size:9px;color:rgba(255,255,255,.22);margin-top:6px;font-family:'IBM Plex Mono',monospace;letter-spacing:.5px;display:flex;align-items:center;gap:5px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.04);border-radius:6px;padding:5px 8px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${r.note}</div>`:""}
