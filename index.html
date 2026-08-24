@@ -13499,18 +13499,17 @@ function renderRecords() {
             <div class="rec-data-cell-val" style="color:${daysColor};font-size:17px;letter-spacing:.5px;line-height:1.1;text-shadow:0 0 14px ${daysColor}55;animation:recDaysFlicker ${isOOS||d<=7?'1.8':'8'}s ease-in-out infinite">${daysStr}</div>
             <div class="rec-data-cell-unit" style="color:${daysColor}44">${isOOS?'—':d<0?'OVERDUE':d===0?'EXPIRES NOW':'REMAIN'}</div>
           </div>
-          ${_costVal!==null ? `
-          <!-- ต้นทุน/ชิ้น -->
-          <div class="rec-data-cell" style="--seg-color:rgba(0,212,170,.5);--seg-w:70%">
-            <div class="rec-data-cell-lbl" style="color:rgba(0,212,170,.55)">COST/PC</div>
-            <div class="rec-data-cell-val" style="color:#00d4aa;font-size:15px;letter-spacing:.3px;line-height:1.1;text-shadow:0 0 8px rgba(0,212,170,.3)">฿${_costVal.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-            <div class="rec-data-cell-unit" style="color:rgba(0,212,170,.35)">ต้นทุน</div>
-          </div>` : ''}
         </div>
+        ${_costVal!==null ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;background:rgba(0,212,170,.05);border:1px solid rgba(0,212,170,.15);border-radius:8px;padding:6px 10px">
+          <span style="font-size:9px;font-family:'IBM Plex Mono',monospace;letter-spacing:1px;color:rgba(0,212,170,.5);font-weight:700;text-transform:uppercase">ต้นทุน/ชิ้น</span>
+          <span style="font-size:14px;font-weight:800;color:#00d4aa;text-shadow:0 0 8px rgba(0,212,170,.3)">${_costVal.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        </div>` : ''}
         ${_stockOnHand!==null ? `<div style="font-size:9px;color:rgba(255,255,255,.28);margin-top:6px;font-family:'IBM Plex Mono',monospace;letter-spacing:.4px;display:flex;align-items:center;gap:5px">
           <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="1" y="7" width="22" height="14" rx="2"/><path d="M1 10h22M8 3v4M16 3v4"/></svg>
           คลังรวมล่าสุด (system): ${_stockOnHand.toLocaleString('th-TH')} ${r.unit||''}
         </div>` : ''}
+
+
 
         <!-- shelf tags -->
         ${shelfTagsRaw}
@@ -14712,7 +14711,7 @@ function openUES(id) {
     let anyShown = false;
     if (costEl) {
       if (_catEntry && typeof _catEntry.cost === 'number') {
-        costEl.textContent = `฿${_catEntry.cost.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})} / ชิ้น`;
+        costEl.textContent = `${_catEntry.cost.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})} / ชิ้น`;
         costEl.style.display = 'inline-block';
         anyShown = true;
       } else costEl.style.display = 'none';
@@ -15179,7 +15178,7 @@ function renderCatalog(reset=true) {
     div.style.animationDelay = (i*18)+"ms";
     const rowNum = String(globalOffset+i+1).padStart(3,"0");
     const catTag = p.category ? `<span class="nx-row-cat">${p.category.toUpperCase().slice(0,6)}</span>` : '';
-    const costTag = typeof p.cost==='number' ? `<span class="nx-row-cat" style="background:rgba(0,212,170,.09);border-color:rgba(0,212,170,.22);color:#00d4aa">฿${p.cost.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>` : '';
+    const costTag = typeof p.cost==='number' ? `<span class="nx-row-cat" style="background:rgba(0,212,170,.09);border-color:rgba(0,212,170,.22);color:#00d4aa">${p.cost.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>` : '';
     const stockTag = typeof p.stockOnHand==='number' ? `<span class="nx-row-cat" style="background:rgba(75,207,250,.09);border-color:rgba(75,207,250,.22);color:#4bcffa">คลัง ${p.stockOnHand.toLocaleString('th-TH')}</span>` : '';
     div.innerHTML = `
       <div class="nx-row-idx">${rowNum}</div>
