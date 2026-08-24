@@ -13306,7 +13306,9 @@ function renderRecords() {
     const key="rec__"+r.id;
     const locs=_shelfMap[key]||[];
     if(!locs.length) {
-      return extraRightHtml ? `<div style="margin-top:6px;display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap">${extraRightHtml}</div>` : '';
+      // ไม่มีตำแหน่งเชลฟ์เลย — โชว์ป้าย placeholder ไว้ด้วย กันแถวราคาลอยเดี่ยวๆ ดูเหมือนแท็กเชลฟ์หายไป
+      const placeholder = `<span style="font-size:11px;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.16);border-radius:20px;padding:3px 10px;color:rgba(255,255,255,.32);font-weight:600;white-space:nowrap">ยังไม่ได้วางเชลฟ์</span>`;
+      return `<div style="margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">${placeholder}${extraRightHtml||''}</div>`;
     }
     let out='';
     locs.forEach((l,idx)=>{
@@ -13508,8 +13510,14 @@ function renderRecords() {
           คลังรวมล่าสุด (system): ${_stockOnHand.toLocaleString('th-TH')} ${r.unit||''}
         </div>` : ''}
 
-        <!-- shelf tags (+ ราคาต้นทุนแบบสั้น ชิดขวาของแท็กแรก) -->
-        ${_shelfTagsFor(r, _costVal!==null ? `<span style="display:inline-flex;flex-direction:column;align-items:flex-end;line-height:1.15;background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.35);border-radius:12px;padding:3px 10px;white-space:nowrap"><span style="font-size:8px;font-weight:700;color:rgba(0,212,170,.6);letter-spacing:.5px">ต้นทุน</span><span style="font-size:13px;font-weight:900;color:#00d4aa">${_costVal.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></span>` : null)}
+        <!-- shelf tags (+ ราคาต้นทุนแบบสั้น ชิดขวาของแท็กแรก — สีตามความเร่งด่วนของการ์ด) -->
+        ${_shelfTagsFor(r, _costVal!==null ? `<span style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(${accentRgb},.14),rgba(${accentRgb},.03));border:1px solid rgba(${accentRgb},.4);border-radius:10px;padding:4px 10px 4px 8px;box-shadow:0 0 12px rgba(${accentRgb},.12),inset 0 1px 0 rgba(255,255,255,.05);white-space:nowrap">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2" style="flex-shrink:0;opacity:.75"><path d="M20.59 13.41L13.42 20.58a2 2 0 01-2.83 0L2.41 12.4A2 2 0 012 11V4a2 2 0 012-2h7a2 2 0 011.41.59l8.18 8.18a2 2 0 010 2.83z"/><circle cx="7.5" cy="7.5" r="1.4" fill="${accentColor}" stroke="none"/></svg>
+          <span style="display:flex;flex-direction:column;line-height:1.1">
+            <span style="font-size:7px;font-weight:800;letter-spacing:1px;color:rgba(${accentRgb},.75);text-transform:uppercase;font-family:'IBM Plex Mono',monospace">ต้นทุน/ชิ้น</span>
+            <span style="font-size:14px;font-weight:900;color:${accentColor};text-shadow:0 0 8px rgba(${accentRgb},.4)">${_costVal.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+          </span>
+        </span>` : null)}
 
         <!-- note -->
         ${r.note?`<div style="font-size:9px;color:rgba(255,255,255,.22);margin-top:6px;font-family:'IBM Plex Mono',monospace;letter-spacing:.5px;display:flex;align-items:center;gap:5px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.04);border-radius:6px;padding:5px 8px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${r.note}</div>`:""}
