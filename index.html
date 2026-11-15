@@ -590,7 +590,9 @@ function insShow(force){if(isSA())return;
  else if(force){$('#inst').textContent='เปิดเมนูของเบราว์เซอร์ (⋮) แล้วเลือก “ติดตั้งแอป” หรือ “เพิ่มลงในหน้าจอหลัก”';$('#insb').hidden=true}
  else return;
  $('#ins').hidden=false}
-addEventListener('beforeinstallprompt',e=>{e.preventDefault();IP=e;if(!insHid())insShow()});
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();IP=e;if(!insHid())insShow();
+ /* ติดตั้งอัตโนมัติ: เบราว์เซอร์ห้ามติดตั้งเงียบๆ จึงเด้งหน้าต่างติดตั้งทันทีที่แตะหน้าจอครั้งแรก (ถ้าปฏิเสธ จะไม่ถามซ้ำ 7 วัน) */
+ if(!insHid())addEventListener('pointerup',async function f(ev){if(!IP||ev.target.closest&&ev.target.closest('#ins'))return;removeEventListener('pointerup',f);const p=IP;IP=null;$('#ins').hidden=true;try{p.prompt();const c=await p.userChoice;if(c&&c.outcome!='accepted')localStorage.setItem('sms-ins-x',Date.now())}catch(_){}},{once:false})});
 addEventListener('appinstalled',()=>{IP=null;$('#ins').hidden=true;$('#insrow').hidden=true;toast('ติดตั้งแล้ว เปิดจากหน้าจอโฮมได้เลย')});
 document.addEventListener('click',async e=>{const b=e.target.closest('[data-i]');if(!b)return;const a=b.dataset.i;
  if(a=='x'){$('#ins').hidden=true;try{localStorage.setItem('sms-ins-x',Date.now())}catch(_){}}
