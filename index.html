@@ -199,6 +199,7 @@ dialog[open]{animation:sheet .25s}dialog::backdrop{background:rgba(22,22,22,.5)}
 #ins b{display:block;line-height:1.25}#ins .mut{margin-top:1px;font-size:12.5px;line-height:1.35}
 #ins .btns{flex:none;flex-wrap:nowrap}#ins button{min-height:42px;padding:6px 14px}#ins[hidden],.srow[hidden],#insb[hidden]{display:none}
 @media(min-width:900px){#ins{left:calc(50% + var(--sb)/2)}}
+.cchips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.cchips button{min-height:34px;padding:4px 12px;border-radius:999px;font-size:13px}.cchips button.on{background:var(--red);color:#fff;border-color:transparent}
 </style>
 </head><body>
 <header><div class="brand"><div class="logo" role="img" aria-label="Tops"></div><div class="bt"><b>SMS</b><small>Shrink Management System</small></div></div><div class="hr"><span id="st">กำลังเชื่อมต่อ…</span><button class="ib" id="gear" data-a="set" aria-label="ตั้งค่า"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></button></div></header>
@@ -391,8 +392,21 @@ function add(){let r=edit||pre||{};const D=pre?null:ldDraft(),dm=D&&D.id==(edit?
   +'<section class="fc">'+hd(3,'จำนวน')+'<div class="stp"><button type="button" data-a="qty" data-v="-1" aria-label="ลดจำนวน">−</button><input id="qt" type="number" min="1" inputmode="numeric" value="'+esc(r.qty||1)+'" aria-label="จำนวน"><button type="button" data-a="qty" data-v="1" aria-label="เพิ่มจำนวน">+</button></div><div><div class="fl">หน่วย</div><input id="un" type="hidden" value="'+esc(r.unit)+'"><div class="chips f" id="uc"></div></div></section>'
   +'<section class="fc">'+hd(4,'วางที่ไหน')+'<div><label for="sh">ชั้นวาง</label><select id="sh" data-p="'+esc(sv)+'"><option value="">เลือกชั้นวาง</option>'+SL.map(n=>'<option value="'+esc(n)+'"'+(n==sv?' selected':'')+'>'+esc(n)+'</option>').join('')+'<option value="__new">+ เพิ่มชั้นวางใหม่…</option></select></div><div><label for="ps">ตำแหน่งในชั้น <small>(ไม่บังคับ)</small></label><input id="ps" placeholder="แถว 2 ช่อง 3" value="'+esc(ps)+'"></div></section>'
   +'<div class="sv'+(edit?' e':'')+'">'+(edit?'<button type="button" class="big" data-a="cancel">ยกเลิก</button>':'')+'<button class="big pri">บันทึก</button></div></form>'}
-function cat(){return '<input id="cq" placeholder="ค้นหาสินค้า (ชื่อ / บาร์โค้ด)" value="'+esc(cq)+'"><details><summary>เพิ่มสินค้าใหม่</summary><form id="pf"><label>บาร์โค้ด<input id="pb" required></label><label>ชื่อสินค้า<input id="pn" required></label><label>หน่วย<input id="pu"></label><label>หมวด<input id="pc"></label><button class="big pri">บันทึกสินค้า</button></form></details><p class="mut">'+S.catalog.length+' สินค้า</p><div id="cl"></div>'}
-const cl=()=>{const t=cq.toLowerCase();return S.catalog.filter(p=>!t||(p.name+' '+p.barcode).toLowerCase().includes(t)).slice(0,100).map(p=>'<div class="row"><div><b>'+esc(p.name)+'</b><div class="mut">'+esc(p.barcode)+' · '+esc(p.category||'-')+' · '+esc(p.unit||'-')+'</div></div><div class="btns"><button data-a="useP" data-v="'+esc(p.barcode)+'">ลงวันหมดอายุ</button><button data-a="rnP" data-v="'+esc(p.barcode)+'">แก้ชื่อ</button></div></div>').join('')||'<p class="mut">ไม่พบสินค้า — นำเข้าไฟล์ catalog.json ที่หน้าแรกได้</p>'};
+let cf='nw';
+const z0=p=>!norm(p.barcode)||!String(p.name||'').trim(),
+ usedSet=()=>new Set(S.records.map(r=>norm(r.barcode))),
+ isW=(p,u)=>/^wine$/i.test(p.category||'')&&!(u||usedSet()).has(norm(p.barcode)),
+ cfOk=(p,u)=>cf=='all'||(cf=='nw'&&!isW(p,u)&&!z0(p))||(cf=='w'&&isW(p,u))||(cf=='z'&&z0(p)),
+ cList=()=>{const t=cq.toLowerCase(),u=usedSet();return S.catalog.filter(p=>cfOk(p,u)&&(!t||((p.name||'')+' '+(p.barcode||'')).toLowerCase().includes(t)))};
+function cchips(){const n={nw:0,w:0,z:0,all:S.catalog.length};const u=usedSet();S.catalog.forEach(p=>{const w=isW(p,u),z=z0(p);if(w)n.w++;if(z)n.z++;if(!w&&!z)n.nw++});
+ return '<div class="cchips">'+[['nw','ไม่รวมไวน์'],['w','ไวน์ (ไม่ได้ใช้)'],['z','ไม่มีชื่อ / 0000'],['all','ทั้งหมด']].map(x=>'<button type="button" data-a="cf" data-v="'+x[0]+'"'+(cf==x[0]?' class="on"':'')+'>'+x[1]+' · '+n[x[0]]+'</button>').join('')+'</div>'}
+function catDel(pred){const gone=S.catalog.filter(pred);if(!gone.length)return;S.catalog=S.catalog.filter(x=>!pred(x));
+ const done=()=>{save();refresh();toast('ลบแล้ว '+gone.length+' สินค้า')};
+ if(!db||!ready){gone.forEach(x=>{S.pend['catalog/'+key(x.barcode)]=null});return done()}
+ db.ref(ROOT+'catalog').once('value').then(sn=>{const u={};sn.forEach(c=>{const v=c.val();if(v&&pred(v))u['catalog/'+c.key]=null});return Object.keys(u).length?db.ref(ROOT).update(u):0}).then(done).catch(e=>setSt('ลบไม่ได้: '+(e.code||e.message)))}
+function cat(){return '<input id="cq" placeholder="ค้นหาสินค้า (ชื่อ / บาร์โค้ด)" value="'+esc(cq)+'"><details><summary>เพิ่มสินค้าใหม่</summary><form id="pf"><label>บาร์โค้ด<input id="pb" required></label><label>ชื่อสินค้า<input id="pn" required></label><label>หน่วย<input id="pu"></label><label>หมวด<input id="pc"></label><button class="big pri">บันทึกสินค้า</button></form></details>'+cchips()+'<p class="mut">'+cList().length+' จาก '+S.catalog.length+' สินค้า</p><div id="cl"></div>'}
+const cl=()=>{const L=cList(),bulk=(cf=='w'||cf=='z')&&L.length?'<button class="big" data-a="cdAll">ลบทั้งหมดในกลุ่มนี้ ('+L.length+')</button>':'';
+ return bulk+L.slice(0,100).map(p=>'<div class="row"><div><b>'+(esc(p.name)||'(ไม่มีชื่อ)')+'</b><div class="mut">'+esc(p.barcode)+' · '+esc(p.category||'-')+' · '+esc(p.unit||'-')+'</div></div><div class="btns"><button data-a="useP" data-v="'+esc(p.barcode)+'">ลงวันหมดอายุ</button><button data-a="rnP" data-v="'+esc(p.barcode)+'">แก้ชื่อ</button><button data-a="dlP" data-v="'+esc(p.barcode)+'" data-n="'+esc(p.name)+'">ลบ</button></div></div>').join('')||'<p class="mut">ไม่พบสินค้า — นำเข้าไฟล์ catalog.json ที่หน้าแรกได้</p>'};
 function shSet(v){const s=$('#sh');if(!s)return;v=sn(v);if(v&&![...s.options].some(o=>o.value==v))s.add(new Option(v,v),s.options[s.options.length-1]);s.value=v;s.dataset.p=s.value}
 document.addEventListener('change',e=>{const t=e.target;if(t.id!='sh')return;
  if(t.value=='__new'){const n=sn(prompt('ชื่อชั้นวางใหม่ (เช่น เชลฟ์เบียร์ 34 - ชื่อสินค้า)','')||'');t.value=t.dataset.p||'';if(n&&n!=NOSH)shSet(n)}
@@ -416,8 +430,8 @@ function dl(n,t,m){const a=document.createElement('a');a.href=URL.createObjectUR
 async function imp(f){if(!f)return;try{const j=JSON.parse(await f.text()),sh={};(j.shelves||[]).forEach(s=>{if(s&&s.id!=null)sh[s.id]=s.name});
  const rs=(j.records||[]).map(x=>({id:String(x.id??uid()),barcode:String(x.barcode||''),name:x.name||'',expDate:x.expDate||'',qty:+x.qty||1,unit:x.unit||'',shelf:sn(x.shelf||sh[x.shelfId]||(typeof x.location=='string'?x.location:'')),pos:x.pos||'',note:x.note||'',...((x.t||x.addedAt)?{t:+(x.t||x.addedAt)||0}:{})}));
  const ss=[...new Set((j.shelves||[]).map(s=>sn(typeof s=='string'?s:s&&s.name)).concat(rs.map(r=>r.shelf)).filter(n=>n&&n!=NOSH))].map(name=>{const f=(j.shelves||[]).find(s=>s&&typeof s=='object'&&sn(s.name)==name);return{name,...(f&&typeof f.ord=='number'?{ord:f.ord}:shOrd(name))}});
- const cb=new Map();(Array.isArray(j)?j:[...(j.catalog||[]),...(j.catalogDelta||[])]).forEach(p=>{if(p&&p.barcode){const k=String(p.barcode);cb.set(k,{...(cb.get(k)||{}),...p})}});
- const cs=[...cb.values()].map(p=>({barcode:String(p.barcode),name:p.name||'',unit:p.unit||'',category:p.category||'',...(+p.cost>0?{cost:+p.cost}:{})}));
+ const cb=new Map();(Array.isArray(j)?j:[...(j.catalog||[]),...(j.catalogDelta||[])]).forEach(p=>{if(p&&p.barcode&&norm(p.barcode)){const k=String(p.barcode);cb.set(k,{...(cb.get(k)||{}),...p})}});
+ const cs=[...cb.values()].filter(p=>String(p.name||'').trim()).map(p=>({barcode:String(p.barcode),name:p.name||'',unit:p.unit||'',category:p.category||'',...(+p.cost>0?{cost:+p.cost}:{})}));
  if(confirm('นำเข้า '+rs.length+' รายการ, '+cs.length+' สินค้า และ '+ss.length+' เชลฟ์ ?')){putMany('records',rs);putMany('catalog',cs);putMany('shelves',ss);toast('นำเข้าแล้ว');render()}}catch(e){toast('อ่านไฟล์ไม่ได้')}}
 /* ── ตัวจัดการเหตุการณ์ ── */
 document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,v=b.dataset.v,today=new Date().toISOString().slice(0,10);
@@ -428,6 +442,9 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b
  else if(a=='undo'){if(undo){putMany('records',[undo]);undo=null}$('#toast').hidden=true;refresh()}
  else if(a=='scan')scan();
  else if(a=='cancel'){clDraft();go('rec')}
+ else if(a=='cf'){cf=v;render()}
+ else if(a=='dlP'){const n=b.dataset.n||'';if(confirm('ลบสินค้า "'+n+'" ออกจากฐานข้อมูล ?'))catDel(x=>String(x.barcode||'')==v&&(x.name||'')==n)}
+ else if(a=='cdAll'){const sg=new Set(cList().map(x=>x.barcode+'|'+x.name));if(sg.size&&confirm('ลบสินค้า '+sg.size+' รายการในกลุ่มนี้ ? ย้อนกลับไม่ได้ (แนะนำสำรองข้อมูลก่อน)'))catDel(x=>sg.has(x.barcode+'|'+x.name))}
  else if(a=='useP'){const p=S.catalog.find(x=>x.barcode==v);pre={barcode:p.barcode,name:p.name,unit:p.unit};go('add')}
  else if(a=='rnP'){const p=S.catalog.find(x=>x.barcode==v),n=prompt('ชื่อสินค้า',p.name);if(n&&n.trim()){putMany('catalog',[{...p,name:n.trim()}]);refresh()}}
  else if(a=='bk')dl('sms_backup_'+today+'.json',JSON.stringify({version:'lite1',exportedAt:new Date().toISOString(),records:S.records,catalog:S.catalog,shelves:shelves().filter(x=>x[0]!=NOSH).map(x=>({name:x[0],...shOrd(x[0])}))}),'application/json');
@@ -439,9 +456,9 @@ document.addEventListener('submit',e=>{e.preventDefault();
    if(!ex){toast('เลือกวันหมดอายุก่อน');$('#dr').scrollIntoView({block:'center',behavior:'smooth'});return}
   let r={id:edit?edit.id:uid(),barcode:bc,name:nm,expDate:ex,qty:n,unit:$('#un').value.trim(),shelf:sh,pos:ps,note:edit?(edit.note||''):'',t:Date.now()},m=0;
   if(!edit){const d=bc&&S.records.find(x=>norm(x.barcode)==norm(bc)&&x.expDate==ex&&(x.shelf||'')==sh&&(x.pos||'')==ps);if(d){r={...d,qty:(+d.qty||0)+n,t:Date.now()};m=1}}
-  putMany('records',[r]);regShelf(sh);clDraft();if(bc&&nm&&!S.catalog.some(p=>norm(p.barcode)==norm(bc)))putMany('catalog',[{barcode:bc,name:nm,unit:r.unit,category:''}]);
+  putMany('records',[r]);regShelf(sh);clDraft();if(norm(bc)&&nm&&!S.catalog.some(p=>norm(p.barcode)==norm(bc)))putMany('catalog',[{barcode:bc,name:nm,unit:r.unit,category:''}]);
   lastShelf=sh;const was=edit;edit=null;pre=null;toast(m?'รวมกับรายการเดิมแล้ว (รวม '+r.qty+')':'บันทึกแล้ว');if(was)go('rec');else{render();if(loop)scan()}}
- else if(e.target.id=='pf'){const bc=$('#pb').value.trim(),nm=$('#pn').value.trim();if(bc&&nm){putMany('catalog',[{barcode:bc,name:nm,unit:$('#pu').value.trim(),category:$('#pc').value.trim()}]);e.target.reset();refresh();toast('บันทึกสินค้าแล้ว')}}});
+ else if(e.target.id=='pf'){const bc=$('#pb').value.trim(),nm=$('#pn').value.trim();if(!norm(bc))toast('บาร์โค้ดต้องไม่ใช่ 0 ทั้งหมด');else if(bc&&nm){putMany('catalog',[{barcode:bc,name:nm,unit:$('#pu').value.trim(),category:$('#pc').value.trim()}]);e.target.reset();refresh();toast('บันทึกสินค้าแล้ว')}}});
 document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,v=b.dataset.v;
  if(a=='open'){const o=b.classList.toggle('open');o?OPEN.add(v):OPEN.delete(v)}
  else if(a=='grp'){const o=b.closest('.pg').classList.toggle('open');o?GO.add(v):GO.delete(v)}
