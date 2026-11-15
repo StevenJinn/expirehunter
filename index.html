@@ -199,6 +199,29 @@ dialog[open]{animation:sheet .25s}dialog::backdrop{background:rgba(22,22,22,.5)}
 #ins b{display:block;line-height:1.25}#ins .mut{margin-top:1px;font-size:12.5px;line-height:1.35}
 #ins .btns{flex:none;flex-wrap:nowrap}#ins button{min-height:42px;padding:6px 14px}#ins[hidden],.srow[hidden],#insb[hidden]{display:none}
 @media(min-width:900px){#ins{left:calc(50% + var(--sb)/2)}}
+
+/* ── รูปเชลฟ์ / รูปสินค้า (ดึงจาก Expire Hunter · อ่านอย่างเดียว) ── */
+.th{position:relative;flex:none;display:block;width:56px;height:56px;min-height:0;margin:0;padding:0;overflow:hidden;border-radius:12px;border:1px solid var(--line);background:var(--tint);color:var(--red);cursor:zoom-in}
+.th:hover{background:var(--tint);border-color:#e9b3ab}
+.th.sm{width:40px;height:40px;border-radius:10px}
+.th img{display:none;width:100%;height:100%;object-fit:cover}.th.on img{display:block}
+.th.no{display:none}
+.th.ph{display:grid;place-items:center;cursor:default;color:#c9a9a3}.th.ph svg{width:55%;height:55%;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.th:not(.on):not(.no):not(.ph)::after,.shp:not(.on):not(.no)::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.7) 50%,transparent 70%);animation:shm 1.2s linear infinite}
+@keyframes shm{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.ci>.th{align-self:flex-start}.ci>.cn{flex:1}
+.shs{display:flex;align-items:center;gap:12px}.shs .sho{min-width:0;flex:1}
+.sr .th{margin-left:-2px}
+.shp{position:relative;display:block;width:100%;height:220px;min-height:0;margin:0 0 10px;padding:0;overflow:hidden;border-radius:14px;border:1px solid var(--line);background:#161616;cursor:zoom-in}
+.shp:hover{background:#161616}.shp img{display:none;width:100%;height:100%;object-fit:contain}.shp.on img{display:block}.shp.no{display:none}
+.row>.th{margin-right:12px}.row.rp>div:first-of-type{flex:1;min-width:0}
+.aci.ap{display:flex;align-items:center;gap:10px}.aci .ac1{min-width:0;flex:1}.aci .th{cursor:inherit}
+#phdlg{width:100%;height:100%;max-width:none;max-height:none;margin:0;border-radius:0;background:rgba(10,10,10,.96);color:#fff;box-shadow:none}
+#phdlg[open]{display:flex;flex-direction:column;animation:tin .2s}#phdlg::backdrop{background:rgba(0,0,0,.9)}
+.phh{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(12px + env(safe-area-inset-top)) 14px 8px}.phh b{min-width:0;font-size:15px;line-height:1.3;overflow-wrap:anywhere}
+#phdlg .ib{flex:none;background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.4)}#phdlg .ib:hover{background:rgba(255,255,255,.28)}
+.phb{flex:1;min-height:0;display:grid;place-items:center;padding:6px 10px calc(16px + env(safe-area-inset-bottom));overflow:auto}
+.phb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:10px;touch-action:pinch-zoom}
 </style>
 </head><body>
 <header><div class="brand"><div class="logo" role="img" aria-label="Tops"></div><div class="bt"><b>SMS</b><small>Shrink Management System</small></div></div><div class="hr"><span id="st">กำลังเชื่อมต่อ…</span><button class="ib" id="gear" data-a="set" aria-label="ตั้งค่า"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></button></div></header>
@@ -215,6 +238,7 @@ dialog[open]{animation:sheet .25s}dialog::backdrop{background:rgba(22,22,22,.5)}
 <details class="acc" data-g="set"><summary><b>หน่วยสินค้า</b><div class="mut">เพิ่ม / ลบหน่วย และแปลงหน่วย "ชิ้น"</div></summary><p class="mut">แตะหน่วยเพื่อลบ · ชื่อที่มี x12 / x24 = ลัง, x2 ขึ้นไป = แพ็ค, "แคน" = กระป๋อง</p><div class="chips f" id="ul"></div><div class="stp"><input id="nu" placeholder="เพิ่มหน่วยใหม่ เช่น โหล"><button type="button" data-a="addU">เพิ่ม</button></div>
 <button class="srow" data-a="fixU"><b>แปลงหน่วย "ชิ้น" ทั้งหมด</b><span class="mut">x12/x24 = ลัง · x2+ = แพ็ค · แคน = กระป๋อง · อื่นๆ = ขวด</span></button></details></div></dialog>
 <dialog id="rdlg" aria-labelledby="rdt"><div class="sd"><div class="shh"><b id="rdt"></b><button class="ib x" data-a="rx" aria-label="ปิด"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div id="rdb"></div></div></dialog>
+<dialog id="phdlg" aria-labelledby="pht"><div class="phh"><b id="pht"></b><button class="ib x" data-a="phx" aria-label="ปิด"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="phb" data-a="phx"><img id="phi" alt=""></div></dialog>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -261,7 +285,7 @@ function watch(c){db.ref(ROOT+c).on('value',s=>{const arr=Object.values(s.val()|
  synced[c]=1;save();flush();setSt('ซิงค์แล้ว');refresh()},e=>setSt('ซิงค์ไม่ได้: '+(e.code||e.message)))}
 function cloud(){if(!window.firebase)return setSt('ออฟไลน์ · บันทึกในเครื่อง');
  try{firebase.initializeApp(CFG);db=firebase.database();const a=firebase.auth();
-  a.onAuthStateChanged(u=>{if(u){ready=true;if(!window._w){window._w=1;watch('records');watch('catalog');watch('shelves')}flush()}else a.signInAnonymously().catch(e=>setSt('เข้าระบบไม่ได้: '+(e.code||e.message)))})
+  a.onAuthStateChanged(u=>{if(u){ready=true;if(!window._w){window._w=1;watch('records');watch('catalog');watch('shelves');phCloud()}flush()}else a.signInAnonymously().catch(e=>setSt('เข้าระบบไม่ได้: '+(e.code||e.message)))})
  }catch(e){setSt('ซิงค์ไม่ได้')}}
 /* ── หน้าจอ ── */
 const SV=p=>'<svg viewBox="0 0 24 24" aria-hidden="true">'+p+'</svg>',
@@ -270,7 +294,7 @@ const SV=p=>'<svg viewBox="0 0 24 24" aria-hidden="true">'+p+'</svg>',
   sort:SV('<path d="M8 20V4M8 4 4.5 7.5M8 4l3.5 3.5M16 4v16M16 20l-3.5-3.5M16 20l3.5-3.5"/>'),scan:SV('<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 9v6M12 9v6M16 9v6"/>')};
 const item=r=>{const k=sOf(r.expDate),n=days(r.expDate),e=k=='expired',t=n>=9999?'':n<0?'เกิน '+(-n)+' วัน':n==0?'วันนี้':'อีก '+n+' วัน';
  const q=Math.max(1,+r.qty||1),id=esc(r.id);
- return '<div class="card'+(e?' x':'')+(OPEN.has(String(r.id))?' open':'')+'" data-a="open" data-v="'+id+'" style="--c:'+ST[k][1]+'"><div class="ci"><div class="cn"><b>'+esc(r.name||r.barcode)+'</b><div class="mut">'+esc(r.barcode)+' · ชั้น '+esc(r.shelf||'-')+(r.pos?' · '+esc(r.pos):'')+'<span class="qi"> · '+esc(r.qty)+' '+esc(r.unit)+'</span></div></div><div class="cr"><span class="pill" style="background:'+ST[k][1]+';color:'+ST[k][2]+'">'+(t||ST[k][0])+'</span><div class="dq"><div class="mut">'+fd(r.expDate)+'</div><div class="qn" style="color:'+ST[k][1]+'">'+q+'</div>'+(r.unit?'<div class="qun mut">'+esc(r.unit)+'</div>':'')+'</div></div></div><div class="more"><div class="qs" data-a="qs"><div class="qh">คงเหลือ'+(r.unit?' ('+esc(r.unit)+')':'')+'</div><div class="qc"><button type="button" data-a="qd" data-v="'+id+'" aria-label="ลดจำนวน"'+(q<=1?' disabled':'')+'>−</button><input data-a="qin" data-v="'+id+'" type="number" inputmode="numeric" min="1" max="99999" value="'+q+'" aria-label="จำนวนคงเหลือ"><button type="button" data-a="qu" data-v="'+id+'" aria-label="เพิ่มจำนวน">+</button></div></div><div class="ma" data-a="qs"><button data-a="ed" data-v="'+id+'">'+IX.ed+'แก้ไข</button><button class="dg" data-a="rm" data-v="'+id+'">'+(e?IX.ok+'เอาออกแล้ว':IX.rm+'ลบ')+'</button></div></div></div>'};
+ return '<div class="card'+(e?' x':'')+(OPEN.has(String(r.id))?' open':'')+'" data-a="open" data-v="'+id+'" style="--c:'+ST[k][1]+'"><div class="ci">'+thP(r)+'<div class="cn"><b>'+esc(r.name||r.barcode)+'</b><div class="mut">'+esc(r.barcode)+' · ชั้น '+esc(r.shelf||'-')+(r.pos?' · '+esc(r.pos):'')+'<span class="qi"> · '+esc(r.qty)+' '+esc(r.unit)+'</span></div></div><div class="cr"><span class="pill" style="background:'+ST[k][1]+';color:'+ST[k][2]+'">'+(t||ST[k][0])+'</span><div class="dq"><div class="mut">'+fd(r.expDate)+'</div><div class="qn" style="color:'+ST[k][1]+'">'+q+'</div>'+(r.unit?'<div class="qun mut">'+esc(r.unit)+'</div>':'')+'</div></div></div><div class="more"><div class="qs" data-a="qs"><div class="qh">คงเหลือ'+(r.unit?' ('+esc(r.unit)+')':'')+'</div><div class="qc"><button type="button" data-a="qd" data-v="'+id+'" aria-label="ลดจำนวน"'+(q<=1?' disabled':'')+'>−</button><input data-a="qin" data-v="'+id+'" type="number" inputmode="numeric" min="1" max="99999" value="'+q+'" aria-label="จำนวนคงเหลือ"><button type="button" data-a="qu" data-v="'+id+'" aria-label="เพิ่มจำนวน">+</button></div></div><div class="ma" data-a="qs"><button data-a="ed" data-v="'+id+'">'+IX.ed+'แก้ไข</button><button class="dg" data-a="rm" data-v="'+id+'">'+(e?IX.ok+'เอาออกแล้ว':IX.rm+'ลบ')+'</button></div></div></div>'};
 const bySoon=(a,b)=>days(a.expDate)-days(b.expDate);
 const last=b=>norm(b)?S.records.filter(r=>norm(r.barcode)==norm(b)).sort((a,c)=>(c.t||0)-(a.t||0))[0]:null;
 const addDays=n=>{const d=new Date();d.setDate(d.getDate()+n);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
@@ -322,7 +346,7 @@ const regShelf=n=>{n=sn(n);if(n&&n!=NOSH&&!S.shelves.some(s=>sn(s.name)==n))putM
 /* แท็บชั้นวาง: สินค้าเดียวกันในชั้นเดียวกัน รวมเป็นการ์ดเดียว · แตะเพื่อดูทุกล็อต */
 const grp=a=>{const m=new Map();a.forEach(r=>{const k=norm(r.barcode)||String(r.name||'').trim().toLowerCase()||'#'+r.id;if(!m.has(k))m.set(k,[]);m.get(k).push(r)});return[...m.values()]};
 const pg=(sh,g)=>{const f=g[0],k=sOf(f.expDate),n=days(f.expDate),e=k=='expired',t=n>=9999?'':n<0?'เกิน '+(-n)+' วัน':n==0?'วันนี้':'อีก '+n+' วัน',key=sh+'|'+(norm(f.barcode)||f.name||f.id);
- return '<div class="pg'+(GO.has(key)?' open':'')+'"><div class="card'+(e?' x':'')+'" data-a="grp" data-v="'+esc(key)+'" style="--c:'+ST[k][1]+'"><div class="ci"><div class="cn"><b>'+esc(f.name||f.barcode)+'</b><div class="mut">'+esc(f.barcode)+' · ชั้น '+esc(f.shelf||'-')+'</div></div><div class="cr"><span class="pill" style="background:'+ST[k][1]+';color:'+ST[k][2]+'">'+(t||ST[k][0])+'</span><div class="dq"><div class="mut">'+fd(f.expDate)+'</div><div class="lc">'+g.length+' ล็อต</div></div></div></div></div><div class="pgl">'+g.map(item).join('')+'</div></div>'};
+ return '<div class="pg'+(GO.has(key)?' open':'')+'"><div class="card'+(e?' x':'')+'" data-a="grp" data-v="'+esc(key)+'" style="--c:'+ST[k][1]+'"><div class="ci">'+thP(f)+'<div class="cn"><b>'+esc(f.name||f.barcode)+'</b><div class="mut">'+esc(f.barcode)+' · ชั้น '+esc(f.shelf||'-')+'</div></div><div class="cr"><span class="pill" style="background:'+ST[k][1]+';color:'+ST[k][2]+'">'+(t||ST[k][0])+'</span><div class="dq"><div class="mut">'+fd(f.expDate)+'</div><div class="lc">'+g.length+' ล็อต</div></div></div></div></div><div class="pgl">'+g.map(item).join('')+'</div></div>'};
 /* จากหน้า + เพิ่ม: แตะล็อต → ไปแท็บชั้นวาง เปิดชั้นนั้น เปิดกลุ่มล็อต เลื่อนไปที่ล็อตและกะพริบไฮไลต์ (ฟอร์มที่กรอกค้างไว้ถูกเก็บเป็นร่าง) */
 function showLot(r){svDraft();const sh=sn(r.shelf)||NOSH;SO.add(sh);GO.add(sh+'|'+(norm(r.barcode)||r.name||r.id));go('shelf');
  const el=document.querySelector('.card[data-a="open"][data-v="'+CSS.escape(String(r.id))+'"]');if(!el)return;
@@ -330,7 +354,7 @@ function showLot(r){svDraft();const sh=sn(r.shelf)||NOSH;SO.add(sh);GO.add(sh+'|
 function shelf(){
  if(SE)return shEdit();
  return '<div class="shb"><button class="pri" data-a="shAdd">+ เพิ่มเชลฟ์</button><button data-a="seOn">'+IX.sort+'แก้ไขตำแหน่ง</button></div>'+(shelves().map(([n,a])=>{const u=a.filter(r=>days(r.expDate)<=7).length,real=n!=NOSH,g=grp(a);
-  return '<details data-s="'+esc(n)+'"'+(SO.has(n)?' open':'')+'><summary><b>'+esc(n)+'</b> · '+g.length+' สินค้า'+(g.length<a.length?' · '+a.length+' ล็อต':'')+(u?' · <span class="pill" style="background:'+ST.expired[1]+';color:'+ST.expired[2]+'">ต้องจัดการ '+u+'</span>':'')+'<div class="mut">'+(a.length?'ใกล้สุด '+fd(a[0].expDate):'ยังไม่มีสินค้า')+'</div></summary>'
+  return '<details data-s="'+esc(n)+'"'+(SO.has(n)?' open':'')+'><summary class="shs">'+thS(n)+'<div class="sho"><b>'+esc(n)+'</b> · '+g.length+' สินค้า'+(g.length<a.length?' · '+a.length+' ล็อต':'')+(u?' · <span class="pill" style="background:'+ST.expired[1]+';color:'+ST.expired[2]+'">ต้องจัดการ '+u+'</span>':'')+'<div class="mut">'+(a.length?'ใกล้สุด '+fd(a[0].expDate):'ยังไม่มีสินค้า')+'</div></div></summary>'+thB(n)
    +(real?'<div class="btns sb"><button data-a="shRn" data-v="'+esc(n)+'">แก้ไขชื่อเชลฟ์</button>'+(a.length?'':'<button data-a="shDel" data-v="'+esc(n)+'">ลบเชลฟ์ว่าง</button>')+'</div>':'')
    +g.map(x=>x.length>1?pg(n,x):item(x[0])).join('')+'</details>'}).join('')||'<p class="mut">ยังไม่มีข้อมูล</p>')}
 /* ── โหมดแก้ไขตำแหน่งเชลฟ์: ลากที่ไอคอนจุดเพื่อย้าย แล้วกด "บันทึก" ── */
@@ -338,8 +362,8 @@ function shEdit(){const old=document.querySelectorAll('#sl .sr[data-s]');if(old.
  const all=shelves(),m=new Map(all);SE=SE.filter(n=>m.has(n));all.forEach(([n])=>{if(n!=NOSH&&!isFz(n)&&!SE.includes(n))SE.push(n)});
  const lk=all.map(x=>x[0]).filter(n=>!SE.includes(n)),cnt=n=>m.get(n).length+' รายการ';
  return '<div class="eb"><div><b>จัดลำดับเชลฟ์</b><div class="mut">ลากที่ไอคอนจุดด้านซ้ายเพื่อย้ายขึ้น/ลง</div></div><div class="btns"><button data-a="seX">ยกเลิก</button><button class="pri" data-a="seS">บันทึก</button></div></div>'
- +'<div class="sl" id="sl">'+SE.map((n,i)=>'<div class="sr" data-s="'+esc(n)+'"><div class="gh" tabindex="0" role="button" aria-label="ลากเพื่อย้าย '+esc(n)+'">'+IX.grip+'</div><div class="sn"><b>'+esc(n)+'</b><div class="mut">'+cnt(n)+'</div></div><span class="no">'+(i+1)+'</span></div>').join('')+'</div>'
- +(lk.length?'<p class="mut">ตู้แช่และสินค้าไม่ระบุชั้น เรียงไว้ล่างสุดอัตโนมัติ (ตู้แช่เรียงตามเลขตู้)</p><div class="sl">'+lk.map(n=>'<div class="sr lk"><div class="gl">'+IX.lock+'</div><div class="sn"><b>'+esc(n)+'</b><div class="mut">'+cnt(n)+'</div></div></div>').join('')+'</div>':'')}
+ +'<div class="sl" id="sl">'+SE.map((n,i)=>'<div class="sr" data-s="'+esc(n)+'"><div class="gh" tabindex="0" role="button" aria-label="ลากเพื่อย้าย '+esc(n)+'">'+IX.grip+'</div>'+thS(n,'sm')+'<div class="sn"><b>'+esc(n)+'</b><div class="mut">'+cnt(n)+'</div></div><span class="no">'+(i+1)+'</span></div>').join('')+'</div>'
+ +(lk.length?'<p class="mut">ตู้แช่และสินค้าไม่ระบุชั้น เรียงไว้ล่างสุดอัตโนมัติ (ตู้แช่เรียงตามเลขตู้)</p><div class="sl">'+lk.map(n=>'<div class="sr lk"><div class="gl">'+IX.lock+'</div>'+thS(n,'sm')+'<div class="sn"><b>'+esc(n)+'</b><div class="mut">'+cnt(n)+'</div></div></div>').join('')+'</div>':'')}
 function seOn(){const r=shelves().map(x=>x[0]).filter(n=>n!=NOSH&&!isFz(n));if(r.length<2)return toast('ต้องมีเชลฟ์อย่างน้อย 2 รายการจึงจะจัดลำดับได้');SE=r;render();scrollTo(0,0)}
 function seSave(){const ns=[...document.querySelectorAll('#sl .sr[data-s]')].map(r=>r.dataset.s),w=[];
  ns.forEach((n,i)=>{const c=S.shelves.find(s=>sn(s.name)==n);if(!c||c.ord!==i+1)w.push({...(c||{}),name:c?c.name:n,ord:i+1})});
@@ -398,7 +422,7 @@ function catDel(pred){const gone=S.catalog.filter(pred);if(!gone.length)return;S
  db.ref(ROOT+'catalog').once('value').then(sn=>{const u={};sn.forEach(c=>{const v=c.val();if(v&&pred(v))u['catalog/'+c.key]=null});return Object.keys(u).length?db.ref(ROOT).update(u):0}).then(done).catch(e=>setSt('ลบไม่ได้: '+(e.code||e.message)))}
 function cat(){return '<input id="cq" placeholder="ค้นหาสินค้า (ชื่อ / บาร์โค้ด)" value="'+esc(cq)+'"><details><summary>เพิ่มสินค้าใหม่</summary><form id="pf"><label>บาร์โค้ด<input id="pb" required></label><label>ชื่อสินค้า<input id="pn" required></label><label>หน่วย<input id="pu"></label><label>หมวด<input id="pc"></label><button class="big pri">บันทึกสินค้า</button></form></details><p class="mut">'+S.catalog.length+' สินค้า</p><div id="cl"></div>'}
 const cl=()=>{const L=cList();
- return L.slice(0,100).map(p=>'<div class="row"><div><b>'+(esc(p.name)||'(ไม่มีชื่อ)')+'</b><div class="mut">'+esc(p.barcode)+' · '+esc(p.category||'-')+' · '+esc(p.unit||'-')+'</div></div><div class="btns"><button data-a="useP" data-v="'+esc(p.barcode)+'">ลงวันหมดอายุ</button><button data-a="rnP" data-v="'+esc(p.barcode)+'">แก้ชื่อ</button><button data-a="dlP" data-v="'+esc(p.barcode)+'" data-n="'+esc(p.name)+'">ลบ</button></div></div>').join('')||'<p class="mut">ไม่พบสินค้า — นำเข้าไฟล์ catalog.json ที่หน้าแรกได้</p>'};
+ return L.slice(0,100).map(p=>'<div class="row rp">'+thP(p)+'<div><b>'+(esc(p.name)||'(ไม่มีชื่อ)')+'</b><div class="mut">'+esc(p.barcode)+' · '+esc(p.category||'-')+' · '+esc(p.unit||'-')+'</div></div><div class="btns"><button data-a="useP" data-v="'+esc(p.barcode)+'">ลงวันหมดอายุ</button><button data-a="rnP" data-v="'+esc(p.barcode)+'">แก้ชื่อ</button><button data-a="dlP" data-v="'+esc(p.barcode)+'" data-n="'+esc(p.name)+'">ลบ</button></div></div>').join('')||'<p class="mut">ไม่พบสินค้า — นำเข้าไฟล์ catalog.json ที่หน้าแรกได้</p>'};
 function shSet(v){const s=$('#sh');if(!s)return;v=sn(v);if(v&&![...s.options].some(o=>o.value==v))s.add(new Option(v,v),s.options[s.options.length-1]);s.value=v;s.dataset.p=s.value}
 document.addEventListener('change',e=>{const t=e.target;if(t.id!='sh')return;
  if(t.value=='__new'){const n=sn(prompt('ชื่อชั้นวางใหม่ (เช่น เชลฟ์เบียร์ 34 - ชื่อสินค้า)','')||'');t.value=t.dataset.p||'';if(n&&n!=NOSH)shSet(n)}
@@ -567,7 +591,7 @@ function hl(s,k){s=String(s??'');const l=s.toLowerCase();if(l.length!=s.length)r
  let o='',on=0;for(let i=0;i<s.length;i++){if(m[i]!=on){o+=on?'</mark>':'<mark>';on=m[i]}o+=esc(s[i])}return o+(on?'</mark>':'')}
 function acShow(inp){const box=$('#ac');if(!box)return;const L=acFind(inp.value);AC.list=L;AC.i=-1;
  if(!L.length||(L.length==1&&inp.id=='bc'&&norm(L[0].barcode)==norm(inp.value))){box.hidden=true;return}
- box.innerHTML=L.map((p,i)=>'<div class="aci" data-i="'+i+'"><b>'+hl(p.name,AC.k)+'</b><span>'+hl(p.barcode,AC.k)+' · '+esc(p.unit||'-')+(p.category?' · '+esc(p.category):'')+'</span></div>').join('');
+ box.innerHTML=L.map((p,i)=>'<div class="aci ap" data-i="'+i+'">'+thP(p,'sm',1)+'<div class="ac1"><b>'+hl(p.name,AC.k)+'</b><span>'+hl(p.barcode,AC.k)+' · '+esc(p.unit||'-')+(p.category?' · '+esc(p.category):'')+'</span></div></div>').join('');
  box.hidden=false;box.style.left='0px';box.style.width=$('#rf').clientWidth+'px';
  const vh=()=>window.visualViewport?visualViewport.height:innerHeight,nav=innerWidth<900?84:8;
  let r=inp.getBoundingClientRect();
@@ -606,5 +630,66 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-i]')
  else if(a=='go'&&IP){const p=IP;IP=null;$('#ins').hidden=true;p.prompt();try{await p.userChoice}catch(_){}}
  else if(a=='set'){const d=$('#sdlg');if(d.open)d.close();insShow(true)}});
 if(isSA())$('#insrow').hidden=true;else{$('#insrow').hidden=false;if(isIOS&&!insHid())setTimeout(()=>insShow(),1500)}
+
+/* ── SMS · รูปเชลฟ์ / รูปสินค้า ──
+   ใช้โครงเดียวกับ Expire Hunter: รูปเก็บที่ stores/expirehunter-main/data/ → shelfPhoto_<id> · productPhoto_<barcode> · photoIndex
+   (ค่าเป็น {payloadJson:'{"photo":dataURL,"thumb":dataURL}'}) · SMS "อ่านอย่างเดียว" ไม่เขียนอะไรกลับไปที่ expirehunter-main
+   รูปที่โหลดแล้วเก็บไว้ใน IndexedDB ของ SMS เอง (sms-photos) → เปิดซ้ำ/ออฟไลน์ได้ · โหลดเฉพาะรูปที่เลื่อนมาเห็น ทีละ 3 รูป */
+const PR='stores/expirehunter-main/data/',PH={pb:new Map(),ps:new Set(),sid:new Map(),u:Object.create(null),f:Object.create(null),pend:new Map(),q:[],qs:new Set(),run:0,sz:{},err:0};
+try{JSON.parse(localStorage.getItem('sms-sid')||'[]').forEach(([n,i])=>PH.sid.set(n,i));PH.sz=JSON.parse(localStorage.getItem('sms-phsz')||'{}')||{}}catch(e){}
+let PI=null;const pidb=()=>PI||(PI=new Promise((ok,no)=>{const q=indexedDB.open('sms-photos',1);q.onupgradeneeded=()=>q.result.createObjectStore('p');q.onsuccess=()=>ok(q.result);q.onerror=()=>no(q.error)}));
+const pget=k=>pidb().then(d=>new Promise(r=>{const q=d.transaction('p').objectStore('p').get(k);q.onsuccess=()=>r(q.result||null);q.onerror=()=>r(null)})).catch(()=>null);
+const pput=(k,v)=>pidb().then(d=>{d.transaction('p','readwrite').objectStore('p').put(v,k)}).catch(()=>{});
+const pdel=k=>pidb().then(d=>{d.transaction('p','readwrite').objectStore('p').delete(k)}).catch(()=>{});
+const d2u=s=>{if(!/^data:/.test(s))return s;try{const [h,b]=s.split(','),m=/:(.*?)[;,]/.exec(h)[1],a=atob(b),n=new Uint8Array(a.length);for(let i=0;i<a.length;i++)n[i]=a.charCodeAt(i);return URL.createObjectURL(new Blob([n],{type:m}))}catch(e){return s}};
+function phErr(e){const c=e&&(e.code||e.message)||'';console.warn('[photos]',e);if(!PH.err&&/permission/i.test(c)){PH.err=1;toast('อ่านรูปจาก Expire Hunter ไม่ได้ (permission_denied) — ต้องเปิดสิทธิ์อ่านใน Firebase rules')}}
+/* ดึงรูป 1 ใบ: หน่วยความจำ → IndexedDB → Firebase (เก็บลง IndexedDB) · key = 'p:<barcode>' หรือ 's:<shelfId>' · คืน blob URL ของรูปย่อ (ไม่มีรูป = null) */
+function phFetch(key){if(PH.u[key]!==undefined)return Promise.resolve(PH.u[key]);if(PH.pend.has(key))return PH.pend.get(key);
+ const pr=(async()=>{let v=await pget(key),fail=0;
+  if(!v){if(!db||!ready)fail=1;else try{const s=await db.ref(PR+(key[0]=='s'?'shelfPhoto_':'productPhoto_')+key.slice(2)).get();
+    if(s.exists()){const d=s.val();let j=d;if(d&&typeof d.payloadJson=='string')j=JSON.parse(d.payloadJson);else if(d&&d.payload!==undefined)j=d.payload;
+     if(j&&(j.photo||j.thumb)){v={photo:j.photo||null,thumb:j.thumb||null};pput(key,v)}}}catch(e){fail=1;phErr(e)}}
+  const t=v&&(v.thumb||v.photo);if(t)return PH.u[key]=d2u(t);if(!fail)PH.u[key]=null;return null})().finally(()=>PH.pend.delete(key));
+ PH.pend.set(key,pr);return pr}
+const phFull=k=>PH.f[k]?Promise.resolve(PH.f[k]):pget(k).then(v=>v&&(v.photo||v.thumb)?(PH.f[k]=d2u(v.photo||v.thumb)):null);
+function phQ(k){if(PH.u[k]!==undefined||PH.qs.has(k))return;PH.qs.add(k);PH.q.push(k);phPump()}
+function phPump(){while(PH.run<3&&PH.q.length){const k=PH.q.shift();PH.run++;phFetch(k).finally(()=>{PH.qs.delete(k);PH.run--;phPaint();phPump()})}}
+const phIO='IntersectionObserver' in window?new IntersectionObserver(es=>es.forEach(x=>{if(x.isIntersecting){phIO.unobserve(x.target);phQ(x.target.dataset.k)}}),{rootMargin:'300px'}):null;
+function phPaint(){document.querySelectorAll('.th[data-k],.shp[data-k]').forEach(el=>{const k=el.dataset.k,u=PH.u[k];
+ if(u){const i=el.querySelector('img');if(i&&i.getAttribute('src')!=u)i.src=u;el.classList.add('on');
+  if(el.classList.contains('shp')&&!el._f){el._f=1;phFull(k).then(f=>{if(f&&el.isConnected&&i)i.src=f})}}
+ else if(u===null)el.classList.add('no');
+ else if(!el._o){el._o=1;phIO?phIO.observe(el):phQ(k)}})}
+new MutationObserver(()=>{cancelAnimationFrame(PH.r);PH.r=requestAnimationFrame(phPaint)}).observe($('#v'),{childList:true,subtree:true});
+/* ตัวช่วยสร้าง HTML: ไม่มีรูปบน Expire Hunter = ไม่แสดงอะไร (สินค้า) / ไอคอนเชลฟ์ว่าง (เชลฟ์) */
+const phB=b=>{const n=norm(b);return n?PH.pb.get(n)||null:null};
+const thP=(r,c,ni)=>{const k=r&&phB(r.barcode);if(!k)return '';const a=' class="th'+(c?' '+c:'')+'" data-k="p:'+esc(k)+'"';
+ return ni?'<span'+a+'><img alt=""></span>':'<button type="button"'+a+' data-a="ph" data-n="'+esc(r.name||r.barcode)+'" aria-label="ดูรูปสินค้า"><img alt=""></button>'};
+const phS=n=>{const i=PH.sid.get(sn(n));return i&&PH.ps.has(i)?i:null};
+const thS=(n,c)=>{if(n==NOSH)return '';const i=phS(n);
+ return i?'<button type="button" class="th'+(c?' '+c:'')+'" data-k="s:'+esc(i)+'" data-a="ph" data-n="'+esc(n)+'" aria-label="ดูรูปเชลฟ์"><img alt=""></button>'
+  :'<span class="th ph'+(c?' '+c:'')+'" aria-hidden="true">'+SV(IC.shelf)+'</span>'};
+const thB=n=>{const i=n==NOSH?null:phS(n);return i?'<button type="button" class="shp" data-k="s:'+esc(i)+'" data-a="ph" data-n="'+esc(n)+'" aria-label="ดูรูปเชลฟ์ขนาดเต็ม"><img alt=""></button>':''};
+/* ดัชนีรูปบน cloud (photoIndex) + ชื่อเชลฟ์ → id (shelves_v2) · รูปที่ถูกแทนที่บน Expire Hunter (ขนาดไฟล์เปลี่ยน) จะโหลดใหม่เอง */
+function phIndex(v){const pb=new Map(),ps=new Set(),ns={},chg=[];
+ Object.keys(v).forEach(k=>{const sh=k.startsWith('shelf_'),s=sh?'s:'+k.slice(6):'p:'+k;ns[s]=v[k];
+  if(sh)ps.add(k.slice(6));else{const n=norm(k);if(n)pb.set(n,k)}
+  if(PH.sz[s]!==undefined&&PH.sz[s]!==v[k])chg.push(s)});
+ chg.forEach(k=>{[PH.u[k],PH.f[k]].forEach(u=>{if(typeof u=='string'&&u.startsWith('blob:'))URL.revokeObjectURL(u)});delete PH.u[k];delete PH.f[k];pdel(k)});
+ PH.pb=pb;PH.ps=ps;PH.sz=ns;try{localStorage.setItem('sms-phsz',JSON.stringify(ns))}catch(e){}refresh()}
+function phCloud(){
+ db.ref(PR+'photoIndex').on('value',s=>phIndex(s.val()||{}),phErr);
+ db.ref(PR+'shelves_v2').get().then(s=>{const m=[];if(s.exists())Object.values(s.val()||{}).forEach(x=>{if(x&&x.id!=null&&x.name)m.push([sn(x.name),String(x.id)])});
+  if(m.length){PH.sid=new Map(m);try{localStorage.setItem('sms-sid',JSON.stringify(m))}catch(e){}refresh()}}).catch(phErr)}
+/* ออฟไลน์/เปิดครั้งแรกก่อนซิงค์: รู้ว่ามีรูปอะไรบ้างจากแคชในเครื่อง */
+pidb().then(d=>{const q=d.transaction('p').objectStore('p').getAllKeys();q.onsuccess=()=>{q.result.forEach(k=>{k=String(k);if(k[0]=='s')PH.ps.add(k.slice(2));else{const n=norm(k.slice(2));if(n&&!PH.pb.has(n))PH.pb.set(n,k.slice(2))}});refresh()}}).catch(()=>{});
+/* เปิดรูปเต็มจอ */
+function phOpen(k,title){const d=$('#phdlg'),i=$('#phi');$('#pht').textContent=title||'';i.removeAttribute('src');if(!d.open)d.showModal();
+ const set=u=>{if(u&&d.open&&PH.cur==k)i.src=u};PH.cur=k;set(PH.u[k]);phFull(k).then(f=>f?set(f):phFetch(k).then(set))}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-a=ph],[data-a=phx]');if(!b)return;
+ if(b.dataset.a=='phx'){if(e.target.id!='phi')$('#phdlg').close();return}
+ e.preventDefault();phOpen(b.dataset.k,b.dataset.n)});
+$('#phdlg').addEventListener('click',e=>{if(e.target.id=='phdlg')e.target.close()});
+$('#phdlg').addEventListener('close',()=>{PH.cur=null;$('#phi').removeAttribute('src')});
 render();cloud();
 </script></body></html>
