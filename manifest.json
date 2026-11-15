@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "SMS · Shrink Management System",
+  "short_name": "SMS",
+  "description": "ระบบติดตามสินค้าใกล้หมดอายุ Shrink Management System",
+  "lang": "th",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#d6200f",
+  "theme_color": "#e8281a",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
